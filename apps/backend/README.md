@@ -11,7 +11,7 @@ Environment
 -----------
 Copy `apps/backend/.env.example` to `apps/backend/.env` and fill in:
 - `NODE_ENV=production`
-- `PORT` and `WS_PORT`
+- `PORT` (and `WS_PORT` if `WS_MODE=standalone`)
 - `DATABASE_URL`
 - `REDIS_URL`
 - `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` (PEM strings or escaped `\n`)
@@ -26,6 +26,14 @@ npm run migrate
 NODE_ENV=production npm run start
 NODE_ENV=production npm run start:workers
 ```
+
+Render (Single Service)
+-----------------------
+- Use one Render web service for REST + WebSocket (`WS_MODE=shared`).
+- Start command: `npm run start` (do not run standalone WS on the web service).
+- Health check path: `/api/health` (global prefix applies).
+- Optional: add a Render worker service with `npm run start:workers` for email/notification jobs.
+- See `render.yaml` for a ready-to-import blueprint.
 
 Docker
 ------

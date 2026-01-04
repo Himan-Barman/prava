@@ -1,4 +1,4 @@
-import com.android.build.gradle.LibraryExtension
+import com.android.build.api.variant.LibraryAndroidComponentsExtension
 
 buildscript {
     repositories {
@@ -34,11 +34,12 @@ subprojects {
 
 subprojects {
     plugins.withId("com.android.library") {
-        val extension = extensions.findByType<LibraryExtension>()
-        if (extension != null) {
-            val current = extension.namespace
-            if (current == null || current.isBlank()) {
-                extension.namespace = "com.prava.${project.name}"
+        extensions.configure<LibraryAndroidComponentsExtension> {
+            finalizeDsl {
+                it.compileSdk = 36
+                if (it.namespace.isNullOrBlank()) {
+                    it.namespace = "com.prava.${project.name}"
+                }
             }
         }
     }

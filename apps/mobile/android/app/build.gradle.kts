@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.prava.app"
-    compileSdk = 34
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -21,8 +21,8 @@ android {
 
     defaultConfig {
         applicationId = "com.prava.app"
-        minSdk = 21           
-        targetSdk = 34
+        minSdk = flutter.minSdkVersion           
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
