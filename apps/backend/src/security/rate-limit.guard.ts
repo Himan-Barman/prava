@@ -2,7 +2,8 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
-  TooManyRequestsException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { FastifyRequest } from 'fastify';
 
@@ -24,7 +25,7 @@ export class RateLimitGuard implements CanActivate {
       req.ip ??
       'unknown';
 
-    const route = req.routerPath ?? 'global';
+    const route = req.routeOptions?.url ?? 'global';
 
     const redis = await getRedis();
 
@@ -51,8 +52,9 @@ export class RateLimitGuard implements CanActivate {
       const count = await redis.zCard(key);
 
       if (count > this.MAX_REQUESTS) {
-        throw new TooManyRequestsException(
+        throw new HttpException(
           'Too many requests, slow down',
+          HttpStatus.TOO_MANY_REQUESTS,
         );
       }
 

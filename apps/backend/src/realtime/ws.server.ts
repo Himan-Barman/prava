@@ -1,6 +1,3 @@
-import type { us_listen_socket } from 'uWebSockets.js';
-import type { WebSocket as WsSocket } from 'ws';
-import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import { URLSearchParams } from 'url';
 
@@ -9,6 +6,7 @@ import { MAX_WS_PAYLOAD_BYTES } from '@/common/constants';
 import { JwtPayload } from '@/common/types/jwt-payload';
 import { ConversationsService } from '@/modules/conversations/conversations.service';
 import { MessagesService } from '@/modules/messages/messages.service';
+import { MediaService } from '@/modules/media/media.service';
 import { presenceManager } from './presence.manager';
 import { WsHub } from './ws.hub';
 import { handleWsMessage } from './ws.router';
@@ -23,7 +21,31 @@ const WS_RATE_LIMIT_WINDOW_MS = 10_000;
 const WS_RATE_LIMIT_MAX = 120;
 const PRESENCE_REFRESH_MS = 30_000;
 
+type WsSocket = {
+  readyState: number;
+  OPEN: number;
+  send: (payload: string) => void;
+  close: (code?: number, reason?: string) => void;
+  on: (event: string, listener: (...args: any[]) => void) => void;
+};
+
 type RateLimitSocket = { rateLimit?: { windowStart: number; count: number } };
+
+type UsListenSocket = unknown;
+type UwsModule = {
+  App: () => any;
+  us_listen_socket_close: (socket: UsListenSocket) => void;
+};
+
+const { WebSocketServer } = require('ws') as {
+  WebSocketServer: new (options: {
+    port: number;
+    maxPayload?: number;
+  }) => {
+    on: (event: string, listener: (...args: any[]) => void) => void;
+    close: () => void;
+  };
+};
 
 const isRateLimited = (ws: RateLimitSocket) => {
   const now = Date.now();
@@ -38,10 +60,10 @@ const isRateLimited = (ws: RateLimitSocket) => {
   return state.count > WS_RATE_LIMIT_MAX;
 };
 
-const tryLoadUws = () => {
+const tryLoadUws = (): UwsModule | null => {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require('uWebSockets.js') as typeof import('uWebSockets.js');
+    return require('uWebSockets.js') as UwsModule;
   } catch (err) {
     console.warn('uWebSockets.js unavailable, falling back to ws');
     return null;
@@ -101,7 +123,8 @@ class LocalTopicRegistry {
 export function startWsServer(port: number) {
   const syncService = new SyncService();
   const conversationsService = new ConversationsService();
-  const messagesService = new MessagesService();
+  const mediaService = new MediaService(conversationsService);
+  const messagesService = new MessagesService(mediaService);
 
   const uws = tryLoadUws();
 
@@ -130,14 +153,14 @@ export function startWsServer(port: number) {
         });
       }
     };
-    let listenSocket: us_listen_socket | null = null;
+    let listenSocket: UsListenSocket | null = null;
 
     app.ws('/*', {
       idleTimeout: 60,
       maxBackpressure: 1024 * 1024,
       maxPayloadLength: MAX_WS_PAYLOAD_BYTES,
 
-      upgrade: (res, req, context) => {
+      upgrade: (res: any, req: any, context: any) => {
         const authHeader = req.getHeader('authorization');
         const queryParams = new URLSearchParams(req.getQuery());
 
@@ -182,7 +205,7 @@ export function startWsServer(port: number) {
         }
       },
 
-      open: (ws) => {
+      open: (ws: any) => {
         void (async () => {
           const wasOnline = await presenceManager.isOnline(ws.userId);
           await presenceManager.connect(ws.userId, ws.deviceId);
@@ -208,7 +231,7 @@ export function startWsServer(port: number) {
         }, PRESENCE_REFRESH_MS);
       },
 
-      message: (ws, message, isBinary) => {
+      message: (ws: any, message: any, isBinary: boolean) => {
         if (isBinary) return;
 
         if (isRateLimited(ws)) {
@@ -250,7 +273,7 @@ export function startWsServer(port: number) {
         });
       },
 
-      close: (ws) => {
+      close: (ws: any) => {
         if (ws.presenceInterval) {
           clearInterval(ws.presenceInterval);
           ws.presenceInterval = undefined;
@@ -266,7 +289,7 @@ export function startWsServer(port: number) {
       },
     });
 
-    app.listen(port, (socket) => {
+    app.listen(port, (socket: UsListenSocket | null) => {
       if (socket) {
         listenSocket = socket;
         console.log(`WS server running on :${port}`);
@@ -319,7 +342,7 @@ export function startWsServer(port: number) {
     maxPayload: MAX_WS_PAYLOAD_BYTES,
   });
 
-  wss.on('connection', (socket, req) => {
+  wss.on('connection', (socket: WsSocket, req: any) => {
     const authHeader = req.headers.authorization;
     const url = new URL(req.url ?? '', 'http://localhost');
     const queryToken = url.searchParams.get('token')?.trim();
@@ -388,7 +411,7 @@ export function startWsServer(port: number) {
       void presenceManager.connect(userId, deviceId);
     }, PRESENCE_REFRESH_MS);
 
-    socket.on('message', (data) => {
+    socket.on('message', (data: any) => {
       if (isRateLimited(socketAny)) {
         socketAny.close(1008, 'Rate limit exceeded');
         return;

@@ -77,9 +77,18 @@ export class NotificationsService {
     let nextCursor: string | null = null;
     if (items.length > limit) {
       const last = items[limit - 1];
-      nextCursor = last?.createdAt
-        ? new Date(last.createdAt).toISOString()
-        : null;
+      const createdAt = last?.createdAt;
+      if (createdAt) {
+        const cursorDate =
+          createdAt instanceof Date
+            ? createdAt
+            : new Date(String(createdAt));
+        nextCursor = Number.isNaN(cursorDate.getTime())
+          ? null
+          : cursorDate.toISOString();
+      } else {
+        nextCursor = null;
+      }
       items.splice(limit);
     }
 

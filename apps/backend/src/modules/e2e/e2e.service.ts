@@ -25,6 +25,8 @@ type PreKeyInput = {
   publicKey: string;
 };
 
+type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 @Injectable()
 export class E2eService {
   private async ensureKeyAccess(
@@ -467,7 +469,7 @@ export class E2eService {
   }
 
   private async upsertSignedPreKey(
-    tx: typeof db,
+    tx: DbTx,
     input: {
       userId: string;
       deviceId: string;

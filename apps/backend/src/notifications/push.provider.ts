@@ -136,7 +136,14 @@ export const sendPush = async (
       const failed = result.failed?.[0];
       if (!failed) return { ok: true };
 
-      const reason = failed.response?.reason ?? failed.error?.reason;
+      const responseReason = failed.response?.reason;
+      const errorReason =
+        failed.error &&
+        typeof failed.error === 'object' &&
+        'reason' in failed.error
+          ? (failed.error as { reason?: string }).reason
+          : undefined;
+      const reason = responseReason ?? errorReason;
       if (isInvalidApnsReason(reason)) {
         return { ok: false, reason: 'invalid-token', detail: reason };
       }

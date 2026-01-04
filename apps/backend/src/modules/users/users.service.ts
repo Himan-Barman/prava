@@ -359,7 +359,7 @@ export class UsersService {
       if (items.length == 0) return items;
 
       const statuses = await Promise.all(
-        items.map((item) => presenceManager.isOnline(item.id)),
+        items.map((item) => presenceManager.isOnline(String(item.id))),
       );
 
       return items.map((item, index) => ({

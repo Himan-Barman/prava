@@ -153,7 +153,9 @@ export class ConversationsService {
         })
         .returning({ id: conversations.id });
 
-      const memberRows = uniqueMembers.map((memberId) => ({
+      const memberRows: Array<
+        typeof conversationMembers.$inferInsert
+      > = uniqueMembers.map((memberId) => ({
         conversationId: conversation.id,
         userId: memberId,
         role: memberId === input.userId ? 'admin' : 'member',
@@ -198,15 +200,16 @@ export class ConversationsService {
     const uniqueMembers = Array.from(new Set(input.memberIds));
     if (uniqueMembers.length === 0) return { added: 0 };
 
+    const memberRows: Array<typeof conversationMembers.$inferInsert> =
+      uniqueMembers.map((memberId) => ({
+        conversationId: input.conversationId,
+        userId: memberId,
+        role: 'member',
+      }));
+
     await db
       .insert(conversationMembers)
-      .values(
-        uniqueMembers.map((memberId) => ({
-          conversationId: input.conversationId,
-          userId: memberId,
-          role: 'member',
-        })),
-      )
+      .values(memberRows)
       .onConflictDoNothing();
 
     return { added: uniqueMembers.length };

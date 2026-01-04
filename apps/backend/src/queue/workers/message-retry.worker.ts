@@ -1,7 +1,11 @@
 import { Worker } from 'bullmq';
 import { and, eq, isNull } from 'drizzle-orm';
 
-import { connection, notificationQueue } from '../bullmq.config';
+import {
+  connection,
+  messageRetryQueue,
+  notificationQueue,
+} from '../bullmq.config';
 import { db } from '@/db';
 import { messageRetries } from '@/db/schema/message_retries.schema';
 import { messages } from '@/db/schema/messages.schema';
@@ -134,7 +138,7 @@ export const messageRetryWorker = new Worker<RetryJob>(
     }
 
     try {
-      await job.queue.add(
+      await messageRetryQueue.add(
         'message-retry',
         job.data,
         {
