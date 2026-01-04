@@ -1,0 +1,87 @@
+# =========================
+# Dart / Flutter
+# =========================
+.dart_tool/
+.packages
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+.build/
+build/
+
+# =========================
+# IDEs
+# =========================
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.jks
+*.keystore
+
+# =========================
+# Flutter platform builds
+# =========================
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+
+macos/Flutter/ephemeral/
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+
+# =========================
+# Isar / Database (local only)
+# =========================
+*.isar
+isar_db/
+isar_data/
+
+# =========================
+# Coverage & Test Artifacts
+# =========================
+coverage/
+test/.test_outputs/
+
+# =========================
+# Temporary / Backup files
+# =========================
+*.tmp
+*.bak
+*~
+
+# =========================
+# Optional: lockfiles (keep ONE strategy)
+# =========================
+# pubspec.lock   # ❌ ignore if this is a library
+# pubspec.lock   # ✅ keep if this is an app (recommended)

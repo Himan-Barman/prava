@@ -1,0 +1,94 @@
+name: mobile
+description: "Prava Mobile Application - Secure Messaging Platform"
+publish_to: "none"
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # =========================
+  # UI / PLATFORM
+  # =========================
+  cupertino_icons: ^1.0.8
+  equatable: ^2.0.5
+  http: ^1.2.2
+  web_socket_channel: ^3.0.1
+  app_links: ^6.1.1
+  country_picker: ^2.0.23
+
+  # =========================
+  # CORE CRYPTOGRAPHY (Signal / WhatsApp grade)
+  # =========================
+  sodium_libs: ^2.2.1              # LibSodium bindings (native, constant-time)
+  crypto: ^3.0.3                   # SHA-256 for Merkle trees
+  cryptography: ^2.7.0             # Additional crypto utilities
+
+  # =========================
+  # FFI / NATIVE BRIDGE
+  # =========================
+  ffi: ^2.1.2                      # Native memory management
+
+  # =========================
+  # SECURE STORAGE
+  # =========================
+  flutter_secure_storage: ^9.2.2   # Keychain / Keystore access
+
+  # =========================
+  # TRANSACTIONAL DATABASE (Ratchet state)
+  # =========================
+  isar: ^3.1.0+1
+  isar_flutter_libs: ^3.1.0+1
+  path_provider: ^2.1.4
+
+  # =========================
+  # ADVANCED CRYPTO (fallback / utilities)
+  # =========================
+  pointycastle: ^3.9.1
+
+  # =========================
+  # AUTH & PASSWORD SECURITY
+  # =========================
+  zxcvbn: ^1.0.0                   # Password strength estimation
+  local_auth: ^2.3.0               # Biometric authentication
+
+  # =========================
+  # DEVICE / INTEGRITY / THREAT
+  # =========================
+  device_info_plus: ^10.1.2
+  package_info_plus: ^8.0.2
+  firebase_core: ^4.3.0
+  firebase_messaging: ^16.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^4.0.0
+
+  # =========================
+  # CODE GENERATION (Isar)
+  # =========================
+  isar_generator: ^3.1.0+1
+  build_runner: ^2.4.11
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/fonts/
+
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "394184143302",
+    "project_id": "myapp-9c0cd",
+    "storage_bucket": "myapp-9c0cd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:394184143302:android:248a957e6c3e066b5242c7",
+        "android_client_info": {
+          "package_name": "com.prava.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBYCB2mBfCQH4kjLSSZgH2QM5NO_ROuAK4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
