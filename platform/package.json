@@ -1,0 +1,12 @@
+
+{
+  "name": "prava-backend",
+  "type": "module",
+  "scripts": { "dev": "node src/server.js" },
+  "dependencies": {
+    "fastify": "^4.26.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.5.0",
+    "ioredis": "^5.4.1"
+  }
+}

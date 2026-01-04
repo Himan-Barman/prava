@@ -1,0 +1,107 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1767277450007,
+      "tag": "0000_lush_tigra",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1767287367725,
+      "tag": "0001_slim_vargas",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1767744000000,
+      "tag": "0002_chat_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1768000000000,
+      "tag": "0003_message_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1768001000000,
+      "tag": "0004_push_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1768002000000,
+      "tag": "0005_media_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1768003000000,
+      "tag": "0006_e2e_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1768004000000,
+      "tag": "0007_user_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1768005000000,
+      "tag": "0008_feed",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1768006000000,
+      "tag": "0009_profile_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1768007000000,
+      "tag": "0010_user_settings",
+      "breakpoints": true
+    }
+    ,
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1768008000000,
+      "tag": "0011_email_otp_tokens",
+      "breakpoints": true
+    }
+    ,
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1768009000000,
+      "tag": "0012_user_details",
+      "breakpoints": true
+    }
+    ,
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1768010000000,
+      "tag": "0013_notifications",
+      "breakpoints": true
+    }
+  ]
+}

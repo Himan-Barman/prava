@@ -1,0 +1,68 @@
+{
+  "compilerOptions": {
+    /* ===============================
+       Runtime & Output
+    =============================== */
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "sourceMap": true,
+
+    /* ===============================
+       Strictness & Safety
+    =============================== */
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+
+    /* ===============================
+       Module Resolution
+    =============================== */
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    /* ===============================
+       NestJS Decorators
+    =============================== */
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+
+    /* ===============================
+       Type Roots (CRITICAL FOR uWS)
+    =============================== */
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/types",
+      "./src/common/types"
+    ],
+
+    /* ===============================
+       Path Aliases
+    =============================== */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+
+  /* ===============================
+     What TypeScript should read
+  =============================== */
+  "include": [
+    "src/**/*.ts",
+    "src/types/**/*.d.ts"
+  ],
+
+  /* ===============================
+     What TypeScript MUST ignore
+  =============================== */
+  "exclude": [
+    "**/*.spec.ts",
+    "node_modules",
+    "dist"
+  ]
+}
