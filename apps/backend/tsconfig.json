@@ -48,6 +48,13 @@
       "@/*": ["src/*"]
     }
   },
+  "tsc-alias": {
+    "replacers": {
+      "base-url": {
+        "enabled": false
+      }
+    }
+  },
 
   /* ===============================
      What TypeScript should read
