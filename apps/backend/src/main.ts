@@ -18,8 +18,6 @@ import { shutdownPubSub } from './redis/redis.pubsub';
 import { MetricsInterceptor } from './observability/metrics.interceptor';
 
 async function bootstrap() {
-  const wsServer = startWsServer(config.WS_PORT);
-
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
@@ -65,6 +63,15 @@ async function bootstrap() {
   console.log(
     `dYs? API running on port ${config.PORT} [${config.NODE_ENV}]`,
   );
+
+  const isRender = Boolean(
+    process.env.RENDER || process.env.RENDER_EXTERNAL_URL,
+  );
+  const wsMode = config.WS_MODE ?? (isRender ? 'shared' : 'standalone');
+  const wsServer =
+    wsMode === 'shared'
+      ? startWsServer({ server: app.getHttpServer() })
+      : startWsServer({ port: config.WS_PORT });
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {

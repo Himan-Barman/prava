@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { URLSearchParams } from 'url';
+import type { Server as HttpServer } from 'http';
 
 import { config } from '@/app.config';
 import { MAX_WS_PAYLOAD_BYTES } from '@/common/constants';
@@ -37,9 +38,15 @@ type UwsModule = {
   us_listen_socket_close: (socket: UsListenSocket) => void;
 };
 
+type WsServerOptions = {
+  port?: number;
+  server?: HttpServer;
+};
+
 const { WebSocketServer } = require('ws') as {
   WebSocketServer: new (options: {
-    port: number;
+    port?: number;
+    server?: HttpServer;
     maxPayload?: number;
   }) => {
     on: (event: string, listener: (...args: any[]) => void) => void;
@@ -120,15 +127,20 @@ class LocalTopicRegistry {
   }
 }
 
-export function startWsServer(port: number) {
+export function startWsServer(options: WsServerOptions) {
+  const { port, server } = options;
+  if (!port && !server) {
+    throw new Error('WS server requires a port or HTTP server');
+  }
+
   const syncService = new SyncService();
   const conversationsService = new ConversationsService();
   const mediaService = new MediaService(conversationsService);
   const messagesService = new MessagesService(mediaService);
 
-  const uws = tryLoadUws();
+  const uws = server ? null : tryLoadUws();
 
-  if (uws) {
+  if (uws && port) {
     const app = uws.App();
     const fanout = new WsFanout((topic, payload) => {
       app.publish(topic, payload);
@@ -337,10 +349,19 @@ export function startWsServer(port: number) {
     }
   };
 
-  const wss = new WebSocketServer({
-    port,
-    maxPayload: MAX_WS_PAYLOAD_BYTES,
-  });
+  const wssOptions: {
+    port?: number;
+    server?: HttpServer;
+    maxPayload?: number;
+  } = { maxPayload: MAX_WS_PAYLOAD_BYTES };
+
+  if (server) {
+    wssOptions.server = server;
+  } else if (port) {
+    wssOptions.port = port;
+  }
+
+  const wss = new WebSocketServer(wssOptions);
 
   wss.on('connection', (socket: WsSocket, req: any) => {
     const authHeader = req.headers.authorization;
@@ -464,7 +485,11 @@ export function startWsServer(port: number) {
     });
   });
 
-  console.log(`WS server running on :${port} (ws fallback)`);
+  if (server) {
+    console.log('WS server attached to HTTP server');
+  } else {
+    console.log(`WS server running on :${port} (ws fallback)`);
+  }
 
   return {
     close: () => {

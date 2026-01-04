@@ -16,6 +16,8 @@ services:
         value: 20
       - key: WS_PORT
         value: "3001"
+      - key: WS_MODE
+        value: shared
       - key: DATABASE_URL
         fromDatabase:
           name: prava-postgres
