@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { and, desc, eq, gt, isNull, not } from 'drizzle-orm';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 
 import { db } from '@/db';
 import { users } from '@/db/schema/users.schema';

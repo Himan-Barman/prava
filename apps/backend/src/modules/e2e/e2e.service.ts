@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 
 import { db } from '@/db';
 import { deviceIdentityKeys } from '@/db/schema/device_identity_keys.schema';
