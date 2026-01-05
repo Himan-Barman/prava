@@ -18,7 +18,7 @@ class ApiClient {
     return Uri.parse('$base$cleanPath');
   }
 
-  Future<Map<String, dynamic>> post(
+  Future<dynamic> post(
     String path, {
     Map<String, dynamic>? body,
     bool auth = false,
@@ -40,13 +40,10 @@ class ApiClient {
       body: body == null ? null : jsonEncode(body),
     );
 
-    final decoded = _decodeResponse(response);
-    return decoded is Map<String, dynamic>
-        ? decoded
-        : <String, dynamic>{};
+    return _decodeResponse(response);
   }
 
-  Future<Map<String, dynamic>> put(
+  Future<dynamic> put(
     String path, {
     Map<String, dynamic>? body,
     bool auth = false,
@@ -68,13 +65,10 @@ class ApiClient {
       body: body == null ? null : jsonEncode(body),
     );
 
-    final decoded = _decodeResponse(response);
-    return decoded is Map<String, dynamic>
-        ? decoded
-        : <String, dynamic>{};
+    return _decodeResponse(response);
   }
 
-  Future<Map<String, dynamic>> delete(
+  Future<dynamic> delete(
     String path, {
     Map<String, dynamic>? body,
     bool auth = false,
@@ -96,10 +90,7 @@ class ApiClient {
       body: body == null ? null : jsonEncode(body),
     );
 
-    final decoded = _decodeResponse(response);
-    return decoded is Map<String, dynamic>
-        ? decoded
-        : <String, dynamic>{};
+    return _decodeResponse(response);
   }
 
   Future<dynamic> get(

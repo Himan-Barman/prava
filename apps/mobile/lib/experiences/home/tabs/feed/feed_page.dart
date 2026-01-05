@@ -41,6 +41,8 @@ class _FeedPageState extends State<FeedPage> {
   String? _userId;
 
   static const int _pageSize = 20;
+  String _currentFeedMode() =>
+      _segmentIndex == 1 ? 'following' : 'for-you';
 
   @override
   void initState() {
@@ -65,13 +67,35 @@ class _FeedPageState extends State<FeedPage> {
     await _realtime.connect(_handleRealtimeEvent);
   }
 
+  Future<void> _switchSegment(int value) async {
+    if (value == _segmentIndex) return;
+
+    HapticFeedback.selectionClick();
+    if (mounted) {
+      setState(() {
+        _segmentIndex = value;
+        _posts = [];
+        _hasMore = true;
+      });
+    }
+
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+
+    await _loadFeed(showSkeleton: true);
+  }
+
   Future<void> _loadFeed({bool showSkeleton = false}) async {
     if (showSkeleton && mounted) {
       setState(() => _loading = true);
     }
 
     try {
-      final data = await _feedService.listFeed(limit: _pageSize);
+      final data = await _feedService.listFeed(
+        limit: _pageSize,
+        mode: _currentFeedMode(),
+      );
       if (!mounted) return;
 
       setState(() {
@@ -92,7 +116,10 @@ class _FeedPageState extends State<FeedPage> {
 
   Future<void> _refreshFeed() async {
     try {
-      final data = await _feedService.listFeed(limit: _pageSize);
+      final data = await _feedService.listFeed(
+        limit: _pageSize,
+        mode: _currentFeedMode(),
+      );
       if (!mounted) return;
 
       setState(() {
@@ -129,6 +156,7 @@ class _FeedPageState extends State<FeedPage> {
       final data = await _feedService.listFeed(
         before: before,
         limit: _pageSize,
+        mode: _currentFeedMode(),
       );
 
       if (!mounted) return;
@@ -204,6 +232,7 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   void _applyPostEvent(Map<String, dynamic> payload) {
+    if (_segmentIndex == 1) return;
     final post = FeedPost.fromJson(payload);
     if (_posts.any((item) => item.id == post.id)) return;
     if (_posts.any(
@@ -463,14 +492,7 @@ class _FeedPageState extends State<FeedPage> {
     final surface =
         isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
 
-    final visiblePosts = _segmentIndex == 0
-        ? _posts
-        : _posts
-            .where(
-              (post) =>
-                  post.followed || (_userId != null && post.author.id == _userId),
-            )
-            .toList();
+    final visiblePosts = _posts;
 
     return Column(
       children: [
@@ -502,8 +524,7 @@ class _FeedPageState extends State<FeedPage> {
             },
             onValueChanged: (value) {
               if (value == null) return;
-              HapticFeedback.selectionClick();
-              setState(() => _segmentIndex = value);
+              _switchSegment(value);
             },
           ),
         ),

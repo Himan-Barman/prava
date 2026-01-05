@@ -1,1 +1,21 @@
-// experiences
+export { default as FeedPage } from './feed/FeedPage';
+export { default as ChatsPage } from './chats/ChatsPage';
+export { default as ArchivedChatsPage } from './chats/ArchivedChatsPage';
+export { default as StarredMessagesPage } from './chats/StarredMessagesPage';
+export { default as NewGroupPage } from './chats/NewGroupPage';
+export { default as FriendsPage } from './friends/FriendsPage';
+export { default as SearchPage } from './search/SearchPage';
+export { default as NotificationsPage } from './notifications/NotificationsPage';
+export { default as ProfilePage } from './profile/ProfilePage';
+export { default as BroadcastPage } from './broadcast/BroadcastPage';
+export { default as SettingsPage } from './settings/SettingsPage';
+export { default as AccountInfoPage } from './settings/AccountInfoPage';
+export { default as HandleLinksPage } from './settings/HandleLinksPage';
+export { default as SecurityCenterPage } from './settings/SecurityCenterPage';
+export { default as DevicesPage } from './settings/DevicesPage';
+export { default as BlockedAccountsPage } from './settings/BlockedAccountsPage';
+export { default as MutedWordsPage } from './settings/MutedWordsPage';
+export { default as LanguagePage } from './settings/LanguagePage';
+export { default as DataExportPage } from './settings/DataExportPage';
+export { default as LegalPage } from './settings/LegalPage';
+export { default as SupportPage } from './support/SupportPage';

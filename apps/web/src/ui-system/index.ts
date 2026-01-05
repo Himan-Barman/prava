@@ -1,1 +1,2 @@
-// ui-system
+export * from './colors';
+export * from './typography';

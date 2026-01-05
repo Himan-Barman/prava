@@ -1,1 +1,1 @@
-// adapters
+export * from './apiClient';

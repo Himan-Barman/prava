@@ -1,4 +1,10 @@
-import { IsString, MinLength, MaxLength } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
 
 export class LoginDto {
   @IsString()
@@ -15,4 +21,13 @@ export class LoginDto {
   @MinLength(10)
   @MaxLength(128)
   deviceId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  deviceName?: string;
+
+  @IsOptional()
+  @IsIn(['android', 'ios', 'web', 'desktop'])
+  platform?: 'android' | 'ios' | 'web' | 'desktop';
 }

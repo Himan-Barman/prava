@@ -36,6 +36,12 @@ const envSchema = z.object({
 
   REDIS_URL: z.string().min(1),
 
+  DECISION_ENGINE_URL: z.string().url().optional(),
+  ENGAGEMENT_ENGINE_URL: z.string().url().optional(),
+  EXPERIMENTATION_ENGINE_URL: z.string().url().optional(),
+  MODERATION_ENGINE_URL: z.string().url().optional(),
+  TRUST_SAFETY_ENGINE_URL: z.string().url().optional(),
+
   FCM_SERVICE_ACCOUNT_JSON: z.string().optional(),
 
   APNS_KEY_ID: z.string().optional(),

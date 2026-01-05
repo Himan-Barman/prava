@@ -1,5 +1,6 @@
 import {
   IsEmail,
+  IsIn,
   IsOptional,
   IsString,
   Matches,
@@ -27,4 +28,13 @@ export class RegisterDto {
   @MinLength(10)
   @MaxLength(128)
   deviceId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  deviceName?: string;
+
+  @IsOptional()
+  @IsIn(['android', 'ios', 'web', 'desktop'])
+  platform?: 'android' | 'ios' | 'web' | 'desktop';
 }

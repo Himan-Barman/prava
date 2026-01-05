@@ -111,9 +111,14 @@ class FeedService {
 
   final ApiClient _client;
 
-  Future<List<FeedPost>> listFeed({DateTime? before, int limit = 20}) async {
+  Future<List<FeedPost>> listFeed({
+    DateTime? before,
+    int limit = 20,
+    String mode = 'for-you',
+  }) async {
     final query = <String, String>{
       'limit': limit.toString(),
+      'mode': mode,
     };
     if (before != null) {
       query['before'] = before.toUtc().toIso8601String();

@@ -25,12 +25,16 @@ export class FeedController {
     @CurrentUser() user: JwtPayload,
     @Query('limit') limit?: string,
     @Query('before') before?: string,
+    @Query('mode') mode?: string,
   ) {
     const parsedLimit =
       limit && Number.isFinite(Number(limit))
         ? Number(limit)
         : undefined;
     const parsedBefore = before ? new Date(before) : undefined;
+    const normalizedMode = mode?.toString().toLowerCase();
+    const feedMode =
+      normalizedMode === 'following' ? 'following' : 'for-you';
 
     return this.feed.listFeed({
       userId: user.sub,
@@ -39,6 +43,7 @@ export class FeedController {
         parsedBefore && !Number.isNaN(parsedBefore.getTime())
           ? parsedBefore
           : undefined,
+      mode: feedMode,
     });
   }
 
@@ -76,6 +81,7 @@ export class FeedController {
         : undefined;
 
     return this.feed.listComments({
+      userId: user.sub,
       postId,
       limit: parsedLimit,
     });

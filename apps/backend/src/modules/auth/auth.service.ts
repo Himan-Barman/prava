@@ -29,6 +29,8 @@ export class AuthService {
     password: string;
     username?: string;
     deviceId: string;
+    deviceName?: string;
+    platform?: 'android' | 'ios' | 'web' | 'desktop';
   }) {
     const email = input.email.trim().toLowerCase();
     const username = this.normalizeUsername(
@@ -78,6 +80,10 @@ export class AuthService {
     const refreshToken = await this.issueRefreshToken(
       user.id,
       input.deviceId,
+      {
+        deviceName: input.deviceName,
+        platform: input.platform,
+      },
     );
 
     return {
@@ -93,6 +99,8 @@ export class AuthService {
     email: string;
     password: string;
     deviceId: string;
+    deviceName?: string;
+    platform?: 'android' | 'ios' | 'web' | 'desktop';
   }) {
     const identifier = input.email.trim().toLowerCase();
     const isEmail = identifier.includes('@');
@@ -119,6 +127,10 @@ export class AuthService {
     const refreshToken = await this.issueRefreshToken(
       user.id,
       input.deviceId,
+      {
+        deviceName: input.deviceName,
+        platform: input.platform,
+      },
     );
 
     return {
@@ -150,6 +162,10 @@ export class AuthService {
     const refreshToken = await this.issueRefreshToken(
       record.userId,
       input.deviceId,
+      {
+        deviceName: record.deviceName ?? undefined,
+        platform: record.platform ?? undefined,
+      },
     );
 
     return {
@@ -432,7 +448,10 @@ export class AuthService {
       .select({
         id: refreshTokens.id,
         deviceId: refreshTokens.deviceId,
+        deviceName: refreshTokens.deviceName,
+        platform: refreshTokens.platform,
         createdAt: refreshTokens.createdAt,
+        lastSeenAt: refreshTokens.lastSeenAt,
         expiresAt: refreshTokens.expiresAt,
       })
       .from(refreshTokens)
@@ -484,14 +503,25 @@ export class AuthService {
 
   /* ================= INTERNAL HELPERS ================= */
 
-  private async issueRefreshToken(userId: string, deviceId: string) {
+  private async issueRefreshToken(
+    userId: string,
+    deviceId: string,
+    input?: {
+      deviceName?: string;
+      platform?: 'android' | 'ios' | 'web' | 'desktop';
+    },
+  ) {
     const { raw, hash } = this.tokens.generateRefreshToken();
+    const now = new Date();
 
     await db.insert(refreshTokens).values({
       userId,
       deviceId,
+      deviceName: input?.deviceName ?? null,
+      platform: input?.platform ?? null,
       tokenHash: hash,
       expiresAt: this.tokens.refreshExpiryDate(),
+      lastSeenAt: now,
     });
 
     return raw;

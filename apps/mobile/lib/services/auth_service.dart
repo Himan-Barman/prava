@@ -1,4 +1,5 @@
 import '../core/device/device_id.dart';
+import '../core/device/device_info.dart';
 import '../core/network/api_client.dart';
 import '../core/storage/secure_store.dart';
 
@@ -50,11 +51,18 @@ class AuthService {
     required String password,
   }) async {
     final deviceId = await _deviceIdStore.getOrCreate();
-    final data = await _client.post('/auth/login', body: {
+    final deviceInfo = await DeviceInfoSnapshot.load();
+    final body = <String, dynamic>{
       'email': email,
       'password': password,
       'deviceId': deviceId,
-    });
+    };
+    if (deviceInfo != null) {
+      body['deviceName'] = deviceInfo.name;
+      body['platform'] = deviceInfo.platform;
+    }
+
+    final data = await _client.post('/auth/login', body: body);
 
     final session = AuthSession.fromJson(data);
     await _saveSession(session);
@@ -67,6 +75,7 @@ class AuthService {
     String? username,
   }) async {
     final deviceId = await _deviceIdStore.getOrCreate();
+    final deviceInfo = await DeviceInfoSnapshot.load();
     final body = <String, dynamic>{
       'email': email,
       'password': password,
@@ -74,6 +83,10 @@ class AuthService {
     };
     if (username != null && username.isNotEmpty) {
       body['username'] = username;
+    }
+    if (deviceInfo != null) {
+      body['deviceName'] = deviceInfo.name;
+      body['platform'] = deviceInfo.platform;
     }
 
     final data = await _client.post('/auth/register', body: body);
@@ -146,6 +159,19 @@ class AuthService {
       },
       auth: true,
     );
+  }
+
+  Future<void> logout() async {
+    final deviceId = await _deviceIdStore.getOrCreate();
+    try {
+      await _client.post(
+        '/auth/logout',
+        auth: true,
+        body: {'deviceId': deviceId},
+      );
+    } catch (_) {}
+
+    await _store.clearSession();
   }
 
   Future<void> _saveSession(AuthSession session) async {

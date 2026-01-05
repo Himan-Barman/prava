@@ -10,6 +10,7 @@ import { E2eModule } from './modules/e2e/e2e.module';
 import { MetricsModule } from './observability/metrics.module';
 import { FeedModule } from './modules/feed/feed.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { SupportModule } from './modules/support/support.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     MetricsModule,
     FeedModule,
     NotificationsModule,
+    SupportModule,
   ],
 })
 export class AppModule {}

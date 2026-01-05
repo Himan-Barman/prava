@@ -384,7 +384,7 @@ class _FriendsPageState extends State<FriendsPage> {
         final ok = await _runAction(
           friend.user.id,
           'Unable to block profile',
-          () => _connectionsService.removeConnection(friend.user.id),
+          () => _connectionsService.blockUser(friend.user.id),
         );
         if (!ok || !mounted) return;
         setState(() {

@@ -1,18 +1,24 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, or, sql } from 'drizzle-orm';
 
 import { db } from '@/db';
 import { users } from '@/db/schema/users.schema';
 import { follows } from '@/db/schema/follows.schema';
 import { userSettings } from '@/db/schema/user_settings.schema';
+import { userBlocks } from '@/db/schema/user_blocks.schema';
+import { userMutedWords } from '@/db/schema/user_muted_words.schema';
+import { userDataExports } from '@/db/schema/user_data_exports.schema';
+import { feedPosts } from '@/db/schema/feed_posts.schema';
 import { presenceManager } from '@/realtime/presence.manager';
 import { UpdateUserSettingsDto } from './dto/user-settings.dto';
 import { UserDetailsDto } from './dto/user-details.dto';
 import { NotificationsService } from '@/modules/notifications/notifications.service';
+import { AuthService } from '@/modules/auth/auth.service';
 
 const MAX_PROFILE_LIMIT = 30;
 const DEFAULT_SETTINGS = {
@@ -43,6 +49,7 @@ const DEFAULT_SETTINGS = {
 export class UsersService {
   constructor(
     private readonly notifications: NotificationsService,
+    private readonly auth: AuthService,
   ) {}
   async searchUsers(input: {
     userId: string;
@@ -75,7 +82,15 @@ export class UsersService {
       LEFT JOIN follows f2
         ON f2.follower_id = u.id
        AND f2.following_id = ${input.userId}
+      LEFT JOIN user_blocks b1
+        ON b1.blocker_id = ${input.userId}
+       AND b1.blocked_id = u.id
+      LEFT JOIN user_blocks b2
+        ON b2.blocker_id = u.id
+       AND b2.blocked_id = ${input.userId}
       WHERE u.id != ${input.userId}
+        AND b1.blocker_id IS NULL
+        AND b2.blocker_id IS NULL
         AND (
           u.username ILIKE ${`${normalized}%`}
           OR u.display_name ILIKE ${`${normalized}%`}
@@ -118,6 +133,11 @@ export class UsersService {
     if (input.followerId === input.followingId) {
       throw new BadRequestException('Cannot follow self');
     }
+
+    await this.ensureNotBlocked(
+      input.followerId,
+      input.followingId,
+    );
 
     const target = await db
       .select({ id: users.id })
@@ -173,6 +193,11 @@ export class UsersService {
     if (input.followerId === input.followingId) {
       throw new BadRequestException('Cannot follow self');
     }
+
+    await this.ensureNotBlocked(
+      input.followerId,
+      input.followingId,
+    );
 
     const target = await db
       .select({ id: users.id })
@@ -524,6 +549,8 @@ export class UsersService {
     viewerId: string;
     limit?: number;
   }) {
+    await this.ensureNotBlocked(input.viewerId, input.targetUserId);
+
     const limit = Math.min(
       Math.max(input.limit ?? 12, 1),
       MAX_PROFILE_LIMIT,
@@ -763,6 +790,593 @@ export class UsersService {
       settings: row?.settings ?? next,
       updatedAt: row?.updatedAt ?? now,
     };
+  }
+
+  async getAccountInfo(userId: string) {
+    const [row] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        username: users.username,
+        displayName: users.displayName,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        phoneCountry: users.phoneCountry,
+        phoneNumber: users.phoneNumber,
+        bio: users.bio,
+        location: users.location,
+        website: users.website,
+        isVerified: users.isVerified,
+        emailVerifiedAt: users.emailVerifiedAt,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!row) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      account: {
+        id: row.id,
+        email: row.email,
+        username: row.username,
+        displayName: row.displayName ?? row.username,
+        firstName: row.firstName ?? '',
+        lastName: row.lastName ?? '',
+        phoneCountryCode: row.phoneCountry ?? '',
+        phoneNumber: row.phoneNumber ?? '',
+        bio: row.bio ?? '',
+        location: row.location ?? '',
+        website: row.website ?? '',
+        isVerified: row.isVerified === true,
+        emailVerifiedAt: row.emailVerifiedAt,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      },
+    };
+  }
+
+  async updateEmail(userId: string, email: string) {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) {
+      throw new BadRequestException('Invalid email');
+    }
+
+    const [current] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        isVerified: users.isVerified,
+        emailVerifiedAt: users.emailVerifiedAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!current) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (current.email === normalized) {
+      return {
+        email: current.email,
+        isVerified: current.isVerified === true,
+        emailVerifiedAt: current.emailVerifiedAt,
+      };
+    }
+
+    const [existing] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, normalized))
+      .limit(1);
+
+    if (existing && existing.id !== userId) {
+      throw new ConflictException('Email already exists');
+    }
+
+    const now = new Date();
+    const [row] = await db
+      .update(users)
+      .set({
+        email: normalized,
+        isVerified: false,
+        emailVerifiedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(users.id, userId))
+      .returning({
+        email: users.email,
+        isVerified: users.isVerified,
+        emailVerifiedAt: users.emailVerifiedAt,
+      });
+
+    if (!row) {
+      throw new NotFoundException('User not found');
+    }
+
+    try {
+      await this.auth.requestEmailVerification(normalized);
+    } catch (_) {}
+
+    return {
+      email: row.email,
+      isVerified: row.isVerified === true,
+      emailVerifiedAt: row.emailVerifiedAt,
+    };
+  }
+
+  async updateHandle(userId: string, input: {
+    username?: string;
+    displayName?: string;
+    bio?: string;
+    location?: string;
+    website?: string;
+  }) {
+    const updates: Partial<typeof users.$inferInsert> = {};
+
+    const [current] = await db
+      .select({
+        id: users.id,
+        username: users.username,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!current) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (input.username !== undefined) {
+      const normalized = input.username
+        .trim()
+        .toLowerCase()
+        .replace(/^@+/, '');
+      if (!/^[a-z0-9_]{3,32}$/.test(normalized)) {
+        throw new BadRequestException('Invalid username');
+      }
+
+      if (normalized !== current.username) {
+        const [existing] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.username, normalized))
+          .limit(1);
+
+        if (existing && existing.id !== userId) {
+          throw new ConflictException('Username already exists');
+        }
+      }
+
+      updates.username = normalized;
+    }
+
+    if (input.displayName !== undefined) {
+      const trimmed = input.displayName.trim();
+      updates.displayName = trimmed.length == 0 ? null : trimmed;
+    }
+
+    if (input.bio !== undefined) {
+      const trimmed = input.bio.trim();
+      updates.bio = trimmed.length == 0 ? null : trimmed;
+    }
+
+    if (input.location !== undefined) {
+      const trimmed = input.location.trim();
+      updates.location = trimmed.length == 0 ? null : trimmed;
+    }
+
+    if (input.website !== undefined) {
+      const trimmed = input.website.trim();
+      updates.website = trimmed.length == 0 ? null : trimmed;
+    }
+
+    if (Object.keys(updates).length == 0) {
+      const info = await this.getAccountInfo(userId);
+      return {
+        profile: {
+          id: info.account.id,
+          username: info.account.username,
+          displayName: info.account.displayName,
+          bio: info.account.bio,
+          location: info.account.location,
+          website: info.account.website,
+          updatedAt: info.account.updatedAt,
+        },
+      };
+    }
+
+    const [row] = await db
+      .update(users)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning({
+        id: users.id,
+        username: users.username,
+        displayName: users.displayName,
+        bio: users.bio,
+        location: users.location,
+        website: users.website,
+        updatedAt: users.updatedAt,
+      });
+
+    if (!row) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      profile: {
+        id: row.id,
+        username: row.username,
+        displayName: row.displayName ?? row.username,
+        bio: row.bio ?? '',
+        location: row.location ?? '',
+        website: row.website ?? '',
+        updatedAt: row.updatedAt,
+      },
+    };
+  }
+
+  async listBlockedUsers(input: { userId: string; limit?: number }) {
+    const limit = Math.min(Math.max(input.limit ?? 30, 1), 50);
+
+    const rows = await db.execute(sql`
+      SELECT
+        u.id,
+        u.username,
+        u.display_name AS "displayName",
+        u.is_verified AS "isVerified",
+        b.created_at AS "blockedAt"
+      FROM user_blocks b
+      JOIN users u
+        ON u.id = b.blocked_id
+      WHERE b.blocker_id = ${input.userId}
+      ORDER BY b.created_at DESC
+      LIMIT ${limit}
+    `);
+
+    return {
+      items: rows.rows.map((row) => ({
+        id: row.id,
+        username: row.username,
+        displayName: row.displayName ?? row.username,
+        isVerified: row.isVerified === true,
+        blockedAt: row.blockedAt,
+      })),
+    };
+  }
+
+  async blockUser(input: { userId: string; targetUserId: string }) {
+    if (input.userId === input.targetUserId) {
+      throw new BadRequestException('Cannot block self');
+    }
+
+    const target = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, input.targetUserId))
+      .limit(1);
+
+    if (!target[0]) {
+      throw new NotFoundException('User not found');
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(userBlocks)
+        .values({
+          blockerId: input.userId,
+          blockedId: input.targetUserId,
+        })
+        .onConflictDoNothing({
+          target: [userBlocks.blockerId, userBlocks.blockedId],
+        });
+
+      await tx
+        .delete(follows)
+        .where(
+          or(
+            and(
+              eq(follows.followerId, input.userId),
+              eq(follows.followingId, input.targetUserId),
+            ),
+            and(
+              eq(follows.followerId, input.targetUserId),
+              eq(follows.followingId, input.userId),
+            ),
+          ),
+        );
+    });
+
+    return { blocked: true };
+  }
+
+  async unblockUser(input: { userId: string; targetUserId: string }) {
+    const [row] = await db
+      .delete(userBlocks)
+      .where(
+        and(
+          eq(userBlocks.blockerId, input.userId),
+          eq(userBlocks.blockedId, input.targetUserId),
+        ),
+      )
+      .returning({ id: userBlocks.id });
+
+    if (!row) {
+      throw new NotFoundException('Block not found');
+    }
+
+    return { blocked: false };
+  }
+
+  async listMutedWords(input: { userId: string; limit?: number }) {
+    const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
+
+    const rows = await db
+      .select({
+        id: userMutedWords.id,
+        phrase: userMutedWords.phrase,
+        createdAt: userMutedWords.createdAt,
+      })
+      .from(userMutedWords)
+      .where(eq(userMutedWords.userId, input.userId))
+      .orderBy(desc(userMutedWords.createdAt))
+      .limit(limit);
+
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        phrase: row.phrase,
+        createdAt: row.createdAt,
+      })),
+    };
+  }
+
+  async addMutedWord(input: { userId: string; phrase: string }) {
+    const phrase = input.phrase.trim().toLowerCase();
+    if (!phrase) {
+      throw new BadRequestException('Phrase required');
+    }
+
+    const [row] = await db
+      .insert(userMutedWords)
+      .values({
+        userId: input.userId,
+        phrase,
+      })
+      .onConflictDoNothing({
+        target: [userMutedWords.userId, userMutedWords.phrase],
+      })
+      .returning({
+        id: userMutedWords.id,
+        phrase: userMutedWords.phrase,
+        createdAt: userMutedWords.createdAt,
+      });
+
+    if (!row) {
+      return { phrase, existed: true };
+    }
+
+    return {
+      item: {
+        id: row.id,
+        phrase: row.phrase,
+        createdAt: row.createdAt,
+      },
+    };
+  }
+
+  async removeMutedWord(input: { userId: string; wordId: string }) {
+    const [row] = await db
+      .delete(userMutedWords)
+      .where(
+        and(
+          eq(userMutedWords.userId, input.userId),
+          eq(userMutedWords.id, input.wordId),
+        ),
+      )
+      .returning({ id: userMutedWords.id });
+
+    if (!row) {
+      throw new NotFoundException('Muted word not found');
+    }
+
+    return { removed: true };
+  }
+
+  async createDataExport(userId: string) {
+    const [user] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        username: users.username,
+        displayName: users.displayName,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        bio: users.bio,
+        location: users.location,
+        website: users.website,
+        phoneCountry: users.phoneCountry,
+        phoneNumber: users.phoneNumber,
+        isVerified: users.isVerified,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const settingsSnapshot = await this.getSettings(userId);
+
+    const statsRows = await db.execute(sql`
+      SELECT
+        (SELECT COUNT(*)::int FROM feed_posts WHERE author_id = ${userId}) AS "posts",
+        (SELECT COUNT(*)::int FROM follows WHERE following_id = ${userId}) AS "followers",
+        (SELECT COUNT(*)::int FROM follows WHERE follower_id = ${userId}) AS "following",
+        (SELECT COALESCE(SUM(like_count), 0)::int FROM feed_posts WHERE author_id = ${userId}) AS "likes"
+    `);
+
+    const stats = statsRows.rows[0] ?? {};
+
+    const recentPosts = await db
+      .select({
+        id: feedPosts.id,
+        body: feedPosts.body,
+        createdAt: feedPosts.createdAt,
+        likeCount: feedPosts.likeCount,
+        commentCount: feedPosts.commentCount,
+        shareCount: feedPosts.shareCount,
+      })
+      .from(feedPosts)
+      .where(eq(feedPosts.authorId, userId))
+      .orderBy(desc(feedPosts.createdAt))
+      .limit(50);
+
+    const blocked = await db
+      .select({
+        blockedId: userBlocks.blockedId,
+      })
+      .from(userBlocks)
+      .where(eq(userBlocks.blockerId, userId));
+
+    const muted = await db
+      .select({
+        phrase: userMutedWords.phrase,
+      })
+      .from(userMutedWords)
+      .where(eq(userMutedWords.userId, userId));
+
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        displayName: user.displayName ?? user.username,
+        firstName: user.firstName ?? '',
+        lastName: user.lastName ?? '',
+        bio: user.bio ?? '',
+        location: user.location ?? '',
+        website: user.website ?? '',
+        phoneCountryCode: user.phoneCountry ?? '',
+        phoneNumber: user.phoneNumber ?? '',
+        isVerified: user.isVerified === true,
+        createdAt: user.createdAt,
+      },
+      settings: settingsSnapshot.settings,
+      stats: {
+        posts: Number(stats.posts ?? 0),
+        followers: Number(stats.followers ?? 0),
+        following: Number(stats.following ?? 0),
+        likes: Number(stats.likes ?? 0),
+      },
+      recentPosts: recentPosts.map((post) => ({
+        id: post.id,
+        body: post.body,
+        createdAt: post.createdAt,
+        likeCount: Number(post.likeCount ?? 0),
+        commentCount: Number(post.commentCount ?? 0),
+        shareCount: Number(post.shareCount ?? 0),
+      })),
+      blockedAccounts: blocked.map((item) => item.blockedId),
+      mutedWords: muted.map((item) => item.phrase),
+    };
+
+    const now = new Date();
+    const [row] = await db
+      .insert(userDataExports)
+      .values({
+        userId,
+        status: 'ready',
+        format: 'json',
+        payload,
+        createdAt: now,
+        completedAt: now,
+      })
+      .returning({
+        id: userDataExports.id,
+        status: userDataExports.status,
+        format: userDataExports.format,
+        payload: userDataExports.payload,
+        createdAt: userDataExports.createdAt,
+        completedAt: userDataExports.completedAt,
+      });
+
+    return {
+      export: row ?? {
+        id: '',
+        status: 'ready',
+        format: 'json',
+        payload,
+        createdAt: now,
+        completedAt: now,
+      },
+    };
+  }
+
+  async getLatestDataExport(userId: string) {
+    const [row] = await db
+      .select({
+        id: userDataExports.id,
+        status: userDataExports.status,
+        format: userDataExports.format,
+        payload: userDataExports.payload,
+        createdAt: userDataExports.createdAt,
+        completedAt: userDataExports.completedAt,
+      })
+      .from(userDataExports)
+      .where(eq(userDataExports.userId, userId))
+      .orderBy(desc(userDataExports.createdAt))
+      .limit(1);
+
+    return { export: row ?? null };
+  }
+
+  async deleteAccount(userId: string) {
+    const [row] = await db
+      .delete(users)
+      .where(eq(users.id, userId))
+      .returning({ id: users.id });
+
+    if (!row) {
+      throw new NotFoundException('User not found');
+    }
+
+    return { deleted: true };
+  }
+
+  private async ensureNotBlocked(userId: string, targetUserId: string) {
+    const [row] = await db
+      .select({ id: userBlocks.id })
+      .from(userBlocks)
+      .where(
+        or(
+          and(
+            eq(userBlocks.blockerId, userId),
+            eq(userBlocks.blockedId, targetUserId),
+          ),
+          and(
+            eq(userBlocks.blockerId, targetUserId),
+            eq(userBlocks.blockedId, userId),
+          ),
+        ),
+      )
+      .limit(1);
+
+    if (row) {
+      throw new BadRequestException('User is blocked');
+    }
   }
 
   private normalizeName(value: string) {

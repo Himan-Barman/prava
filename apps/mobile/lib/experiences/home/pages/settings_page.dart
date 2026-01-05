@@ -11,11 +11,51 @@ import '../../../ui-system/colors.dart';
 import '../../../ui-system/typography.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
+import '../../../services/account_service.dart';
+import '../../../services/auth_service.dart';
 import '../../../services/profile_service.dart';
 import '../../../services/settings_service.dart';
 import '../../../shell/settings_controller.dart';
 import 'help_feedback_page.dart';
+import 'account_information_page.dart';
+import 'blocked_accounts_page.dart';
+import 'data_export_page.dart';
+import 'devices_page.dart';
+import 'handle_links_page.dart';
+import 'language_page.dart';
+import 'legal_page.dart';
+import 'muted_words_page.dart';
+import 'security_center_page.dart';
 import '../../auth/login_screen.dart';
+
+const _privacyPolicyContent = '''
+Prava respects your privacy. We collect the data you provide to create and
+secure your account, deliver messages, and improve the service.
+
+What we collect
+- Account details (email, username, profile info)
+- Usage and device data needed to operate the app
+- Content you share (posts, messages, media)
+
+How we use it
+- Deliver core features and notifications
+- Protect your account and detect abuse
+- Improve performance and reliability
+
+We do not sell your personal data. You can request an export or delete your
+account at any time.
+''';
+
+const _termsOfServiceContent = '''
+By using Prava, you agree to follow our community guidelines.
+
+You are responsible for your account and any content you post. Do not upload
+illegal, abusive, or harmful content. We may remove content or suspend accounts
+that violate these rules.
+
+The service is provided as-is without warranties. We may update these terms as
+the product evolves.
+''';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -26,6 +66,8 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage>
     with TickerProviderStateMixin {
+  final AccountService _accountService = AccountService();
+  final AuthService _authService = AuthService();
   final ProfileService _profileService = ProfileService();
   SettingsController? _settingsController;
 
@@ -130,14 +172,6 @@ class _SettingsPageState extends State<SettingsPage>
     }
   }
 
-  void _showComingSoon(String label) {
-    PravaToast.show(
-      context,
-      message: '$label is coming soon',
-      type: PravaToastType.info,
-    );
-  }
-
   Future<void> _confirmLogout() async {
     final result = await showDialog<bool>(
       context: context,
@@ -160,6 +194,11 @@ class _SettingsPageState extends State<SettingsPage>
     );
 
     if (result == true && mounted) {
+      try {
+        await _authService.logout();
+      } catch (_) {}
+
+      if (!mounted) return;
       PravaNavigator.pushAndRemoveUntil(
         context,
         const LoginScreen(),
@@ -192,7 +231,24 @@ class _SettingsPageState extends State<SettingsPage>
     );
 
     if (result == true) {
-      _showComingSoon('Account deletion');
+      try {
+        await _accountService.deleteAccount();
+        if (!mounted) return;
+        await _authService.logout();
+        if (!mounted) return;
+        PravaNavigator.pushAndRemoveUntil(
+          context,
+          const LoginScreen(),
+          (_) => false,
+        );
+      } catch (_) {
+        if (!mounted) return;
+        PravaToast.show(
+          context,
+          message: 'Unable to delete account',
+          type: PravaToastType.error,
+        );
+      }
     }
   }
 
@@ -413,9 +469,18 @@ class _SettingsPageState extends State<SettingsPage>
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
                   child: wrapSection(
                     _QuickActionsRow(
-                      onEditProfile: () => _showComingSoon('Edit profile'),
-                      onPremium: () => _showComingSoon('Premium settings'),
-                      onSecurity: () => _showComingSoon('Security center'),
+                      onEditProfile: () => PravaNavigator.push(
+                        context,
+                        const HandleLinksPage(),
+                      ),
+                      onAccount: () => PravaNavigator.push(
+                        context,
+                        const AccountInformationPage(),
+                      ),
+                      onSecurity: () => PravaNavigator.push(
+                        context,
+                        const SecurityCenterPage(),
+                      ),
                       isDark: isDark,
                     ),
                   ),
@@ -427,7 +492,7 @@ class _SettingsPageState extends State<SettingsPage>
                   child: wrapSection(
                     _SettingsSection(
                       title: 'Account',
-                      subtitle: 'Identity, login, and premium tools.',
+                      subtitle: 'Identity and login tools.',
                       surface: surface,
                       border: border,
                       children: [
@@ -435,7 +500,10 @@ class _SettingsPageState extends State<SettingsPage>
                           icon: CupertinoIcons.person_crop_circle,
                           title: 'Account information',
                           subtitle: 'Username, email, and profile status',
-                          onTap: () => _showComingSoon('Account information'),
+                          onTap: () => PravaNavigator.push(
+                            context,
+                            const AccountInformationPage(),
+                          ),
                           color: primary,
                           secondary: secondary,
                         ),
@@ -443,23 +511,10 @@ class _SettingsPageState extends State<SettingsPage>
                           icon: CupertinoIcons.at,
                           title: 'Handle and links',
                           subtitle: 'Manage username and profile links',
-                          onTap: () => _showComingSoon('Handle and links'),
-                          color: primary,
-                          secondary: secondary,
-                        ),
-                        _SettingsTile(
-                          icon: CupertinoIcons.star_circle,
-                          title: 'Premium membership',
-                          subtitle: 'Creator benefits and billing',
-                          onTap: () => _showComingSoon('Premium membership'),
-                          color: primary,
-                          secondary: secondary,
-                        ),
-                        _SettingsTile(
-                          icon: CupertinoIcons.creditcard,
-                          title: 'Payments',
-                          subtitle: 'Cards, payouts, and receipts',
-                          onTap: () => _showComingSoon('Payments'),
+                          onTap: () => PravaNavigator.push(
+                            context,
+                            const HandleLinksPage(),
+                          ),
                           color: primary,
                           secondary: secondary,
                         ),
@@ -537,7 +592,10 @@ class _SettingsPageState extends State<SettingsPage>
                           icon: CupertinoIcons.person_badge_minus,
                           title: 'Blocked accounts',
                           subtitle: 'Manage blocked profiles',
-                          onTap: () => _showComingSoon('Blocked accounts'),
+                          onTap: () => PravaNavigator.push(
+                            context,
+                            const BlockedAccountsPage(),
+                          ),
                           color: primary,
                           secondary: secondary,
                         ),
@@ -545,7 +603,10 @@ class _SettingsPageState extends State<SettingsPage>
                           icon: CupertinoIcons.textformat_abc,
                           title: 'Muted words',
                           subtitle: 'Hide topics and phrases',
-                          onTap: () => _showComingSoon('Muted words'),
+                          onTap: () => PravaNavigator.push(
+                            context,
+                            const MutedWordsPage(),
+                          ),
                           color: primary,
                           secondary: secondary,
                         ),
@@ -612,7 +673,10 @@ class _SettingsPageState extends State<SettingsPage>
                           icon: CupertinoIcons.device_phone_portrait,
                           title: 'Devices',
                           subtitle: 'See active sessions',
-                          onTap: () => _showComingSoon('Devices'),
+                          onTap: () => PravaNavigator.push(
+                            context,
+                            const DevicesPage(),
+                          ),
                           color: primary,
                           secondary: secondary,
                         ),
@@ -722,7 +786,10 @@ class _SettingsPageState extends State<SettingsPage>
                           icon: CupertinoIcons.globe,
                           title: 'Language',
                           subtitle: _settings.languageLabel,
-                          onTap: () => _showComingSoon('Language settings'),
+                          onTap: () => PravaNavigator.push(
+                            context,
+                            const LanguagePage(),
+                          ),
                           color: primary,
                           secondary: secondary,
                         ),
@@ -813,7 +880,10 @@ class _SettingsPageState extends State<SettingsPage>
                           icon: CupertinoIcons.cloud_download,
                           title: 'Download your data',
                           subtitle: 'Export a copy of your data',
-                          onTap: () => _showComingSoon('Data export'),
+                          onTap: () => PravaNavigator.push(
+                            context,
+                            const DataExportPage(),
+                          ),
                           color: primary,
                           secondary: secondary,
                         ),
@@ -875,7 +945,13 @@ class _SettingsPageState extends State<SettingsPage>
                           icon: CupertinoIcons.doc_text,
                           title: 'Privacy policy',
                           subtitle: 'How we handle your data',
-                          onTap: () => _showComingSoon('Privacy policy'),
+                          onTap: () => PravaNavigator.push(
+                            context,
+                            const LegalPage(
+                              title: 'Privacy policy',
+                              content: _privacyPolicyContent,
+                            ),
+                          ),
                           color: primary,
                           secondary: secondary,
                         ),
@@ -883,7 +959,13 @@ class _SettingsPageState extends State<SettingsPage>
                           icon: CupertinoIcons.doc_on_doc,
                           title: 'Terms of service',
                           subtitle: 'Rules for using Prava',
-                          onTap: () => _showComingSoon('Terms of service'),
+                          onTap: () => PravaNavigator.push(
+                            context,
+                            const LegalPage(
+                              title: 'Terms of service',
+                              content: _termsOfServiceContent,
+                            ),
+                          ),
                           color: primary,
                           secondary: secondary,
                         ),
@@ -1074,7 +1156,7 @@ class _SettingsHeaderCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
-                      'Prava Plus',
+                      'Member',
                       style: PravaTypography.caption.copyWith(
                         color: PravaColors.accentPrimary,
                         fontWeight: FontWeight.w600,
@@ -1194,13 +1276,13 @@ class _StatItem extends StatelessWidget {
 class _QuickActionsRow extends StatelessWidget {
   const _QuickActionsRow({
     required this.onEditProfile,
-    required this.onPremium,
+    required this.onAccount,
     required this.onSecurity,
     required this.isDark,
   });
 
   final VoidCallback onEditProfile;
-  final VoidCallback onPremium;
+  final VoidCallback onAccount;
   final VoidCallback onSecurity;
   final bool isDark;
 
@@ -1219,9 +1301,9 @@ class _QuickActionsRow extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: _QuickAction(
-            icon: CupertinoIcons.star_circle,
-            label: 'Premium',
-            onTap: onPremium,
+            icon: CupertinoIcons.person_crop_circle,
+            label: 'Account',
+            onTap: onAccount,
             isDark: isDark,
           ),
         ),

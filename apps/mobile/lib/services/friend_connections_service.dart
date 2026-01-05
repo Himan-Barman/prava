@@ -134,4 +134,11 @@ class FriendConnectionsService {
       auth: true,
     );
   }
+
+  Future<void> blockUser(String userId) async {
+    await _client.post(
+      '/users/$userId/block',
+      auth: true,
+    );
+  }
 }

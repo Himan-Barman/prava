@@ -19,3 +19,48 @@ services:
         sync: false
       - key: JWT_PUBLIC_KEY
         sync: false
+      - key: DECISION_ENGINE_URL
+        sync: false
+      - key: ENGAGEMENT_ENGINE_URL
+        sync: false
+      - key: EXPERIMENTATION_ENGINE_URL
+        sync: false
+      - key: MODERATION_ENGINE_URL
+        sync: false
+      - key: TRUST_SAFETY_ENGINE_URL
+        sync: false
+  - type: web
+    name: prava-decision-engine
+    env: python
+    rootDir: decision-engine/feed-ranking/python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+  - type: web
+    name: prava-engagement-engine
+    env: python
+    rootDir: decision-engine/engagement-engine/python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+  - type: web
+    name: prava-experimentation-engine
+    env: python
+    rootDir: decision-engine/experimentation/python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+  - type: web
+    name: prava-moderation-engine
+    env: python
+    rootDir: decision-engine/moderation/python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+  - type: web
+    name: prava-trust-safety-engine
+    env: python
+    rootDir: decision-engine/trust-safety/python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health

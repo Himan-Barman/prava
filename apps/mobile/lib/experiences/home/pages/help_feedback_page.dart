@@ -9,6 +9,7 @@ import '../../../ui-system/colors.dart';
 import '../../../ui-system/typography.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
+import '../../../services/support_service.dart';
 
 enum HelpFeedbackSection { help, report, feedback }
 
@@ -27,12 +28,15 @@ class HelpFeedbackPage extends StatefulWidget {
 class _HelpFeedbackPageState extends State<HelpFeedbackPage> {
   final TextEditingController _reportController = TextEditingController();
   final TextEditingController _feedbackController = TextEditingController();
+  final SupportService _support = SupportService();
 
   HelpFeedbackSection _section = HelpFeedbackSection.help;
   String _reportCategory = 'Bug';
   bool _includeLogs = true;
   bool _allowContact = true;
   double _feedbackScore = 4;
+  bool _sendingReport = false;
+  bool _sendingFeedback = false;
 
   @override
   void initState() {
@@ -56,12 +60,33 @@ class _HelpFeedbackPageState extends State<HelpFeedbackPage> {
       );
       return;
     }
-    PravaToast.show(
-      context,
-      message: 'Report sent. We will follow up soon.',
-      type: PravaToastType.success,
-    );
-    _reportController.clear();
+    if (_sendingReport) return;
+    setState(() => _sendingReport = true);
+    () async {
+      try {
+        await _support.sendReport(
+          category: _reportCategory,
+          message: _reportController.text.trim(),
+          includeLogs: _includeLogs,
+        );
+        if (!mounted) return;
+        setState(() => _sendingReport = false);
+        PravaToast.show(
+          context,
+          message: 'Report sent. We will follow up soon.',
+          type: PravaToastType.success,
+        );
+        _reportController.clear();
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _sendingReport = false);
+        PravaToast.show(
+          context,
+          message: 'Unable to send report',
+          type: PravaToastType.error,
+        );
+      }
+    }();
   }
 
   void _sendFeedback() {
@@ -73,12 +98,33 @@ class _HelpFeedbackPageState extends State<HelpFeedbackPage> {
       );
       return;
     }
-    PravaToast.show(
-      context,
-      message: 'Thanks for the feedback.',
-      type: PravaToastType.success,
-    );
-    _feedbackController.clear();
+    if (_sendingFeedback) return;
+    setState(() => _sendingFeedback = true);
+    () async {
+      try {
+        await _support.sendFeedback(
+          score: _feedbackScore,
+          message: _feedbackController.text.trim(),
+          allowContact: _allowContact,
+        );
+        if (!mounted) return;
+        setState(() => _sendingFeedback = false);
+        PravaToast.show(
+          context,
+          message: 'Thanks for the feedback.',
+          type: PravaToastType.success,
+        );
+        _feedbackController.clear();
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _sendingFeedback = false);
+        PravaToast.show(
+          context,
+          message: 'Unable to send feedback',
+          type: PravaToastType.error,
+        );
+      }
+    }();
   }
 
   String _feedbackLabel(double value) {

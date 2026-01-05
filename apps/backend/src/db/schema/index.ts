@@ -25,3 +25,8 @@ export * from './feed_shares.schema';
 export * from './follows.schema';
 export * from './notifications.schema';
 export * from './user_settings.schema';
+export * from './user_blocks.schema';
+export * from './user_muted_words.schema';
+export * from './user_data_exports.schema';
+export * from './user_interest_profiles.schema';
+export * from './support_tickets.schema';

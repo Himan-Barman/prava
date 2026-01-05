@@ -17,12 +17,16 @@ export const refreshTokens = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
 
     deviceId: varchar('device_id', { length: 255 }).notNull(),
+    deviceName: varchar('device_name', { length: 64 }),
+    platform: varchar('platform', { length: 16 })
+      .$type<'android' | 'ios' | 'web' | 'desktop'>(),
 
     tokenHash: varchar('token_hash', { length: 64 }).notNull(),
 
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
 
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

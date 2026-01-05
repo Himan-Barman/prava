@@ -32,7 +32,14 @@ export class AuthController {
   @UseGuards(RateLimitGuard)
   @Post('register')
   register(@Body() dto: RegisterDto) {
-    return this.auth.register(dto);
+    return this.auth.register({
+      email: dto.email,
+      password: dto.password,
+      username: dto.username,
+      deviceId: dto.deviceId,
+      deviceName: dto.deviceName,
+      platform: dto.platform,
+    });
   }
 
   /* ================= LOGIN ================= */
@@ -40,7 +47,13 @@ export class AuthController {
   @UseGuards(RateLimitGuard)
   @Post('login')
   login(@Body() dto: LoginDto) {
-    return this.auth.login(dto);
+    return this.auth.login({
+      email: dto.email,
+      password: dto.password,
+      deviceId: dto.deviceId,
+      deviceName: dto.deviceName,
+      platform: dto.platform,
+    });
   }
 
   /* ================= REFRESH ================= */
