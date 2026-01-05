@@ -25,6 +25,7 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().min(1).optional(),
   EMAIL_FROM_NAME: z.string().optional(),
   EMAIL_SUPPORT: z.string().optional(),
+  EMAIL_TO: z.string().optional(),
   EMAIL_VERIFY_URL: z.string().optional(),
   PASSWORD_RESET_URL: z.string().optional(),
 
@@ -61,9 +62,14 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('❌ Invalid environment configuration');
+  console.error('Invalid environment configuration');
   console.error(parsed.error.format());
   process.exit(1);
 }
 
-export const config = parsed.data;
+const data = parsed.data;
+
+export const config = {
+  ...data,
+  EMAIL_SUPPORT: data.EMAIL_SUPPORT ?? data.EMAIL_TO,
+};
