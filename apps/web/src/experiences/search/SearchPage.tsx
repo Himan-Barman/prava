@@ -1,94 +1,117 @@
-import Card from '../../components/Card';
-import SectionHeader from '../../components/SectionHeader';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Search as SearchIcon, Users, MessageCircle, Hash, Clock } from 'lucide-react';
+import { GlassCard, PravaInput } from '../../ui-system';
 
-const trendingTags = ['#prava', '#design', '#startups', '#music', '#ai'];
+const recentSearches = ['alice', 'team discussion', 'project updates'];
 
-const suggestions = [
-  {
-    id: 'p1',
-    name: 'Nora Singh',
-    detail: 'Growth strategist',
-  },
-  {
-    id: 'p2',
-    name: 'Rio Santos',
-    detail: 'Product storyteller',
-  },
-  {
-    id: 'p3',
-    name: 'Meera Das',
-    detail: 'Community builder',
-  },
-];
+export default function SearchPage() {
+  const [query, setQuery] = useState('');
 
-const SearchPage = () => {
   return (
-    <div className="page">
-      <SectionHeader
-        title="Search"
-        subtitle="Discover people, topics, and rooms."
-        meta="Trending"
-      />
+    <div className="max-w-2xl mx-auto">
+      {/* Page Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="mb-6"
+      >
+        <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
+          Search
+        </h1>
+        <p className="mt-1 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+          Find people, messages, and more
+        </p>
+      </motion.div>
 
-      <Card title="Search the network" description="Type a name, topic, or tag.">
-        <input className="input" placeholder="Search for people or posts" />
-        <div className="chip-row" style={{ marginTop: '12px' }}>
-          {trendingTags.map((tag) => (
-            <span className="chip" key={tag}>
-              {tag}
-            </span>
-          ))}
-        </div>
-      </Card>
+      {/* Search Input */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="mb-6"
+      >
+        <PravaInput
+          placeholder="Search for anything..."
+          prefixIcon={<SearchIcon className="w-5 h-5" />}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </motion.div>
 
-      <div className="page-grid">
-        <Card
-          title="Trending rooms"
-          description="Live conversations with high engagement."
-          badge="Live"
+      {/* Quick Filters */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.15 }}
+        className="flex flex-wrap gap-2 mb-6"
+      >
+        {[
+          { label: 'People', icon: Users },
+          { label: 'Messages', icon: MessageCircle },
+          { label: 'Tags', icon: Hash },
+        ].map((filter) => (
+          <button
+            key={filter.label}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-[12px] bg-prava-light-surface dark:bg-prava-dark-surface border border-prava-light-border dark:border-prava-dark-border text-body-sm font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary hover:border-prava-accent/50 transition-colors"
+          >
+            <filter.icon className="w-4 h-4" />
+            {filter.label}
+          </button>
+        ))}
+      </motion.div>
+
+      {/* Recent Searches */}
+      {!query && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
         >
-          <div className="list">
-            <div className="list-item">
-              <div>
-                <strong>Creator strategy</strong>
-                <span>120 listening now</span>
-              </div>
-              <button className="button button--soft" type="button">
-                Join
-              </button>
-            </div>
-            <div className="list-item">
-              <div>
-                <strong>AI for storytellers</strong>
-                <span>68 listening now</span>
-              </div>
-              <button className="button button--soft" type="button">
-                Join
-              </button>
-            </div>
+          <div className="flex items-center gap-2 mb-3">
+            <Clock className="w-4 h-4 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" />
+            <h2 className="text-label font-semibold text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary uppercase tracking-wider">
+              Recent Searches
+            </h2>
           </div>
-        </Card>
-        <Card
-          title="Suggested accounts"
-          description="Creators you might want to follow."
-        >
-          <div className="list">
-            {suggestions.map((person) => (
-              <div className="list-item" key={person.id}>
-                <div>
-                  <strong>{person.name}</strong>
-                  <span>{person.detail}</span>
-                </div>
-                <button className="button button--primary" type="button">
-                  Follow
+          <GlassCard>
+            <div className="space-y-1">
+              {recentSearches.map((search, i) => (
+                <button
+                  key={i}
+                  onClick={() => setQuery(search)}
+                  className="w-full flex items-center gap-3 p-3 rounded-[12px] text-left hover:bg-prava-light-surface dark:hover:bg-prava-dark-surface transition-colors"
+                >
+                  <SearchIcon className="w-4 h-4 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" />
+                  <span className="text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
+                    {search}
+                  </span>
                 </button>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
+              ))}
+            </div>
+          </GlassCard>
+        </motion.div>
+      )}
+
+      {/* Search Results Placeholder */}
+      {query && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <GlassCard className="text-center py-12">
+            <SearchIcon className="w-12 h-12 mx-auto mb-4 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" />
+            <h3 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary mb-2">
+              Searching for &quot;{query}&quot;
+            </h3>
+            <p className="text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+              Results will appear here
+            </p>
+          </GlassCard>
+        </motion.div>
+      )}
     </div>
   );
-};
-
-export default SearchPage;
+}

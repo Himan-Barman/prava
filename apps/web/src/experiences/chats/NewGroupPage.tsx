@@ -1,72 +1,57 @@
-import Card from '../../components/Card';
-import SectionHeader from '../../components/SectionHeader';
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import { ArrowLeft, Users, Search } from 'lucide-react';
+import { GlassCard, PravaInput, PravaButton } from '../../ui-system';
 
-const suggested = ['Anika Roy', 'Dev Patel', 'Sonia Khan', 'Maya Lee'];
-
-const NewGroupPage = () => {
+export default function NewGroupPage() {
   return (
-    <div className="page">
-      <SectionHeader
-        title="New group"
-        subtitle="Create a space for your closest people."
-        meta="Step 1"
-      />
-
-      <Card
-        title="Group details"
-        description="Give your group a name and a short description."
+    <div className="max-w-2xl mx-auto">
+      {/* Page Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="mb-6"
       >
-        <div className="form-grid">
-          <label className="field">
-            Group name
-            <input className="input" placeholder="Creative crew" />
-          </label>
-          <label className="field">
-            Group privacy
-            <select className="input" defaultValue="private">
-              <option value="private">Private</option>
-              <option value="public">Public</option>
-              <option value="invite">Invite only</option>
-            </select>
-          </label>
-        </div>
-        <label className="field" style={{ marginTop: '16px' }}>
-          Description
-          <textarea
-            className="input input--textarea"
-            placeholder="Tell members what the group is about."
+        <Link
+          to="/chats"
+          className="inline-flex items-center gap-2 text-body font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary transition-colors mb-4"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Chats
+        </Link>
+        <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
+          New Group
+        </h1>
+        <p className="mt-1 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+          Create a new encrypted group chat
+        </p>
+      </motion.div>
+
+      <GlassCard className="mb-6">
+        <div className="space-y-4">
+          <PravaInput
+            label="Group Name"
+            placeholder="Enter group name"
           />
-        </label>
-        <div className="button-row" style={{ marginTop: '16px' }}>
-          <button className="button button--ghost" type="button">
-            Save draft
-          </button>
-          <button className="button button--primary" type="button">
-            Create group
-          </button>
+          <PravaInput
+            label="Add Members"
+            placeholder="Search for friends..."
+            prefixIcon={<Search className="w-5 h-5" />}
+          />
         </div>
-      </Card>
+      </GlassCard>
 
-      <Card
-        title="Suggested members"
-        description="Invite people you interact with the most."
-      >
-        <div className="list">
-          {suggested.map((person) => (
-            <div className="list-item" key={person}>
-              <div>
-                <strong>{person}</strong>
-                <span>Active today</span>
-              </div>
-              <button className="button button--soft" type="button">
-                Add
-              </button>
-            </div>
-          ))}
+      <GlassCard>
+        <div className="flex items-center gap-3 p-4 bg-prava-accent/10 rounded-[14px] mb-4">
+          <Users className="w-5 h-5 text-prava-accent" />
+          <p className="text-body-sm text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+            All group messages are end-to-end encrypted
+          </p>
         </div>
-      </Card>
+        <PravaButton label="Create Group" disabled />
+      </GlassCard>
     </div>
   );
-};
-
-export default NewGroupPage;
+}

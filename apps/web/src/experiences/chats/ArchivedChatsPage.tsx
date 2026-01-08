@@ -1,53 +1,46 @@
-import Card from '../../components/Card';
-import SectionHeader from '../../components/SectionHeader';
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import { ArrowLeft, Archive } from 'lucide-react';
+import { GlassCard } from '../../ui-system';
 
-const archived = [
-  {
-    id: 'a1',
-    title: 'Creative club',
-    preview: 'Weekly review notes are saved in the archive.',
-    time: '3d',
-  },
-  {
-    id: 'a2',
-    title: 'Launch war room',
-    preview: 'Campaign assets and press plan.',
-    time: '1w',
-  },
-];
-
-const ArchivedChatsPage = () => {
+export default function ArchivedChatsPage() {
   return (
-    <div className="page">
-      <SectionHeader
-        title="Archived chats"
-        subtitle="Keep quiet conversations close by."
-        meta="2 chats"
-      />
+    <div className="max-w-2xl mx-auto">
+      {/* Page Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="mb-6"
+      >
+        <Link
+          to="/chats"
+          className="inline-flex items-center gap-2 text-body font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary transition-colors mb-4"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Chats
+        </Link>
+        <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
+          Archived Chats
+        </h1>
+        <p className="mt-1 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+          Conversations you have archived
+        </p>
+      </motion.div>
 
-      <Card
-        title="Archive policy"
-        description="Archived chats stay hidden until you reply or restore them."
-      />
-
-      <div className="list">
-        {archived.map((chat) => (
-          <div className="list-item" key={chat.id}>
-            <div>
-              <strong>{chat.title}</strong>
-              <span>{chat.preview}</span>
-            </div>
-            <div className="list-item__meta">
-              <span>{chat.time}</span>
-              <button className="button button--soft" type="button">
-                Restore
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* Empty State */}
+      <GlassCard className="text-center py-12">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-prava-light-surface dark:bg-prava-dark-surface flex items-center justify-center">
+          <Archive className="w-8 h-8 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" />
+        </div>
+        <h3 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary mb-2">
+          No archived chats
+        </h3>
+        <p className="text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+          Archived conversations will appear here
+        </p>
+      </GlassCard>
     </div>
   );
-};
-
-export default ArchivedChatsPage;
+}

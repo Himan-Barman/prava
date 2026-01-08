@@ -1,78 +1,95 @@
-import Card from '../../components/Card';
-import SectionHeader from '../../components/SectionHeader';
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import { ArrowLeft, Shield, Key, Smartphone, CheckCircle } from 'lucide-react';
+import { GlassCard, PravaButton } from '../../ui-system';
 
-const toggles = [
-  {
-    id: 'two-factor',
-    title: 'Two factor authentication',
-    description: 'Require a code on login.',
-    enabled: true,
-  },
-  {
-    id: 'login-alerts',
-    title: 'Login alerts',
-    description: 'Notify on new device sign-ins.',
-    enabled: true,
-  },
-  {
-    id: 'app-lock',
-    title: 'App passcode',
-    description: 'Require a passcode to open.',
-    enabled: false,
-  },
-  {
-    id: 'biometrics',
-    title: 'Biometric unlock',
-    description: 'Use face or fingerprint unlock.',
-    enabled: true,
-  },
-];
-
-const SecurityCenterPage = () => {
+export default function SecurityCenterPage() {
   return (
-    <div className="page">
-      <SectionHeader
-        title="Security center"
-        subtitle="Protect your account and devices."
-        meta="Secure"
-      />
+    <div className="max-w-2xl mx-auto">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="mb-6"
+      >
+        <Link
+          to="/settings"
+          className="inline-flex items-center gap-2 text-body font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary transition-colors mb-4"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Settings
+        </Link>
+        <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
+          Security Center
+        </h1>
+        <p className="mt-1 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+          Manage your account security
+        </p>
+      </motion.div>
 
-      <Card title="Security preferences" description="Manage your safety tools.">
-        <div className="stack">
-          {toggles.map((toggle) => (
-            <label className="toggle-row" key={toggle.id}>
-              <div>
-                <strong>{toggle.title}</strong>
-                <div className="meta">{toggle.description}</div>
+      {/* Security Status */}
+      <GlassCard className="mb-6 bg-gradient-to-br from-prava-success/10 to-transparent">
+        <div className="flex items-center gap-4">
+          <div className="p-3 rounded-full bg-prava-success/20">
+            <Shield className="w-6 h-6 text-prava-success" />
+          </div>
+          <div>
+            <h3 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary">
+              Your account is secure
+            </h3>
+            <p className="text-body-sm text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+              All security features are enabled
+            </p>
+          </div>
+        </div>
+      </GlassCard>
+
+      {/* Security Options */}
+      <div className="space-y-4">
+        <GlassCard>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-2.5 rounded-[12px] bg-prava-accent/10">
+                <Key className="w-5 h-5 text-prava-accent" />
               </div>
-              <input type="checkbox" defaultChecked={toggle.enabled} />
-            </label>
-          ))}
-        </div>
-      </Card>
+              <div>
+                <p className="font-medium text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
+                  Change Password
+                </p>
+                <p className="text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+                  Last changed: 30 days ago
+                </p>
+              </div>
+            </div>
+            <PravaButton label="Change" variant="ghost" fullWidth={false} />
+          </div>
+        </GlassCard>
 
-      <Card title="Security status" description="Recent activity overview.">
-        <div className="list">
-          <div className="list-item">
-            <div>
-              <strong>Last login</strong>
-              <span>Chrome on Windows · 2 hours ago</span>
+        <GlassCard>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-2.5 rounded-[12px] bg-prava-success/10">
+                <Smartphone className="w-5 h-5 text-prava-success" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
+                    Two-Factor Authentication
+                  </p>
+                  <span className="px-2 py-0.5 rounded-full bg-prava-success/10 text-prava-success text-caption font-semibold">
+                    Enabled
+                  </span>
+                </div>
+                <p className="text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+                  Using authenticator app
+                </p>
+              </div>
             </div>
-            <span className="pill">Verified</span>
+            <PravaButton label="Manage" variant="ghost" fullWidth={false} />
           </div>
-          <div className="list-item">
-            <div>
-              <strong>Recovery email</strong>
-              <span>himanbarman@gmail.com</span>
-            </div>
-            <button className="button button--ghost" type="button">
-              Update
-            </button>
-          </div>
-        </div>
-      </Card>
+        </GlassCard>
+      </div>
     </div>
   );
-};
-
-export default SecurityCenterPage;
+}

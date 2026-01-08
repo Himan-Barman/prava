@@ -1,91 +1,49 @@
-import { Headphones, MessageSquare, Users } from 'lucide-react';
+import React, { useState } from 'react';
+import { ConversationList } from './components/ConversationList';
+import { ChatWindow } from './components/ChatWindow';
+import { Conversation } from '../../services/messages-service';
+import { MessageCircle } from 'lucide-react';
+import { GlassCard } from '../../ui-system';
 
-import Card from '../../components/Card';
-import SectionHeader from '../../components/SectionHeader';
+export default function ChatsPage() {
+  const [activeChat, setActiveChat] = useState<Conversation | null>(null);
 
-const activeNow = ['AR', 'DP', 'SK', 'JT', 'MA'];
+  // For mobile view logic usually, but we'll implement simple conditional for now
+  // Or CSS Grid/Flex for desktop split
 
-const conversations = [
-  {
-    id: 'c1',
-    title: 'Design squad',
-    preview: 'Deck is ready for tomorrow. Sync later?',
-    time: '2m',
-    unread: 3,
-  },
-  {
-    id: 'c2',
-    title: 'Founders room',
-    preview: 'Demo day checklist updated in the drive.',
-    time: '18m',
-    unread: 1,
-  },
-  {
-    id: 'c3',
-    title: 'Prava crew',
-    preview: 'Lunch meetup at 1:00 PM near the studio.',
-    time: '1h',
-    unread: 0,
-  },
-];
-
-const ChatsPage = () => {
   return (
-    <div className="page">
-      <SectionHeader
-        title="Chats"
-        subtitle="Conversations, group rooms, and live spaces."
-        meta="12 active"
-      />
-
-      <div className="page-grid">
-        <Card title="Active now" description="Jump back in with your circles.">
-          <div className="avatar-row">
-            {activeNow.map((initials) => (
-              <div
-                className="avatar avatar--soft avatar--xs"
-                key={initials}
-              >
-                {initials}
-              </div>
-            ))}
-          </div>
-        </Card>
-        <Card title="Quick actions" description="Start a new conversation.">
-          <div className="button-row">
-            <button className="button button--primary" type="button">
-              <Users size={14} /> New group
-            </button>
-            <button className="button button--soft" type="button">
-              <Headphones size={14} /> Start room
-            </button>
-            <button className="button button--ghost" type="button">
-              <MessageSquare size={14} /> New chat
-            </button>
-          </div>
-        </Card>
+    <div className="h-[calc(100vh-120px)] max-w-6xl mx-auto flex gap-6 overflow-hidden">
+      {/* Sidebar / List - Hidden on mobile if chat is active, shown on desktop always */}
+      <div className={`w-full md:w-80 lg:w-96 flex-shrink-0 flex flex-col ${activeChat ? 'hidden md:flex' : 'flex'}`}>
+        <ConversationList
+          activeId={activeChat?.id}
+          onSelect={setActiveChat}
+          onNewChat={() => {
+            // Logic to show friend picker to start new chat
+            console.log('New chat');
+          }}
+        />
       </div>
 
-      <div className="list">
-        {conversations.map((chat) => (
-          <div className="list-item" key={chat.id}>
-            <div>
-              <strong>{chat.title}</strong>
-              <span>{chat.preview}</span>
-            </div>
-            <div className="list-item__meta">
-              <span>{chat.time}</span>
-              {chat.unread > 0 ? (
-                <span className="badge">{chat.unread} new</span>
-              ) : (
-                <span className="pill">Read</span>
-              )}
+      {/* Chat Window - Hidden on mobile if no chat active, shown on desktop always */}
+      <div className={`flex-1 flex flex-col ${!activeChat ? 'hidden md:flex' : 'flex'}`}>
+        {activeChat ? (
+          <ChatWindow
+            conversation={activeChat}
+            onBack={() => setActiveChat(null)}
+          />
+        ) : (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center p-8 opacity-60">
+              <div className="w-20 h-20 bg-prava-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <MessageCircle className="w-10 h-10 text-prava-accent" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2">Select a conversation</h3>
+              <p className="max-w-xs mx-auto">Choose a person from the list to start chatting securely.</p>
             </div>
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
-};
-
-export default ChatsPage;
+}

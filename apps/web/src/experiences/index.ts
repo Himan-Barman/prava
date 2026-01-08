@@ -1,3 +1,13 @@
+// Auth
+export {
+  LoginPage,
+  SignupPage,
+  EmailOtpPage,
+  SetPasswordPage,
+  ForgotPasswordPage,
+} from './auth';
+
+// Main pages
 export { default as FeedPage } from './feed/FeedPage';
 export { default as ChatsPage } from './chats/ChatsPage';
 export { default as ArchivedChatsPage } from './chats/ArchivedChatsPage';

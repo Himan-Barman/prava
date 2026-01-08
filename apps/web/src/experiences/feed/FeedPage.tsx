@@ -1,159 +1,215 @@
-import { Heart, MessageCircle, Repeat2, Sparkles, TrendingUp } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Image, Video, Smile } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import { GlassCard } from '../../ui-system';
+import { feedService, FeedPost } from '../../services/feed-service';
+import { Post } from './components/Post';
+import { useAuth } from '../../context/auth-context';
+import { smartToast } from '../../ui-system/components/SmartToast';
 
-import Card from '../../components/Card';
-import SectionHeader from '../../components/SectionHeader';
+export default function FeedPage() {
+  const { user } = useAuth();
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [postBody, setPostBody] = useState('');
+  const [isPosting, setIsPosting] = useState(false);
 
-const highlights = [
-  {
-    title: 'Daily pulse',
-    description: 'Your engagement is up 18 percent this week.',
-    badge: 'Today',
-  },
-  {
-    title: 'Live rooms',
-    description: 'Three broadcasts match your interests right now.',
-    badge: 'Live',
-  },
-  {
-    title: 'Creator spotlight',
-    description: 'Follow Anika for product and design deep dives.',
-    badge: 'New',
-  },
-];
+  // Pagination
+  const beforeCursor = useRef<string | undefined>(undefined);
+  const observerTarget = useRef<HTMLDivElement>(null);
+  const hasMore = useRef(true);
 
-const posts = [
-  {
-    id: 'post-1',
-    name: 'Anika Roy',
-    handle: 'anikar',
-    time: '2m',
-    body: 'Shipping a new onboarding flow today. Looking for feedback and beta testers.',
-    likes: 128,
-    comments: 34,
-    shares: 12,
-  },
-  {
-    id: 'post-2',
-    name: 'Dev Patel',
-    handle: 'devp',
-    time: '12m',
-    body: 'Just joined Prava. Excited to build community around indie games.',
-    likes: 56,
-    comments: 9,
-    shares: 4,
-  },
-  {
-    id: 'post-3',
-    name: 'Sonia Khan',
-    handle: 'soniak',
-    time: '1h',
-    body: 'Morning run done. Sharing a quick checklist for creator wellness.',
-    likes: 214,
-    comments: 44,
-    shares: 22,
-  },
-];
+  useEffect(() => {
+    let isMounted = true;
 
-const FeedPage = () => {
+    const loadInitialFeed = async () => {
+      try {
+        setLoading(true);
+        const data = await feedService.listFeed({ limit: 20 });
+        if (isMounted) {
+          setPosts(data);
+          if (data.length > 0) {
+            beforeCursor.current = data[data.length - 1].id;
+          } else {
+            hasMore.current = false;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load feed:', error);
+        if (isMounted) {
+          smartToast.error('Could not load feed');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadInitialFeed();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && !loading && !loadingMore && hasMore.current) {
+          loadMorePosts();
+        }
+      },
+      { threshold: 1.0 }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => observer.disconnect();
+  }, [loading, loadingMore]);
+
+  const loadMorePosts = async () => {
+    if (!beforeCursor.current) return;
+
+    try {
+      setLoadingMore(true);
+      const data = await feedService.listFeed({
+        limit: 20,
+        before: beforeCursor.current
+      });
+
+      if (data.length > 0) {
+        setPosts(prev => [...prev, ...data]);
+        beforeCursor.current = data[data.length - 1].id;
+      } else {
+        hasMore.current = false;
+      }
+    } catch (error) {
+      console.error('Failed to load more posts:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const handleCreatePost = async () => {
+    if (!postBody.trim()) return;
+
+    try {
+      setIsPosting(true);
+      const newPost = await feedService.createPost(postBody);
+      setPosts(prev => [newPost, ...prev]);
+      setPostBody('');
+      smartToast.success('Posted!');
+    } catch (error) {
+      smartToast.error('Failed to create post');
+    } finally {
+      setIsPosting(false);
+    }
+  };
+
+  const handleLike = async (postId: string) => {
+    try {
+      await feedService.toggleLike(postId);
+      // UI update is handled optimistically in Post component via local state
+    } catch (error) {
+      console.error('Like failed:', error);
+      toast.error('Action failed');
+    }
+  };
+
   return (
-    <div className="page">
-      <SectionHeader
-        title="Your feed"
-        subtitle="For you and following updates across Prava."
-        meta="For you"
-      />
+    <div className="max-w-2xl mx-auto pb-8">
+      {/* Page Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="mb-6"
+      >
+        <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
+          Feed
+        </h1>
+        <p className="mt-1 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+          See what is happening in your network
+        </p>
+      </motion.div>
 
-      <div className="segmented">
-        <button className="active" type="button">
-          For you
-        </button>
-        <button type="button">Following</button>
-      </div>
-
-      <Card className="card--glass composer">
-        <div className="composer__row">
-          <div className="avatar avatar--soft avatar--sm">HB</div>
-          <div className="composer__input">
+      {/* Composer */}
+      <GlassCard className="mb-6">
+        <div className="flex gap-3">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-prava-accent to-prava-accent-muted flex items-center justify-center shrink-0">
+            <span className="text-white font-semibold text-sm">
+              {/* Fallback avatar if user data missing */}
+              Y
+            </span>
+          </div>
+          <div className="flex-1">
             <textarea
-              className="input input--textarea"
-              placeholder="Share an update with your community"
+              placeholder="What is on your mind?"
+              className="w-full p-3 rounded-[14px] bg-prava-light-surface dark:bg-prava-dark-surface border border-prava-light-border dark:border-prava-dark-border resize-none text-body text-prava-light-text-primary dark:text-prava-dark-text-primary placeholder:text-prava-light-text-tertiary dark:placeholder:text-prava-dark-text-tertiary focus:outline-none focus:ring-2 focus:ring-prava-accent/30"
+              rows={3}
+              value={postBody}
+              onChange={(e) => setPostBody(e.target.value)}
             />
-            <div className="chip-row">
-              <span className="chip">#product</span>
-              <span className="chip">#design</span>
-              <span className="chip">#community</span>
+            <div className="flex items-center justify-between mt-3">
+              <div className="flex items-center gap-2">
+                <button className="p-2 rounded-[10px] text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary hover:bg-prava-light-surface dark:hover:bg-prava-dark-surface transition-colors">
+                  <Image className="w-5 h-5" />
+                </button>
+                <button className="p-2 rounded-[10px] text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary hover:bg-prava-light-surface dark:hover:bg-prava-dark-surface transition-colors">
+                  <Video className="w-5 h-5" />
+                </button>
+                <button className="p-2 rounded-[10px] text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary hover:bg-prava-light-surface dark:hover:bg-prava-dark-surface transition-colors">
+                  <Smile className="w-5 h-5" />
+                </button>
+              </div>
+              <button
+                onClick={handleCreatePost}
+                disabled={isPosting || !postBody.trim()}
+                className="px-4 py-2 rounded-[12px] bg-gradient-to-r from-prava-accent to-prava-accent-muted text-white text-body-sm font-semibold shadow-prava-glow hover:shadow-[0_12px_28px_rgba(91,140,255,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isPosting ? 'Posting...' : 'Post'}
+              </button>
             </div>
           </div>
         </div>
-        <div className="composer__actions">
-          <span className="meta">Visible to followers and friends</span>
-          <div className="button-row">
-            <button className="button button--ghost" type="button">
-              Add media
-            </button>
-            <button className="button button--primary" type="button">
-              Post update
-            </button>
-          </div>
-        </div>
-      </Card>
+      </GlassCard>
 
-      <div className="page-grid">
-        {highlights.map((item) => (
-          <Card
-            key={item.title}
-            title={item.title}
-            description={item.description}
-            badge={item.badge}
-          />
-        ))}
-      </div>
-
-      <div className="stack">
-        {posts.map((post) => (
-          <div className="card post-card" key={post.id}>
-            <div className="post-header">
-              <div className="post-author">
-                <div className="avatar avatar--soft avatar--sm">
-                  {post.name
-                    .split(' ')
-                    .map((part) => part[0])
-                    .join('')}
-                </div>
-                <div>
-                  <strong>{post.name}</strong>
-                  <div className="post-meta">
-                    @{post.handle} · {post.time}
-                  </div>
+      {/* Posts */}
+      <div className="space-y-4">
+        {loading && posts.length === 0 ? (
+          // Skeleton loader
+          [1, 2, 3].map((i) => (
+            <GlassCard key={i} className="animate-pulse">
+              <div className="flex gap-4">
+                <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-white/10" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-1/3 bg-gray-200 dark:bg-white/10 rounded" />
+                  <div className="h-16 w-full bg-gray-200 dark:bg-white/10 rounded" />
                 </div>
               </div>
-              <button className="button button--soft" type="button">
-                Follow
-              </button>
-            </div>
-            <div>{post.body}</div>
-            <div className="post-actions">
-              <button className="icon-button active" type="button">
-                <Heart /> {post.likes}
-              </button>
-              <button className="icon-button" type="button">
-                <MessageCircle /> {post.comments}
-              </button>
-              <button className="icon-button" type="button">
-                <Repeat2 /> {post.shares}
-              </button>
-              <button className="icon-button" type="button">
-                <Sparkles /> Boost
-              </button>
-              <button className="icon-button" type="button">
-                <TrendingUp /> Trends
-              </button>
-            </div>
-          </div>
-        ))}
+            </GlassCard>
+          ))
+        ) : (
+          posts.map((post, i) => (
+            <Post
+              key={post.id}
+              post={post}
+              delay={i < 5 ? i * 0.1 : 0}
+              onLike={handleLike}
+            />
+          ))
+        )}
+
+        {/* Infinite Scroll Sentinel */}
+        <div ref={observerTarget} className="h-4 w-full flex justify-center p-4">
+          {loadingMore && <div className="w-6 h-6 rounded-full border-2 border-prava-accent border-t-transparent animate-spin" />}
+        </div>
       </div>
     </div>
   );
-};
-
-export default FeedPage;
+}

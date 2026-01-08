@@ -1,4 +1,9 @@
-﻿export const PravaColors = {
+﻿/**
+ * Prava Design System — Colors
+ * Matching apps/mobile/lib/ui-system/colors.dart
+ */
+
+export const colors = {
   light: {
     bgMain: '#FFFFFF',
     bgSurface: '#F6F6F6',
@@ -24,4 +29,10 @@
     warning: '#F4C430',
     error: '#E5533D',
   },
-};
+} as const;
+
+export type ThemeMode = 'light' | 'dark';
+
+export function getThemeColors(mode: ThemeMode) {
+  return mode === 'dark' ? colors.dark : colors.light;
+}

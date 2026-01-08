@@ -1,62 +1,77 @@
-import Card from '../../components/Card';
-import SectionHeader from '../../components/SectionHeader';
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import { ArrowLeft, Download, FileText, MessageCircle, Users, Lock } from 'lucide-react';
+import { GlassCard, PravaButton } from '../../ui-system';
 
-const DataExportPage = () => {
+export default function DataExportPage() {
   return (
-    <div className="page">
-      <SectionHeader
-        title="Data export"
-        subtitle="Request a copy of your account data."
-        meta="Ready"
-      />
-
-      <Card
-        title="Export status"
-        description="Your latest export will be ready within 24 hours."
+    <div className="max-w-2xl mx-auto">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="mb-6"
       >
-        <div className="progress" style={{ margin: '12px 0' }}>
-          <span />
-        </div>
-        <div className="button-row">
-          <button className="button button--soft" type="button">
-            Request new export
-          </button>
-          <button className="button button--ghost" type="button">
-            Download latest
-          </button>
-        </div>
-      </Card>
+        <Link
+          to="/settings"
+          className="inline-flex items-center gap-2 text-body font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary transition-colors mb-4"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Settings
+        </Link>
+        <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
+          Data Export
+        </h1>
+        <p className="mt-1 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+          Download a copy of your data
+        </p>
+      </motion.div>
 
-      <Card
-        title="Included data"
-        description="What you will receive in your export."
-      >
-        <div className="list">
-          <div className="list-item">
-            <div>
-              <strong>Profile data</strong>
-              <span>Username, bio, and links</span>
-            </div>
-            <span className="pill">Included</span>
+      <GlassCard className="mb-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2.5 rounded-[12px] bg-prava-accent/10">
+            <Download className="w-5 h-5 text-prava-accent" />
           </div>
-          <div className="list-item">
-            <div>
-              <strong>Posts and media</strong>
-              <span>Feed posts, comments, and shares</span>
-            </div>
-            <span className="pill">Included</span>
-          </div>
-          <div className="list-item">
-            <div>
-              <strong>Messages</strong>
-              <span>Chat history and attachments</span>
-            </div>
-            <span className="pill">Included</span>
-          </div>
+          <h2 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary">
+            Export Options
+          </h2>
         </div>
-      </Card>
+
+        <p className="text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary mb-4">
+          Select the data you want to export. Your data will be prepared and sent to your email.
+        </p>
+
+        <div className="space-y-3">
+          {[
+            { icon: FileText, label: 'Posts', description: 'All your posts and media' },
+            { icon: MessageCircle, label: 'Messages', description: 'Chat history (if decryptable)' },
+            { icon: Users, label: 'Connections', description: 'Friends and followers' },
+          ].map((item) => (
+            <label key={item.label} className="flex items-center gap-4 p-4 rounded-[14px] bg-prava-light-surface dark:bg-prava-dark-surface cursor-pointer hover:bg-prava-light-border/50 dark:hover:bg-prava-dark-border/50 transition-colors">
+              <input type="checkbox" className="w-5 h-5 rounded border-prava-light-border dark:border-prava-dark-border text-prava-accent focus:ring-prava-accent" />
+              <item.icon className="w-5 h-5 text-prava-accent" />
+              <div className="flex-1">
+                <p className="font-medium text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
+                  {item.label}
+                </p>
+                <p className="text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+                  {item.description}
+                </p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </GlassCard>
+
+      <div className="flex items-start gap-3 p-4 rounded-[14px] bg-prava-warning/10 border border-prava-warning/20 mb-6">
+        <Lock className="w-5 h-5 text-prava-warning shrink-0 mt-0.5" />
+        <p className="text-body-sm text-prava-light-text-primary dark:text-prava-dark-text-primary">
+          End-to-end encrypted messages can only be exported if you have the decryption keys on this device.
+        </p>
+      </div>
+
+      <PravaButton label="Request Export" />
     </div>
   );
-};
-
-export default DataExportPage;
+}
