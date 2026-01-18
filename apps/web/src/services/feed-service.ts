@@ -1,39 +1,31 @@
 import { apiClient } from '../adapters/api-client';
 
+export interface FeedAuthor {
+  id: string;
+  username: string;
+  displayName: string;
+}
+
 export interface FeedPost {
   id: string;
   body: string;
-  userId: string;
-  user: {
-    id: string;
-    username: string;
-    displayName: string;
-    avatarUrl?: string;
-  };
-  media?: {
-    type: 'image' | 'video';
-    url: string;
-    thumbnailUrl?: string;
-  }[];
-  stats: {
-    likes: number;
-    comments: number;
-    shares: number;
-  };
-  hasLiked: boolean;
   createdAt: string;
+  likeCount: number;
+  commentCount: number;
+  shareCount: number;
+  liked: boolean;
+  followed: boolean;
+  mentions: string[];
+  hashtags: string[];
+  relationship?: 'friend' | 'following' | 'other';
+  author: FeedAuthor;
 }
 
-export interface Comment {
+export interface FeedComment {
   id: string;
   body: string;
-  user: {
-    id: string;
-    username: string;
-    displayName: string;
-    avatarUrl?: string;
-  };
   createdAt: string;
+  author: FeedAuthor;
 }
 
 class FeedService {
@@ -56,13 +48,13 @@ class FeedService {
   }
 
   async toggleLike(postId: string) {
-    return apiClient.post<{ liked: boolean; count: number }>(`/feed/${postId}/like`, {
+    return apiClient.post<{ liked: boolean; likeCount: number }>(`/feed/${postId}/like`, {
       auth: true,
     });
   }
 
   async listComments(postId: string, limit?: number) {
-    return apiClient.get<Comment[]>(`/feed/${postId}/comments`, {
+    return apiClient.get<FeedComment[]>(`/feed/${postId}/comments`, {
       query: {
         ...(limit && { limit: limit.toString() }),
       },
@@ -71,16 +63,22 @@ class FeedService {
   }
 
   async addComment(postId: string, body: string) {
-    return apiClient.post<Comment>(`/feed/${postId}/comments`, {
-      body: { body },
-      auth: true,
-    });
+    return apiClient.post<{ comment: FeedComment; commentCount: number }>(
+      `/feed/${postId}/comments`,
+      {
+        body: { body },
+        auth: true,
+      }
+    );
   }
 
   async sharePost(postId: string) {
-    return apiClient.post<void>(`/feed/${postId}/share`, {
-      auth: true,
-    });
+    return apiClient.post<{ shared: boolean; shareCount: number; created: boolean }>(
+      `/feed/${postId}/share`,
+      {
+        auth: true,
+      }
+    );
   }
 }
 

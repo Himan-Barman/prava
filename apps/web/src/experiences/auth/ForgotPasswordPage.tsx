@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Mail } from 'lucide-react';
@@ -9,7 +9,6 @@ import {
   PravaButton
 } from '../../ui-system';
 import { authService } from '../../services/auth-service';
-import { ApiException } from '../../adapters/api-client';
 import toast from 'react-hot-toast';
 
 export default function ForgotPasswordPage() {
@@ -22,7 +21,7 @@ export default function ForgotPasswordPage() {
   const isEmailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
   const canSubmit = isEmailValid && !loading;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!canSubmit) return;
 

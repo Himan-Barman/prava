@@ -1,6 +1,0 @@
-node_modules/
-dist/
-.env
-*.log
-jwt-private.pem
-jwt-public.pem

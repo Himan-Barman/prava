@@ -1,4 +1,3 @@
-import React from 'react';
 import toast, { Toast, ToastOptions } from 'react-hot-toast';
 import { CheckCircle2, XCircle, AlertTriangle, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';

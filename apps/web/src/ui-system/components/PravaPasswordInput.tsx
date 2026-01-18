@@ -1,7 +1,7 @@
-import React, { forwardRef, useState } from 'react';
+import { forwardRef, useState, type InputHTMLAttributes } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 
-interface PravaPasswordInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
+interface PravaPasswordInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
   label?: string;
   hint?: string;
   error?: string;

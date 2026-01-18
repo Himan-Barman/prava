@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+﻿import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -22,7 +22,7 @@ import { useAuth } from '../context/auth-context';
 interface NavItem {
   path: string;
   label: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
 }
 
 const mainNavItems: NavItem[] = [
@@ -98,7 +98,7 @@ export function Sidebar() {
 
           {/* Brand Name on Hover (as requested: "branding logo show only P" ... "if hover then show the name") */}
           <div className="absolute left-full ml-4 px-4 py-2 bg-prava-dark-surface text-white text-sm font-bold rounded-[12px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-xl border border-white/10">
-            Prava Social
+            Prava
           </div>
         </div>
       </div>

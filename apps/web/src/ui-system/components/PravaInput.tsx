@@ -1,11 +1,11 @@
-import React, { forwardRef } from 'react';
+import { forwardRef, type InputHTMLAttributes, type ReactNode } from 'react';
 
-interface PravaInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+interface PravaInputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   hint?: string;
   error?: string;
-  suffixIcon?: React.ReactNode;
-  prefixIcon?: React.ReactNode;
+  suffixIcon?: ReactNode;
+  prefixIcon?: ReactNode;
 }
 
 export const PravaInput = forwardRef<HTMLInputElement, PravaInputProps>(

@@ -7,8 +7,8 @@ import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios';
 import { secureStore } from './secure-store';
 import { getOrCreateDeviceId } from './device-id';
 
-// Get API URL from environment or default
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3100';
+// Get API URL from environment or default (include /api prefix)
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3100/api').replace(/\/+$/, '');
 
 export class ApiException extends Error {
   constructor(

@@ -1,22 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
   UserPlus,
-  UserCheck,
   MoreHorizontal,
   Send,
   X,
-  Check,
   MessageCircle,
   Phone,
-  Star,
-  BellOff,
-  Pin
+  Star
 } from 'lucide-react';
 import { GlassCard, PravaInput } from '../../ui-system';
-import { friendsService, FriendsResponse, FriendRequest, SentRequest, FriendConnection } from '../../services/friends-service';
+import { friendsService, FriendsResponse, FriendConnectionItem } from '../../services/friends-service';
 import { smartToast } from '../../ui-system/components/SmartToast';
+import { timeAgo } from '../../utils/date-utils';
 
 type Tab = 'requests' | 'sent' | 'friends';
 
@@ -45,20 +42,17 @@ export default function FriendsPage() {
     }
   };
 
-  const handleAccept = async (req: FriendRequest) => {
+  const handleAccept = async (req: FriendConnectionItem) => {
     try {
-      await friendsService.acceptRequest(req.user.id);
-      smartToast.success(`Accepted ${req.user.displayName}`);
-      // Optimistic update
+      await friendsService.acceptRequest(req.id);
+      smartToast.success(`Accepted ${req.displayName}`);
       setData(prev => prev ? {
         ...prev,
-        requests: prev.requests.filter(r => r.user.id !== req.user.id),
+        requests: prev.requests.filter(r => r.id !== req.id),
         friends: [{
-          user: req.user,
-          connectedSince: 'Just now',
-          isFavorite: false,
-          isMuted: false,
-          isPinned: false
+          ...req,
+          isFollowing: true,
+          isFollowedBy: true,
         }, ...prev.friends]
       } : null);
     } catch (e) {
@@ -66,34 +60,34 @@ export default function FriendsPage() {
     }
   };
 
-  const handleDecline = async (req: FriendRequest) => {
+  const handleDecline = async (req: FriendConnectionItem) => {
     try {
-      await friendsService.declineRequest(req.user.id);
+      await friendsService.declineRequest(req.id);
       smartToast.info('Request declined');
       setData(prev => prev ? {
         ...prev,
-        requests: prev.requests.filter(r => r.user.id !== req.user.id)
+        requests: prev.requests.filter(r => r.id !== req.id)
       } : null);
     } catch (e) {
       smartToast.error('Action failed');
     }
   };
 
-  const handleCancel = async (req: SentRequest) => {
+  const handleCancel = async (req: FriendConnectionItem) => {
     try {
-      await friendsService.cancelRequest(req.user.id);
+      await friendsService.cancelRequest(req.id);
       smartToast.warning('Request canceled');
       setData(prev => prev ? {
         ...prev,
-        sent: prev.sent.filter(s => s.user.id !== req.user.id)
+        sent: prev.sent.filter(s => s.id !== req.id)
       } : null);
     } catch (e) {
       smartToast.error('Action failed');
     }
   };
 
-  const handleNudge = (req: SentRequest) => {
-    smartToast.success(`Nudged @${req.user.username}`);
+  const handleNudge = (req: FriendConnectionItem) => {
+    smartToast.success(`Nudged @${req.username}`);
   };
 
   return (
@@ -155,21 +149,21 @@ export default function FriendsPage() {
             ) : (
               <div className="space-y-4">
                 {data?.requests.map(req => (
-                  <GlassCard key={req.user.id} className="flex gap-4 items-center">
-                    <Avatar user={req.user} size="lg" />
+                  <GlassCard key={req.id} className="flex gap-4 items-center">
+                    <Avatar user={req} size="lg" isOnline={req.isOnline} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-bold text-lg text-prava-light-text-primary dark:text-prava-dark-text-primary truncate">
-                          {req.user.displayName}
+                          {req.displayName}
                         </h3>
-                        {req.priorityLabel && (
+                        {req.isVerified && (
                           <span className="px-2 py-0.5 rounded-full bg-prava-accent/20 text-prava-accent text-[10px] font-bold uppercase">
-                            {req.priorityLabel}
+                            Verified
                           </span>
                         )}
                       </div>
                       <p className="text-sm text-prava-light-text-secondary dark:text-prava-dark-text-secondary mb-3">
-                        {req.message}
+                        @{req.username} - {req.since ? timeAgo(req.since) : 'recently'}
                       </p>
                       <div className="flex gap-3">
                         <button
@@ -206,14 +200,14 @@ export default function FriendsPage() {
             ) : (
               <div className="space-y-4">
                 {data?.sent.map(req => (
-                  <GlassCard key={req.user.id} className="flex gap-4 items-center">
-                    <Avatar user={req.user} />
+                  <GlassCard key={req.id} className="flex gap-4 items-center">
+                    <Avatar user={req} />
                     <div className="flex-1 min-w-0">
                       <h3 className="font-bold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                        {req.user.displayName}
+                        {req.displayName}
                       </h3>
                       <p className="text-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-                        {req.timeLabel} • {req.status}
+                        @{req.username} - {req.since ? timeAgo(req.since) : 'recently'} - Pending
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -260,20 +254,20 @@ export default function FriendsPage() {
               <div className="space-y-3">
                 {data?.friends.map(friend => (
                   <div
-                    key={friend.user.id}
+                    key={friend.id}
                     className="group bg-white/80 dark:bg-white/[0.04] p-4 rounded-[20px] border border-transparent hover:border-prava-light-border dark:hover:border-prava-dark-border transition-all hover:bg-white dark:hover:bg-white/10"
                   >
                     <div className="flex items-center gap-4">
-                      <Avatar user={friend.user} isOnline={friend.user.isOnline} />
+                      <Avatar user={friend} isOnline={friend.isOnline} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <h3 className="font-bold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                            {friend.user.displayName}
+                            {friend.displayName}
                           </h3>
-                          {friend.isFavorite && <Star className="w-3 h-3 fill-prava-warning text-prava-warning" />}
+                          {friend.isVerified && <Star className="w-3 h-3 fill-prava-warning text-prava-warning" />}
                         </div>
                         <p className="text-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-                          @{friend.user.username} • {friend.connectedSince}
+                          @{friend.username} - {friend.since ? timeAgo(friend.since) : 'recently'}
                         </p>
                       </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -299,7 +293,7 @@ export default function FriendsPage() {
   );
 }
 
-function Avatar({ user, size = 'md', isOnline }: { user: any, size?: 'md' | 'lg', isOnline?: boolean }) {
+function Avatar({ user, size = 'md', isOnline }: { user: FriendConnectionItem, size?: 'md' | 'lg', isOnline?: boolean }) {
   return (
     <div className="relative">
       <div className={`
@@ -308,11 +302,7 @@ function Avatar({ user, size = 'md', isOnline }: { user: any, size?: 'md' | 'lg'
         flex items-center justify-center shrink-0 text-white font-bold
         ${size === 'lg' ? 'text-xl' : 'text-lg'}
       `}>
-        {user.avatarUrl ? (
-          <img src={user.avatarUrl} alt={user.username} className="w-full h-full rounded-full object-cover" />
-        ) : (
-          user.displayName[0]
-        )}
+        {user.displayName[0]}
       </div>
       {isOnline !== undefined && (
         <div className={`

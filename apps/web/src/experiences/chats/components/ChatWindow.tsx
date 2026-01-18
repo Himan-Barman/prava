@@ -1,14 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Send, Image, Phone, Video, MoreVertical, ArrowLeft } from 'lucide-react';
-import { toast } from 'react-hot-toast';
 import { useAuth } from '../../../context/auth-context';
-import { messagesService, Message, Conversation } from '../../../services/messages-service';
+import { messagesService, normalizeMessage, Message, ConversationSummary } from '../../../services/messages-service';
 import { webSocketService } from '../../../services/websocket-service';
 import { timeAgo } from '../../../utils/date-utils';
+import { smartToast } from '../../../ui-system/components/SmartToast';
 
 interface ChatWindowProps {
-  conversation: Conversation;
+  conversation: ConversationSummary;
   onBack?: () => void;
 }
 
@@ -18,14 +17,16 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastReadSeq = useRef<number | null>(null);
 
   useEffect(() => {
+    lastReadSeq.current = null;
     loadMessages();
 
     // Subscribe to new messages
-    const unsubscribe = webSocketService.subscribe('message', (payload: any) => {
+    const unsubscribe = webSocketService.subscribe('MESSAGE_PUSH', (payload: any) => {
       if (payload.conversationId === conversation.id) {
-        setMessages(prev => [...prev, payload]);
+        setMessages(prev => [...prev, normalizeMessage(payload)]);
         scrollToBottom();
       }
     });
@@ -38,8 +39,7 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
   const loadMessages = async () => {
     try {
       const data = await messagesService.listMessages(conversation.id);
-      // Sort by sequence or createdAt
-      setMessages(data.reverse()); // Assuming API returns newest first
+      setMessages(data);
       scrollToBottom();
     } catch (error) {
       console.error('Failed to load messages:', error);
@@ -52,7 +52,14 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
     }, 100);
   };
 
-  const handleSend = async (e?: React.FormEvent) => {
+  useEffect(() => {
+    const lastSeq = messages[messages.length - 1]?.sequence;
+    if (typeof lastSeq !== 'number' || lastSeq === lastReadSeq.current) return;
+    lastReadSeq.current = lastSeq;
+    messagesService.markRead(conversation.id, lastSeq).catch(() => {});
+  }, [conversation.id, messages]);
+
+  const handleSend = async (e?: FormEvent) => {
     e?.preventDefault();
     if (!inputText.trim() || sending) return;
 
@@ -67,14 +74,18 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
       setMessages(prev => [...prev, msg]);
       scrollToBottom();
     } catch (error) {
-      toast.error('Failed to send message');
+      smartToast.error('Failed to send message');
       setInputText(inputText); // Restore on error
     } finally {
       setSending(false);
     }
   };
 
-  const otherMember = conversation.members.find(m => m.userId !== user?.id) || conversation.members[0];
+  const displayName = conversation.title?.trim()
+    ? conversation.title
+    : conversation.type === 'group'
+      ? 'Group chat'
+      : 'Conversation';
 
   return (
     <div className="flex flex-col h-full bg-prava-light-surface dark:bg-prava-dark-surface rounded-[24px] overflow-hidden border border-prava-light-border dark:border-prava-dark-border shadow-2xl relative">
@@ -87,15 +98,11 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
             </button>
           )}
           <div className="w-10 h-10 rounded-full bg-prava-accent/15 flex items-center justify-center shrink-0">
-            {otherMember.avatarUrl ? (
-              <img src={otherMember.avatarUrl} alt={otherMember.displayName} className="w-full h-full rounded-full object-cover" />
-            ) : (
-              <span className="text-prava-accent font-semibold">{otherMember.displayName.charAt(0)}</span>
-            )}
+            <span className="text-prava-accent font-semibold">{displayName.charAt(0)}</span>
           </div>
           <div>
             <h3 className="font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-              {conversation.name || otherMember.displayName}
+              {displayName}
             </h3>
             <p className="text-xs text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
               Online

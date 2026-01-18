@@ -1,10 +1,46 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Download, FileText, MessageCircle, Users, Lock } from 'lucide-react';
 import { GlassCard, PravaButton } from '../../ui-system';
+import { dataExportService, DataExport } from '../../services/data-export-service';
+import { smartToast } from '../../ui-system/components/SmartToast';
+import { timeAgo } from '../../utils/date-utils';
 
 export default function DataExportPage() {
+  const [exportData, setExportData] = useState<DataExport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [requesting, setRequesting] = useState(false);
+
+  useEffect(() => {
+    const loadExport = async () => {
+      try {
+        const data = await dataExportService.fetchLatest();
+        setExportData(data);
+      } catch {
+        smartToast.error('Unable to load export status');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadExport();
+  }, []);
+
+  const handleRequestExport = async () => {
+    if (requesting) return;
+    setRequesting(true);
+    try {
+      const data = await dataExportService.requestExport();
+      setExportData(data);
+      smartToast.success('Export requested');
+    } catch {
+      smartToast.error('Unable to request export');
+    } finally {
+      setRequesting(false);
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto">
       <motion.div
@@ -71,7 +107,26 @@ export default function DataExportPage() {
         </p>
       </div>
 
-      <PravaButton label="Request Export" />
+      <div className="space-y-3">
+        {loading ? (
+          <p className="text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+            Checking export status...
+          </p>
+        ) : exportData ? (
+          <div className="text-body-sm text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+            Latest export {exportData.createdAt ? timeAgo(exportData.createdAt) : 'recently'} - {exportData.status}
+          </div>
+        ) : (
+          <div className="text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+            No previous exports found.
+          </div>
+        )}
+        <PravaButton
+          label={requesting ? 'Requesting...' : 'Request Export'}
+          onClick={handleRequestExport}
+          disabled={requesting}
+        />
+      </div>
     </div>
   );
 }

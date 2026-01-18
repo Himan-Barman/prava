@@ -1,8 +1,10 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Globe, Check } from 'lucide-react';
 import { GlassCard } from '../../ui-system';
+import { settingsService } from '../../services/settings-service';
+import { smartToast } from '../../ui-system/components/SmartToast';
 
 const languages = [
   { code: 'en', name: 'English', native: 'English', selected: true },
@@ -13,6 +15,35 @@ const languages = [
 ];
 
 export default function LanguagePage() {
+  const [selected, setSelected] = useState<string>('English');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settings = await settingsService.fetchSettings();
+        setSelected(settings.languageLabel || 'English');
+      } catch {
+        smartToast.error('Unable to load language settings');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSettings();
+  }, []);
+
+  const handleSelect = async (name: string) => {
+    if (loading || selected === name) return;
+    setSelected(name);
+    try {
+      await settingsService.updateSettings({ languageLabel: name });
+      smartToast.success('Language updated');
+    } catch {
+      smartToast.error('Unable to update language');
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto">
       <motion.div
@@ -47,10 +78,13 @@ export default function LanguagePage() {
         </div>
 
         <div className="space-y-2">
-          {languages.map((lang) => (
+          {languages.map((lang) => {
+            const isSelected = lang.name === selected;
+            return (
             <button
               key={lang.code}
-              className={`w-full flex items-center justify-between p-4 rounded-[14px] transition-colors ${lang.selected
+              onClick={() => handleSelect(lang.name)}
+              className={`w-full flex items-center justify-between p-4 rounded-[14px] transition-colors ${isSelected
                   ? 'bg-prava-accent/10 border border-prava-accent/30'
                   : 'hover:bg-prava-light-surface dark:hover:bg-prava-dark-surface'
                 }`}
@@ -63,13 +97,14 @@ export default function LanguagePage() {
                   {lang.native}
                 </p>
               </div>
-              {lang.selected && (
+              {isSelected && (
                 <div className="p-1.5 rounded-full bg-prava-accent">
                   <Check className="w-4 h-4 text-white" />
                 </div>
               )}
             </button>
-          ))}
+          );
+          })}
         </div>
       </GlassCard>
     </div>

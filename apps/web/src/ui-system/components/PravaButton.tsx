@@ -1,4 +1,4 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 
@@ -10,7 +10,7 @@ interface PravaButtonProps {
   type?: 'button' | 'submit';
   variant?: 'primary' | 'ghost' | 'soft';
   fullWidth?: boolean;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   className?: string;
 }
 

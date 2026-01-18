@@ -1,2 +1,0 @@
-export const MAX_MESSAGE_BODY_LENGTH = 65535;
-export const MAX_WS_PAYLOAD_BYTES = 256 * 1024;

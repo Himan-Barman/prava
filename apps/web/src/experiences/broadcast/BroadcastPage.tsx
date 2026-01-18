@@ -1,4 +1,3 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { Radio, Users, Send, Lock } from 'lucide-react';
 import { GlassCard, PravaButton, PravaInput } from '../../ui-system';

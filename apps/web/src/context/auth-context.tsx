@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import { authService, AuthSession } from '../services/auth-service';
+import { webSocketService } from '../services/websocket-service';
 
 interface User {
   id: string;
@@ -19,7 +20,7 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -43,6 +44,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    if (user && authService.isLoggedIn()) {
+      webSocketService.connect();
+      return () => {
+        webSocketService.disconnect();
+      };
+    }
+
+    webSocketService.disconnect();
+    return undefined;
+  }, [user]);
 
   const login = useCallback(async (email: string, password: string) => {
     const session = await authService.login(email, password);

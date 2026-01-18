@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, KeyboardEvent, ClipboardEvent } from 'react';
+import { useRef, useEffect, type KeyboardEvent, type ClipboardEvent } from 'react';
 
 interface OtpInputProps {
   length?: number;

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Lock, ArrowRight, CheckCircle } from 'lucide-react';
+import { Lock, ArrowRight } from 'lucide-react';
 import {
   PravaBackground,
   GlassCard,
@@ -24,7 +24,7 @@ export default function LoginPage() {
 
   const canSubmit = email.trim().length > 0 && password.length > 0;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!canSubmit || loading) return;
 

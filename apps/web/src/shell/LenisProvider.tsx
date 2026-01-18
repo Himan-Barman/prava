@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import Lenis from 'lenis';
 
 interface LenisProviderProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function LenisProvider({ children }: LenisProviderProps) {

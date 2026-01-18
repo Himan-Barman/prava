@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { AtSign, CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import {
   PravaBackground,
   GlassCard,
@@ -94,14 +94,14 @@ export default function SignupPage() {
     checkUsername();
   }, [debouncedUsername]);
 
-  const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUsernameChange = (e: ChangeEvent<HTMLInputElement>) => {
     // Force lowercase and valid characters only
     const value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 32);
     setUsername(value);
     setUsernameChecked(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!canSubmit) {
       if (checkingUsername) {

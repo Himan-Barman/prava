@@ -1,6 +1,18 @@
 import { secureStore } from '../adapters/secure-store';
+import { getOrCreateDeviceId } from '../adapters/device-id';
 
-const WS_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3100').replace(/^http/, 'ws');
+const resolveWsBase = () => {
+  const explicit = import.meta.env.VITE_WS_URL as string | undefined;
+  if (explicit && explicit.trim().length > 0) {
+    return explicit.replace(/\/+$/, '').replace(/^http/, 'ws');
+  }
+
+  const apiBase = (import.meta.env.VITE_API_URL || 'http://localhost:3100/api').replace(/\/+$/, '');
+  const trimmed = apiBase.replace(/\/api$/i, '');
+  return trimmed.replace(/^http/, 'ws');
+};
+
+const WS_BASE_URL = resolveWsBase();
 
 type WebSocketCallback = (data: any) => void;
 
@@ -17,7 +29,8 @@ class WebSocketService {
 
     this.isConnecting = true;
     const token = secureStore.getAccessToken();
-    const url = `${WS_BASE_URL}?token=${token}`;
+    const deviceId = getOrCreateDeviceId();
+    const url = `${WS_BASE_URL}?token=${token}&deviceId=${deviceId}`;
 
     this.socket = new WebSocket(url);
 

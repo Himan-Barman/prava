@@ -1,19 +1,12 @@
 import { apiClient } from '../adapters/api-client';
 
-export interface UserProfile {
+export interface UserSearchResult {
   id: string;
   username: string;
   displayName: string;
-  bio?: string;
-  avatarUrl?: string;
-  coverUrl?: string;
-  stats: {
-    followers: number;
-    following: number;
-    posts: number;
-  };
-  isFollowing?: boolean;
-  isFollower?: boolean;
+  isVerified: boolean;
+  isFollowing: boolean;
+  isFollowedBy: boolean;
 }
 
 class UsersService {
@@ -21,18 +14,18 @@ class UsersService {
     return apiClient.get<{ userId: string }>('/users/me', { auth: true });
   }
 
-  async getProfile(userId: string) {
-    return apiClient.get<UserProfile>(`/users/${userId}/profile`, { auth: true });
-  }
-
-  async searchUsers(query: string, limit?: number) {
-    return apiClient.get<UserProfile[]>('/users/search', {
-      query: {
-        query,
-        ...(limit && { limit: limit.toString() }),
-      },
-      auth: true,
-    });
+  async searchUsers(query: string, limit?: number): Promise<UserSearchResult[]> {
+    const data = await apiClient.get<{ results?: UserSearchResult[] }>(
+      '/users/search',
+      {
+        query: {
+          query,
+          ...(limit && { limit: limit.toString() }),
+        },
+        auth: true,
+      }
+    );
+    return data.results ?? [];
   }
 
   async toggleFollow(targetUserId: string) {
@@ -41,13 +34,27 @@ class UsersService {
     });
   }
 
-  async getConnections(limit?: number) {
-    return apiClient.get<UserProfile[]>('/users/me/connections', {
-      query: {
-        ...(limit && { limit: limit.toString() }),
-      },
+  async setFollow(targetUserId: string, follow: boolean) {
+    return apiClient.put<{ following: boolean; changed?: boolean }>(
+      `/users/${targetUserId}/follow`,
+      {
+        auth: true,
+        body: { follow },
+      }
+    );
+  }
+
+  async removeFollower(targetUserId: string) {
+    return apiClient.delete<{ removed: boolean }>(`/users/${targetUserId}/follower`, {
       auth: true,
     });
+  }
+
+  async removeConnection(targetUserId: string) {
+    return apiClient.delete<{ removed: boolean }>(
+      `/users/${targetUserId}/connection`,
+      { auth: true }
+    );
   }
 }
 

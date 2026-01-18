@@ -1,20 +1,25 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Image, Video, Smile } from 'lucide-react';
-import { toast } from 'react-hot-toast';
 import { GlassCard } from '../../ui-system';
 import { feedService, FeedPost } from '../../services/feed-service';
 import { Post } from './components/Post';
 import { useAuth } from '../../context/auth-context';
 import { smartToast } from '../../ui-system/components/SmartToast';
 
+type FeedMode = 'for-you' | 'following';
+
+const PAGE_SIZE = 20;
+
 export default function FeedPage() {
   const { user } = useAuth();
+  const userInitial = user?.email?.trim().charAt(0).toUpperCase() || 'Y';
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [postBody, setPostBody] = useState('');
   const [isPosting, setIsPosting] = useState(false);
+  const [feedMode, setFeedMode] = useState<FeedMode>('for-you');
 
   // Pagination
   const beforeCursor = useRef<string | undefined>(undefined);
@@ -27,14 +32,23 @@ export default function FeedPage() {
     const loadInitialFeed = async () => {
       try {
         setLoading(true);
-        const data = await feedService.listFeed({ limit: 20 });
-        if (isMounted) {
-          setPosts(data);
-          if (data.length > 0) {
-            beforeCursor.current = data[data.length - 1].id;
-          } else {
-            hasMore.current = false;
-          }
+        setPosts([]);
+        hasMore.current = true;
+        beforeCursor.current = undefined;
+
+        const data = await feedService.listFeed({
+          limit: PAGE_SIZE,
+          mode: feedMode,
+        });
+
+        if (!isMounted) return;
+
+        setPosts(data);
+        if (data.length > 0) {
+          beforeCursor.current = data[data.length - 1].createdAt;
+          hasMore.current = data.length >= PAGE_SIZE;
+        } else {
+          hasMore.current = false;
         }
       } catch (error) {
         console.error('Failed to load feed:', error);
@@ -53,7 +67,7 @@ export default function FeedPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [feedMode]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -70,7 +84,7 @@ export default function FeedPage() {
     }
 
     return () => observer.disconnect();
-  }, [loading, loadingMore]);
+  }, [loading, loadingMore, feedMode]);
 
   const loadMorePosts = async () => {
     if (!beforeCursor.current) return;
@@ -78,13 +92,14 @@ export default function FeedPage() {
     try {
       setLoadingMore(true);
       const data = await feedService.listFeed({
-        limit: 20,
-        before: beforeCursor.current
+        limit: PAGE_SIZE,
+        before: beforeCursor.current,
+        mode: feedMode,
       });
 
       if (data.length > 0) {
         setPosts(prev => [...prev, ...data]);
-        beforeCursor.current = data[data.length - 1].id;
+        beforeCursor.current = data[data.length - 1].createdAt;
       } else {
         hasMore.current = false;
       }
@@ -112,14 +127,59 @@ export default function FeedPage() {
   };
 
   const handleLike = async (postId: string) => {
+    setPosts(prev => prev.map((post) => {
+      if (post.id !== postId) return post;
+      const delta = post.liked ? -1 : 1;
+      return {
+        ...post,
+        liked: !post.liked,
+        likeCount: Math.max(post.likeCount + delta, 0),
+      };
+    }));
+
     try {
-      await feedService.toggleLike(postId);
-      // UI update is handled optimistically in Post component via local state
+      const result = await feedService.toggleLike(postId);
+      setPosts(prev => prev.map((post) => (
+        post.id === postId
+          ? { ...post, liked: result.liked, likeCount: result.likeCount }
+          : post
+      )));
     } catch (error) {
-      console.error('Like failed:', error);
-      toast.error('Action failed');
+      setPosts(prev => prev.map((post) => {
+        if (post.id !== postId) return post;
+        const delta = post.liked ? -1 : 1;
+        return {
+          ...post,
+          liked: !post.liked,
+          likeCount: Math.max(post.likeCount + delta, 0),
+        };
+      }));
+      smartToast.error('Action failed');
     }
   };
+
+  const handleShare = async (postId: string) => {
+    try {
+      const result = await feedService.sharePost(postId);
+      setPosts(prev => prev.map((post) => (
+        post.id === postId
+          ? { ...post, shareCount: result.shareCount }
+          : post
+      )));
+      smartToast.success(result.created ? 'Post shared' : 'Already shared');
+    } catch (error) {
+      smartToast.error('Share failed');
+    }
+  };
+
+  const handleComment = () => {
+    smartToast.info('Comments coming soon');
+  };
+
+  const modes: Array<{ id: FeedMode; label: string }> = [
+    { id: 'for-you', label: 'For you' },
+    { id: 'following', label: 'Following' },
+  ];
 
   return (
     <div className="max-w-2xl mx-auto pb-8">
@@ -138,13 +198,47 @@ export default function FeedPage() {
         </p>
       </motion.div>
 
+      {/* Feed Mode */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="mb-6"
+      >
+        <div className="inline-grid grid-cols-2 gap-1 p-1 rounded-[16px] bg-prava-light-surface dark:bg-prava-dark-surface border border-prava-light-border dark:border-prava-dark-border">
+          {modes.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => setFeedMode(mode.id)}
+              className="relative px-4 py-2 text-body-sm font-semibold rounded-[12px] transition-colors"
+              aria-pressed={feedMode === mode.id}
+            >
+              {feedMode === mode.id && (
+                <motion.span
+                  layoutId="feedModePill"
+                  className="absolute inset-0 rounded-[12px] bg-white dark:bg-prava-dark-elevated shadow-[0_8px_20px_rgba(0,0,0,0.08)]"
+                  transition={{ type: 'spring', bounce: 0.2, duration: 0.5 }}
+                />
+              )}
+              <span className={`relative z-10 ${feedMode === mode.id
+                ? 'text-prava-light-text-primary dark:text-prava-dark-text-primary'
+                : 'text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary'
+                }`}>
+                {mode.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </motion.div>
+
       {/* Composer */}
       <GlassCard className="mb-6">
         <div className="flex gap-3">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-prava-accent to-prava-accent-muted flex items-center justify-center shrink-0">
             <span className="text-white font-semibold text-sm">
               {/* Fallback avatar if user data missing */}
-              Y
+              {userInitial}
             </span>
           </div>
           <div className="flex-1">
@@ -201,6 +295,8 @@ export default function FeedPage() {
               post={post}
               delay={i < 5 ? i * 0.1 : 0}
               onLike={handleLike}
+              onShare={handleShare}
+              onComment={handleComment}
             />
           ))
         )}

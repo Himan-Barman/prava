@@ -1,11 +1,33 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useParams } from 'react-router-dom';
 import { Settings, Edit3, Shield, Users, MessageCircle, Share2, Grid, UserPlus, UserCheck } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { GlassCard } from '../../ui-system';
-import { usersService, UserProfile } from '../../services/users-service';
+import { usersService } from '../../services/users-service';
+import { profileService } from '../../services/profile-service';
+import { publicProfileService } from '../../services/public-profile-service';
+import { friendsService, FriendConnectionItem } from '../../services/friends-service';
 import { useAuth } from '../../context/auth-context';
+
+type ProfileView = {
+  user: {
+    id: string;
+    username: string;
+    displayName: string;
+    bio?: string;
+  };
+  stats: {
+    posts: number;
+    followers: number;
+    following: number;
+    likes?: number;
+  };
+  relationship?: {
+    isFollowing: boolean;
+    isFollowedBy: boolean;
+  };
+};
 
 export default function ProfilePage() {
   const { user: currentUser } = useAuth();
@@ -13,8 +35,8 @@ export default function ProfilePage() {
   const isOwnProfile = !id || id === currentUser?.id;
   const userId = id || currentUser?.id;
 
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [connections, setConnections] = useState<UserProfile[]>([]);
+  const [profile, setProfile] = useState<ProfileView | null>(null);
+  const [connections, setConnections] = useState<FriendConnectionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'activity' | 'connections'>('activity');
 
@@ -27,26 +49,24 @@ export default function ProfilePage() {
   const loadProfile = async () => {
     try {
       setLoading(true);
-      // Fetch profile
-      let data;
       if (isOwnProfile) {
-        // We need DTO that returns full profile, using getProfile with ID for now
-        // Assuming getMe returns basic ID, need full profile details
-        if (currentUser?.id) {
-          data = await usersService.getProfile(currentUser.id);
-        }
+        const data = await profileService.fetchMyProfile();
+        setProfile({
+          user: data.user,
+          stats: data.stats,
+        });
       } else if (userId) {
-        data = await usersService.getProfile(userId);
+        const data = await publicProfileService.fetchProfile(userId);
+        setProfile({
+          user: data.user,
+          stats: data.stats,
+          relationship: data.relationship,
+        });
       }
 
-      if (data) {
-        setProfile(data);
-      }
-
-      // Fetch connections if tab is active
       if (activeTab === 'connections' && isOwnProfile) {
-        const conns = await usersService.getConnections();
-        setConnections(conns);
+        const conns = await friendsService.getConnections();
+        setConnections(conns.friends);
       }
 
     } catch (error) {
@@ -60,9 +80,33 @@ export default function ProfilePage() {
   // Effect to load connections when tab changes
   useEffect(() => {
     if (activeTab === 'connections' && isOwnProfile && connections.length === 0) {
-      usersService.getConnections().then(setConnections).catch(console.error);
+      friendsService
+        .getConnections()
+        .then((data) => setConnections(data.friends))
+        .catch(console.error);
     }
   }, [activeTab, isOwnProfile]);
+
+  const handleToggleFollow = async () => {
+    if (!profile?.user?.id) return;
+    try {
+      const next = profile.relationship?.isFollowing ? false : true;
+      await usersService.setFollow(profile.user.id, next);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              relationship: {
+                isFollowing: next,
+                isFollowedBy: prev.relationship?.isFollowedBy ?? false,
+              },
+            }
+          : prev
+      );
+    } catch (error) {
+      toast.error('Unable to update follow status');
+    }
+  };
 
   if (loading && !profile) {
     return (
@@ -96,11 +140,7 @@ export default function ProfilePage() {
             {/* Avatar */}
             <div className="relative">
               <div className="w-32 h-32 rounded-full border-4 border-prava-light-surface dark:border-prava-dark-surface bg-gradient-to-br from-prava-accent to-prava-accent-muted flex items-center justify-center shadow-lg overflow-hidden">
-                {profile.avatarUrl ? (
-                  <img src={profile.avatarUrl} alt={profile.displayName} className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-white font-bold text-4xl">{profile.displayName.charAt(0)}</span>
-                )}
+                <span className="text-white font-bold text-4xl">{profile.user.displayName.charAt(0)}</span>
               </div>
               {isOwnProfile && (
                 <button className="absolute bottom-2 right-2 p-2 rounded-full bg-prava-light-bg dark:bg-prava-dark-bg border border-prava-light-border dark:border-prava-dark-border shadow-sm hover:scale-105 transition-transform">
@@ -112,12 +152,12 @@ export default function ProfilePage() {
             {/* Info */}
             <div className="flex-1 text-center sm:text-left mb-2">
               <h1 className="text-3xl font-bold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                {profile.displayName}
+                {profile.user.displayName}
               </h1>
-              <p className="text-body text-prava-accent font-medium">@{profile.username}</p>
-              {profile.bio && (
+              <p className="text-body text-prava-accent font-medium">@{profile.user.username}</p>
+              {profile.user.bio && (
                 <p className="mt-2 text-body-sm text-prava-light-text-secondary dark:text-prava-dark-text-secondary max-w-md">
-                  {profile.bio}
+                  {profile.user.bio}
                 </p>
               )}
             </div>
@@ -133,9 +173,12 @@ export default function ProfilePage() {
                 </Link>
               ) : (
                 <>
-                  <button className="flex items-center gap-2 px-4 py-2 rounded-[14px] bg-prava-accent text-white font-semibold shadow-prava-glow hover:bg-prava-accent-muted transition-colors">
-                    {profile.isFollowing ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-                    {profile.isFollowing ? 'Following' : 'Follow'}
+                  <button
+                    onClick={handleToggleFollow}
+                    className="flex items-center gap-2 px-4 py-2 rounded-[14px] bg-prava-accent text-white font-semibold shadow-prava-glow hover:bg-prava-accent-muted transition-colors"
+                  >
+                    {profile.relationship?.isFollowing ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                    {profile.relationship?.isFollowing ? 'Following' : 'Follow'}
                   </button>
                   <button className="p-3 rounded-[14px] bg-prava-light-surface dark:bg-prava-dark-surface border border-prava-light-border dark:border-prava-dark-border hover:bg-prava-light-border/50 dark:hover:bg-prava-dark-border/50 transition-colors">
                     <MessageCircle className="w-5 h-5 text-prava-light-text-secondary dark:text-prava-dark-text-secondary" />
@@ -156,7 +199,7 @@ export default function ProfilePage() {
       >
         {[
           { label: 'Following', value: profile.stats.following, icon: Users },
-          { label: 'Followers', value: profile.stats.followers, icon: Users }, // Assuming API provides this, interface has it
+          { label: 'Followers', value: profile.stats.followers, icon: Users },
           { label: 'Posts', value: profile.stats.posts, icon: Share2 },
         ].map((stat, i) => (
           <GlassCard key={stat.label} delay={0.15 + i * 0.05} className="text-center py-4">
@@ -246,11 +289,7 @@ export default function ProfilePage() {
               connections.map(conn => (
                 <GlassCard key={conn.id} className="flex items-center gap-3 p-3">
                   <div className="w-12 h-12 rounded-full bg-prava-accent/15 flex items-center justify-center shrink-0">
-                    {conn.avatarUrl ? (
-                      <img src={conn.avatarUrl} alt={conn.displayName} className="w-full h-full rounded-full object-cover" />
-                    ) : (
-                      <span className="text-prava-accent font-bold">{conn.displayName.charAt(0)}</span>
-                    )}
+                    <span className="text-prava-accent font-bold">{conn.displayName.charAt(0)}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary truncate">

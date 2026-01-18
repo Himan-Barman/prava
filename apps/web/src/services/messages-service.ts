@@ -1,40 +1,62 @@
 import { apiClient } from '../adapters/api-client';
+import { getOrCreateDeviceId } from '../adapters/device-id';
+
+export type MessageContentType = 'text' | 'system' | 'media';
 
 export interface Message {
   id: string;
   conversationId: string;
   senderId: string;
   body: string;
-  contentType: 'text' | 'image' | 'video' | 'audio';
-  sequence: number;
+  contentType: MessageContentType;
+  sequence?: number;
   createdAt: string;
-  clientTimestamp?: string;
-  deliveryStatus: 'sent' | 'delivered' | 'read';
-  reactions: Record<string, string[]>; // emoji -> userIds
+  deletedForAllAt?: string | null;
 }
 
-export interface Conversation {
+export interface ConversationSummary {
   id: string;
-  type: 'direct' | 'group';
-  name?: string;
-  avatarUrl?: string;
-  lastMessage?: Message;
+  type: 'dm' | 'group';
+  title: string;
   unreadCount: number;
   updatedAt: string;
-  members: {
-    userId: string;
-    username: string;
-    displayName: string;
-    avatarUrl?: string;
-  }[];
+  lastMessageId?: string | null;
+  lastMessageSeq?: number | null;
+  lastMessageSenderUserId?: string | null;
+  lastMessageBody?: string | null;
+  lastMessageContentType?: MessageContentType | null;
+  lastMessageDeletedForAllAt?: string | null;
+  lastMessageCreatedAt?: string | null;
 }
+
+type BackendMessage = {
+  id?: string;
+  messageId?: string;
+  conversationId: string;
+  senderUserId: string;
+  body?: string;
+  contentType?: MessageContentType;
+  seq?: number;
+  createdAt?: string;
+  deletedForAllAt?: string | null;
+};
+
+const normalizeMessage = (input: BackendMessage): Message => {
+  return {
+    id: input.id ?? input.messageId ?? '',
+    conversationId: input.conversationId,
+    senderId: input.senderUserId,
+    body: input.body ?? '',
+    contentType: input.contentType ?? 'text',
+    sequence: input.seq,
+    createdAt: input.createdAt ?? new Date().toISOString(),
+    deletedForAllAt: input.deletedForAllAt ?? null,
+  };
+};
 
 class MessagesService {
   async listConversations(limit?: number) {
-    // Assuming endpoint exists based on pattern, though not explicitly seen in MessagesController
-    // It might be in ConversationsController if separate.
-    // Based on mobile app, it likely fetches from /conversations
-    return apiClient.get<Conversation[]>('/conversations', {
+    return apiClient.get<ConversationSummary[]>('/conversations', {
       query: {
         ...(limit && { limit: limit.toString() }),
       },
@@ -42,39 +64,86 @@ class MessagesService {
     });
   }
 
-  async listMessages(conversationId: string, params: { beforeSeq?: number; limit?: number } = {}) {
-    return apiClient.get<Message[]>(`/conversations/${conversationId}/messages`, {
-      query: {
-        ...(params.beforeSeq && { beforeSeq: params.beforeSeq.toString() }),
-        ...(params.limit && { limit: params.limit.toString() }),
-      },
-      auth: true,
-    });
+  async createDm(otherUserId: string) {
+    return apiClient.post<{ conversationId: string; created?: boolean }>(
+      '/conversations/dm',
+      {
+        auth: true,
+        body: { otherUserId },
+      }
+    );
   }
 
-  async sendMessage(conversationId: string, body: string, contentType: 'text' | 'image' = 'text') {
-    return apiClient.post<Message>(`/conversations/${conversationId}/messages`, {
-      body: {
-        body,
-        contentType,
-        clientTimestamp: new Date().toISOString(),
-        // deviceId handled by backend or auth service usually, but controller expected valid DTO
-        // Controller DTO: deviceId is required in SendMessageDto
-        deviceId: 'web-client', // Simplify for now or get from device-id adapter
-      },
-      auth: true,
+  async createGroup(title: string, memberIds: string[]) {
+    return apiClient.post<{ conversationId: string }>(
+      '/conversations/group',
+      {
+        auth: true,
+        body: { title, memberIds },
+      }
+    );
+  }
+
+  async listMessages(
+    conversationId: string,
+    params: { beforeSeq?: number; limit?: number } = {}
+  ) {
+    const data = await apiClient.get<BackendMessage[]>(
+      `/conversations/${conversationId}/messages`,
+      {
+        query: {
+          ...(params.beforeSeq && { beforeSeq: params.beforeSeq.toString() }),
+          ...(params.limit && { limit: params.limit.toString() }),
+        },
+        auth: true,
+      }
+    );
+    return (Array.isArray(data) ? data : []).map(normalizeMessage);
+  }
+
+  async sendMessage(
+    conversationId: string,
+    body: string,
+    contentType: MessageContentType = 'text'
+  ) {
+    const deviceId = getOrCreateDeviceId();
+    const data = await apiClient.post<{ message?: BackendMessage }>(
+      `/conversations/${conversationId}/messages`,
+      {
+        body: {
+          body,
+          contentType,
+          clientTimestamp: new Date().toISOString(),
+          deviceId,
+        },
+        auth: true,
+      }
+    );
+    if (data.message) {
+      return normalizeMessage(data.message);
+    }
+    return normalizeMessage({
+      conversationId,
+      senderUserId: '',
+      body,
+      contentType,
     });
   }
 
   async markRead(conversationId: string, lastReadSeq: number) {
-    return apiClient.post<{ success: boolean }>(`/conversations/${conversationId}/read`, {
-      body: {
-        lastReadSeq,
-        deviceId: 'web-client',
-      },
-      auth: true,
-    });
+    const deviceId = getOrCreateDeviceId();
+    return apiClient.post<{ success: boolean }>(
+      `/conversations/${conversationId}/read`,
+      {
+        body: {
+          lastReadSeq,
+          deviceId,
+        },
+        auth: true,
+      }
+    );
   }
 }
 
+export { normalizeMessage };
 export const messagesService = new MessagesService();

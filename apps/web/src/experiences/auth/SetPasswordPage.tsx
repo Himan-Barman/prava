@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Shield, CheckCircle } from 'lucide-react';
@@ -8,7 +8,6 @@ import {
   PravaPasswordInput,
   PravaButton
 } from '../../ui-system';
-import { authService } from '../../services/auth-service';
 import { useAuth } from '../../context/auth-context';
 import { ApiException } from '../../adapters/api-client';
 import toast from 'react-hot-toast';
@@ -42,7 +41,7 @@ export default function SetPasswordPage() {
   const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
   const canSubmit = isPasswordValid && passwordsMatch && !loading;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!canSubmit) {
       if (!isPasswordValid) {

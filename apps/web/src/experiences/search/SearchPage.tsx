@@ -1,12 +1,51 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Search as SearchIcon, Users, MessageCircle, Hash, Clock } from 'lucide-react';
 import { GlassCard, PravaInput } from '../../ui-system';
+import { usersService, UserSearchResult } from '../../services/users-service';
+import { smartToast } from '../../ui-system/components/SmartToast';
 
 const recentSearches = ['alice', 'team discussion', 'project updates'];
 
 export default function SearchPage() {
   const [query, setQuery] = useState('');
+  const [results, setResults] = useState<UserSearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setResults([]);
+      return;
+    }
+
+    setLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const data = await usersService.searchUsers(trimmed);
+        setResults(data);
+      } catch (error) {
+        smartToast.error('Search failed');
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const handleToggleFollow = async (userId: string) => {
+    try {
+      const result = await usersService.toggleFollow(userId);
+      setResults((prev) =>
+        prev.map((item) =>
+          item.id === userId ? { ...item, isFollowing: result.following } : item
+        )
+      );
+    } catch {
+      smartToast.error('Unable to update follow status');
+    }
+  };
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -94,21 +133,60 @@ export default function SearchPage() {
         </motion.div>
       )}
 
-      {/* Search Results Placeholder */}
-      {query && (
+      {/* Search Results */}
+      {query.trim().length >= 2 && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <GlassCard className="text-center py-12">
-            <SearchIcon className="w-12 h-12 mx-auto mb-4 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" />
-            <h3 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary mb-2">
-              Searching for &quot;{query}&quot;
-            </h3>
-            <p className="text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-              Results will appear here
-            </p>
+          <GlassCard>
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="w-8 h-8 border-2 border-prava-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+                  Searching...
+                </p>
+              </div>
+            ) : results.length === 0 ? (
+              <div className="text-center py-12">
+                <SearchIcon className="w-12 h-12 mx-auto mb-4 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" />
+                <h3 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary mb-2">
+                  No results for &quot;{query}&quot;
+                </h3>
+                <p className="text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+                  Try another name or handle
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-prava-light-border/50 dark:divide-prava-dark-border/50">
+                {results.map((user) => (
+                  <div key={user.id} className="flex items-center gap-4 py-4">
+                    <div className="w-12 h-12 rounded-full bg-prava-accent/15 flex items-center justify-center text-prava-accent font-semibold">
+                      {user.displayName.charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary">
+                        {user.displayName}
+                      </p>
+                      <p className="text-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+                        @{user.username}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleToggleFollow(user.id)}
+                      className={`px-4 py-2 rounded-[12px] text-body-sm font-semibold transition-colors ${
+                        user.isFollowing
+                          ? 'bg-prava-light-surface dark:bg-prava-dark-surface text-prava-light-text-primary dark:text-prava-dark-text-primary'
+                          : 'bg-prava-accent text-white'
+                      }`}
+                    >
+                      {user.isFollowing ? 'Following' : 'Follow'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </GlassCard>
         </motion.div>
       )}

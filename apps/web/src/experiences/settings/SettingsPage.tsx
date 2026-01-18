@@ -1,5 +1,5 @@
-import React from 'react';
 import { motion } from 'framer-motion';
+import type { ElementType } from 'react';
 import { Link } from 'react-router-dom';
 import {
   User, Link as LinkIcon, Shield, Smartphone, UserX,
@@ -11,7 +11,7 @@ import { GlassCard } from '../../ui-system';
 interface SettingsItem {
   label: string;
   description: string;
-  icon: React.ElementType;
+  icon: ElementType;
   path: string;
 }
 
@@ -43,7 +43,7 @@ function SettingsGroup({ title, items }: { title: string; items: SettingsItem[] 
         {title}
       </h2>
       <GlassCard className="divide-y divide-prava-light-border/50 dark:divide-prava-dark-border/50">
-        {items.map((item, i) => (
+        {items.map((item) => (
           <Link
             key={item.path}
             to={item.path}

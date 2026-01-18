@@ -1,12 +1,13 @@
-import React from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useAuth } from '../context/auth-context';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { LenisProvider } from './LenisProvider';
 import { smartToast } from '../ui-system/components/SmartToast';
 
 interface AppShellProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 // Routes that don't show the sidebar
@@ -14,15 +15,28 @@ const authRoutes = ['/login', '/signup', '/verify-email', '/set-password', '/for
 
 export default function AppShell({ children }: AppShellProps) {
   const location = useLocation();
+  const { isAuthenticated, isLoading } = useAuth();
   const isAuthRoute = authRoutes.some(route => location.pathname.startsWith(route));
 
   // Dismiss toasts on route change
-  React.useEffect(() => {
+  useEffect(() => {
     smartToast.dismissAll();
   }, [location.pathname]);
 
   // Auth pages have no shell
   if (isAuthRoute) {
+    return <>{children}</>;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-prava-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
     return <>{children}</>;
   }
 

@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ConversationList } from './components/ConversationList';
 import { ChatWindow } from './components/ChatWindow';
-import { Conversation } from '../../services/messages-service';
+import { ConversationSummary } from '../../services/messages-service';
 import { MessageCircle } from 'lucide-react';
-import { GlassCard } from '../../ui-system';
 
 export default function ChatsPage() {
-  const [activeChat, setActiveChat] = useState<Conversation | null>(null);
+  const navigate = useNavigate();
+  const [activeChat, setActiveChat] = useState<ConversationSummary | null>(null);
 
   // For mobile view logic usually, but we'll implement simple conditional for now
   // Or CSS Grid/Flex for desktop split
@@ -19,8 +20,7 @@ export default function ChatsPage() {
           activeId={activeChat?.id}
           onSelect={setActiveChat}
           onNewChat={() => {
-            // Logic to show friend picker to start new chat
-            console.log('New chat');
+            navigate('/chats/new');
           }}
         />
       </div>

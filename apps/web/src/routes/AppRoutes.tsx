@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import { useAuth } from '../context/auth-context';
 
 // Auth Pages
@@ -36,7 +37,7 @@ import {
 } from '../experiences';
 
 // Protected Route wrapper
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
@@ -56,7 +57,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 // Public Route wrapper (redirect if already logged in)
-function PublicRoute({ children }: { children: React.ReactNode }) {
+function PublicRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
@@ -74,6 +75,28 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Root redirect with auth awareness
+function AuthRedirect() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-prava-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <Navigate
+      to={isAuthenticated ? '/feed' : '/login'}
+      state={{ from: location }}
+      replace
+    />
+  );
+}
+
 const AppRoutes = () => {
   return (
     <Routes>
@@ -85,7 +108,7 @@ const AppRoutes = () => {
       <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
 
       {/* Protected Routes */}
-      <Route path="/" element={<Navigate to="/feed" replace />} />
+      <Route path="/" element={<AuthRedirect />} />
       <Route path="/feed" element={<ProtectedRoute><FeedPage /></ProtectedRoute>} />
       <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
       <Route path="/chats/archived" element={<ProtectedRoute><ArchivedChatsPage /></ProtectedRoute>} />
@@ -109,7 +132,7 @@ const AppRoutes = () => {
       <Route path="/support" element={<ProtectedRoute><SupportPage /></ProtectedRoute>} />
 
       {/* Catch all */}
-      <Route path="*" element={<Navigate to="/feed" replace />} />
+      <Route path="*" element={<AuthRedirect />} />
     </Routes>
   );
 };

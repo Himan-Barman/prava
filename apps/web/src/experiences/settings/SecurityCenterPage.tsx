@@ -1,7 +1,6 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Shield, Key, Smartphone, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Shield, Key, Smartphone } from 'lucide-react';
 import { GlassCard, PravaButton } from '../../ui-system';
 
 export default function SecurityCenterPage() {
