@@ -1,5 +1,5 @@
 const rawBaseUrl =
-  import.meta.env.VITE_API_BASE_URL ?? 'https://prava-99tv.onrender.com/api';
+  import.meta.env.VITE_API_BASE_URL ?? 'https://prava-humg.onrender.com/api';
 
 export const apiBaseUrl = rawBaseUrl.replace(/\/$/, '');
 

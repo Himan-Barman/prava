@@ -7,7 +7,11 @@ const resolveWsBase = () => {
     return explicit.replace(/\/+$/, '').replace(/^http/, 'ws');
   }
 
-  const apiBase = (import.meta.env.VITE_API_URL || 'http://localhost:3100/api').replace(/\/+$/, '');
+  const apiBase = (
+    (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim().length > 0)
+      ? import.meta.env.VITE_API_URL
+      : (import.meta.env.PROD ? 'https://prava-humg.onrender.com/api' : 'http://localhost:3100/api')
+  ).replace(/\/+$/, '');
   const trimmed = apiBase.replace(/\/api$/i, '');
   return trimmed.replace(/^http/, 'ws');
 };

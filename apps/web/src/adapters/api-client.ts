@@ -8,7 +8,11 @@ import { secureStore } from './secure-store';
 import { getOrCreateDeviceId } from './device-id';
 
 // Get API URL from environment or default (include /api prefix)
-const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3100/api').replace(/\/+$/, '');
+const API_BASE_URL = (
+  (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim().length > 0)
+    ? import.meta.env.VITE_API_URL
+    : (import.meta.env.PROD ? 'https://prava-humg.onrender.com/api' : 'http://localhost:3100/api')
+).replace(/\/+$/, '');
 
 export class ApiException extends Error {
   constructor(
