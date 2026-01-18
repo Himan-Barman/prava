@@ -163,7 +163,11 @@ int main() {
                                    : trantor::Logger::kDebug);
 
   auto db = drogon::orm::DbClient::newPgClient(cfg.db_url, 20);
+  db->setTimeout(5.0);
   auto redis = BuildRedisClient(cfg.redis_url);
+  if (redis) {
+    redis->setTimeout(2.0);
+  }
   AppState::Instance().Init(cfg, db, redis);
   WsHub::Instance().Init(redis);
 
