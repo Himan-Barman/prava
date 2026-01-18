@@ -2,8 +2,15 @@
 #include <trantor/utils/Logger.h>
 
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
+
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#else
+#include <netdb.h>
+#endif
 
 #include "app_state.h"
 #include "config/config.h"
@@ -143,6 +150,36 @@ drogon::nosql::RedisClientPtr BuildRedisClient(const std::string& redis_url) {
   }
 
   trantor::InetAddress address(host, port);
+  if (address.isUnspecified()) {
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+
+    const std::string port_str = std::to_string(port);
+    addrinfo* result = nullptr;
+    const int rc = getaddrinfo(host.c_str(), port_str.c_str(), &hints, &result);
+    if (rc != 0 || result == nullptr) {
+      throw std::runtime_error("failed to resolve redis host");
+    }
+    std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> guard(result,
+                                                             freeaddrinfo);
+    for (addrinfo* it = result; it != nullptr; it = it->ai_next) {
+      if (it->ai_family == AF_INET) {
+        address = trantor::InetAddress(
+            *reinterpret_cast<sockaddr_in*>(it->ai_addr));
+        break;
+      }
+      if (it->ai_family == AF_INET6) {
+        address = trantor::InetAddress(
+            *reinterpret_cast<sockaddr_in6*>(it->ai_addr));
+        break;
+      }
+    }
+    if (address.isUnspecified()) {
+      throw std::runtime_error("failed to resolve redis host");
+    }
+  }
   return drogon::nosql::RedisClient::newRedisClient(address, 10, password, db,
                                                     username);
 }
