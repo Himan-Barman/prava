@@ -47,8 +47,7 @@ void WsFanout::Publish(const std::string& /*scope*/,
   if (!topic.empty() && redis_ && subscribed_.load()) {
     try {
       const std::string channel = std::string(kChannelPrefix) + topic;
-      redis_->execCommandSync<void>(
-          [](const drogon::nosql::RedisResult&) {},
+      redis_->execCommandSync(
           "PUBLISH %s %s",
           channel.c_str(),
           payload.c_str());

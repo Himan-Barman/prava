@@ -83,8 +83,7 @@ void PublishNotification(const std::string& user_id,
     const std::string message = Json::writeString(builder, payload);
     const std::string channel = "ws:" + UserTopic(user_id);
     try {
-      redis->execCommandSync<void>(
-          [](const drogon::nosql::RedisResult&) {},
+      redis->execCommandSync(
           "PUBLISH %s %s",
           channel.c_str(),
           message.c_str());
@@ -109,9 +108,8 @@ Json::Value NotificationsService::ListForUser(
   const int fetch_limit = limit_value + 1;
   const bool use_cursor = cursor.has_value() && IsValidCursor(*cursor);
 
-  drogon::orm::Result rows;
-  if (use_cursor) {
-    rows = db_->execSqlSync(
+  auto rows = use_cursor
+    ? db_->execSqlSync(
         "SELECT "
         "n.id, "
         "n.type, "
@@ -133,9 +131,8 @@ Json::Value NotificationsService::ListForUser(
         kTimestampFormat,
         user_id,
         *cursor,
-        fetch_limit);
-  } else {
-    rows = db_->execSqlSync(
+        fetch_limit)
+    : db_->execSqlSync(
         "SELECT "
         "n.id, "
         "n.type, "
@@ -157,7 +154,6 @@ Json::Value NotificationsService::ListForUser(
         kTimestampFormat,
         user_id,
         fetch_limit);
-  }
 
   Json::Value items(Json::arrayValue);
   for (const auto& row : rows) {

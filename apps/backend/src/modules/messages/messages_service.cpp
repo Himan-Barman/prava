@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cctype>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -202,7 +203,7 @@ Json::Value MessagesService::SendMessage(const SendMessageInput& input) {
   std::string media_asset = input.media_asset_id.value_or("");
   std::string client_timestamp = input.client_timestamp.value_or("");
 
-  drogon::orm::Result inserted;
+  std::optional<drogon::orm::Result> inserted;
   try {
     inserted = db_->execSqlSync(
         "INSERT INTO messages (conversation_id, sender_user_id, sender_device_id, "
@@ -265,7 +266,7 @@ Json::Value MessagesService::SendMessage(const SendMessageInput& input) {
     throw;
   }
 
-  if (inserted.empty()) {
+  if (!inserted.has_value() || inserted->empty()) {
     throw MessagesError(drogon::k500InternalServerError,
                         "Failed to create message");
   }
@@ -275,7 +276,7 @@ Json::Value MessagesService::SendMessage(const SendMessageInput& input) {
       input.conversation_id);
 
   Json::Value response;
-  response["message"] = MapMessageRow(inserted.front());
+  response["message"] = MapMessageRow(inserted->front());
   response["message"]["reactions"] = Json::Value(Json::arrayValue);
   response["created"] = true;
   return response;
@@ -288,9 +289,8 @@ Json::Value MessagesService::ListMessages(
   const int limit_value = ClampLimit(limit, 50, 1, 100);
   const bool use_before = before_seq.has_value();
 
-  drogon::orm::Result rows;
-  if (use_before) {
-    rows = db_->execSqlSync(
+  auto rows = use_before
+    ? db_->execSqlSync(
         "SELECT "
         "m.id AS id, "
         "m.conversation_id AS conversation_id, "
@@ -328,9 +328,8 @@ Json::Value MessagesService::ListMessages(
         kTimestampFormat,
         conversation_id,
         before_seq.value(),
-        limit_value);
-  } else {
-    rows = db_->execSqlSync(
+        limit_value)
+    : db_->execSqlSync(
         "SELECT "
         "m.id AS id, "
         "m.conversation_id AS conversation_id, "
@@ -368,7 +367,6 @@ Json::Value MessagesService::ListMessages(
         kTimestampFormat,
         conversation_id,
         limit_value);
-  }
 
   Json::Value items(Json::arrayValue);
   for (const auto& row : rows) {

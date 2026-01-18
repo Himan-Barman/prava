@@ -666,8 +666,7 @@ void PublishFeedEvent(const Json::Value& payload) {
     const std::string message = Json::writeString(builder, payload);
     const std::string channel = "ws:" + FeedTopic();
     try {
-      redis->execCommandSync<void>(
-          [](const drogon::nosql::RedisResult&) {},
+      redis->execCommandSync(
           "PUBLISH %s %s",
           channel.c_str(),
           message.c_str());
@@ -1115,9 +1114,8 @@ Json::Value ListFollowingFeed(drogon::orm::DbClientPtr db,
       ") "
       "ORDER BY p.created_at DESC LIMIT ?";
 
-  drogon::orm::Result rows;
-  if (use_before) {
-    rows = db->execSqlSync(
+  auto rows = use_before
+    ? db->execSqlSync(
         query,
         kTimestampFormat,
         user_id,
@@ -1128,9 +1126,8 @@ Json::Value ListFollowingFeed(drogon::orm::DbClientPtr db,
         user_id,
         user_id,
         user_id,
-        limit_value);
-  } else {
-    rows = db->execSqlSync(
+        limit_value)
+    : db->execSqlSync(
         query,
         kTimestampFormat,
         user_id,
@@ -1141,7 +1138,6 @@ Json::Value ListFollowingFeed(drogon::orm::DbClientPtr db,
         user_id,
         user_id,
         limit_value);
-  }
 
   Json::Value items(Json::arrayValue);
   for (const auto& row : rows) {
@@ -1222,9 +1218,8 @@ Json::Value ListForYouFeed(drogon::orm::DbClientPtr db,
       ")"
       ") SELECT * FROM base ORDER BY created_at DESC LIMIT ?";
 
-  drogon::orm::Result rows;
-  if (use_before) {
-    rows = db->execSqlSync(
+  auto rows = use_before
+    ? db->execSqlSync(
         query,
         user_id,
         user_id,
@@ -1237,9 +1232,8 @@ Json::Value ListForYouFeed(drogon::orm::DbClientPtr db,
         user_id,
         user_id,
         user_id,
-        candidate_limit);
-  } else {
-    rows = db->execSqlSync(
+        candidate_limit)
+    : db->execSqlSync(
         query,
         user_id,
         user_id,
@@ -1252,7 +1246,6 @@ Json::Value ListForYouFeed(drogon::orm::DbClientPtr db,
         user_id,
         user_id,
         candidate_limit);
-  }
 
   Json::Value items(Json::arrayValue);
   for (const auto& row : rows) {

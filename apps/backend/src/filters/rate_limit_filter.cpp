@@ -52,28 +52,23 @@ void RateLimitFilter::doFilter(const drogon::HttpRequestPtr& req,
   const auto cutoff = now - static_cast<long long>(kWindowSec) * 1000;
 
   try {
-    redis->execCommandSync<void>(
-        [](const drogon::nosql::RedisResult&) {},
+    redis->execCommandSync(
         "ZADD %s %lld %lld",
         key.c_str(),
         static_cast<long long>(now),
         static_cast<long long>(now));
 
-    redis->execCommandSync<void>(
-        [](const drogon::nosql::RedisResult&) {},
+    redis->execCommandSync(
         "ZREMRANGEBYSCORE %s 0 %lld",
         key.c_str(),
         static_cast<long long>(cutoff));
 
-    const auto count = redis->execCommandSync<long long>(
-        [](const drogon::nosql::RedisResult& result) {
-          return static_cast<long long>(result.asInteger());
-        },
+    const auto count_result = redis->execCommandSync(
         "ZCARD %s",
         key.c_str());
+    const auto count = static_cast<long long>(count_result.asInteger());
 
-    redis->execCommandSync<void>(
-        [](const drogon::nosql::RedisResult&) {},
+    redis->execCommandSync(
         "EXPIRE %s %d",
         key.c_str(),
         kWindowSec);
