@@ -118,6 +118,13 @@
       "when": 1768012000000,
       "tag": "0015_user_interest_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1768727489255,
+      "tag": "0016_enable_pgcrypto",
+      "breakpoints": true
     }
   ]
 }
