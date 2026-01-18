@@ -4,6 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    ca-certificates \
     cmake \
     git \
     pkg-config \
@@ -13,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     libpq-dev \
     libhiredis-dev \
+  && update-ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
