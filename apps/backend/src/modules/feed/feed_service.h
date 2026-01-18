@@ -5,6 +5,8 @@
 
 #include <drogon/HttpTypes.h>
 #include <drogon/orm/DbClient.h>
+
+#include "db/sql.h"
 #include <json/json.h>
 
 struct FeedError : public std::runtime_error {

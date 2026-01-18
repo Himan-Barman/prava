@@ -51,7 +51,7 @@ Json::Value SupportService::CreateTicket(const SupportTicketInput& input) {
     throw SupportError(drogon::k400BadRequest, "Message is required");
   }
 
-  const auto user_rows = db_->execSqlSync(
+  const auto user_rows = db::ExecSqlSync(db_, 
       "SELECT id, email, username, display_name FROM users WHERE id = ? LIMIT 1",
       input.user_id);
 
@@ -65,7 +65,7 @@ Json::Value SupportService::CreateTicket(const SupportTicketInput& input) {
   }
 
   const std::string category_value = input.category.value_or("");
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "INSERT INTO support_tickets (user_id, type, category, message, metadata) "
       "VALUES (?, ?, NULLIF(?, ''), ?, ?::jsonb) "
       "RETURNING id, to_char(created_at at time zone 'utc', ?) AS created_at",

@@ -37,21 +37,21 @@ Json::Value DevicesService::RegisterPushToken(const std::string& user_id,
                                               const std::string& device_id,
                                               const std::string& platform,
                                               const std::string& token) {
-  const auto existing = db_->execSqlSync(
+  const auto existing = db::ExecSqlSync(db_, 
       "SELECT id FROM push_tokens WHERE token = ? LIMIT 1",
       token);
 
   if (!existing.empty()) {
     const std::string token_id = existing.front()["id"].as<std::string>();
 
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "DELETE FROM push_tokens "
         "WHERE user_id = ? AND device_id = ? AND id <> ?",
         user_id,
         device_id,
         token_id);
 
-    const auto updated = db_->execSqlSync(
+    const auto updated = db::ExecSqlSync(db_, 
         "UPDATE push_tokens SET user_id = ?, device_id = ?, platform = ?, "
         "updated_at = NOW(), revoked_at = NULL "
         "WHERE id = ? "
@@ -72,7 +72,7 @@ Json::Value DevicesService::RegisterPushToken(const std::string& user_id,
     }
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "INSERT INTO push_tokens (user_id, device_id, platform, token, "
       "updated_at, revoked_at) "
       "VALUES (?, ?, ?, ?, NOW(), NULL) "
@@ -101,7 +101,7 @@ Json::Value DevicesService::RegisterPushToken(const std::string& user_id,
 
 Json::Value DevicesService::RevokePushToken(const std::string& user_id,
                                             const std::string& device_id) {
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE push_tokens SET revoked_at = NOW(), updated_at = NOW() "
       "WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL",
       user_id,

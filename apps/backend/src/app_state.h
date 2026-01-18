@@ -5,6 +5,8 @@
 #include <drogon/nosql/RedisClient.h>
 #include <drogon/orm/DbClient.h>
 
+#include "db/sql.h"
+
 #include "config/config.h"
 
 class AppState {

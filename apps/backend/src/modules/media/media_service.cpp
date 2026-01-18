@@ -409,7 +409,7 @@ Json::Value MediaService::InitUpload(const MediaInitInput& input) {
   const long long size_bytes_value =
       input.size_bytes.value_or(-1);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "INSERT INTO media_assets (id, user_id, conversation_id, status, content_type, "
       "file_name, size_bytes, sha256, storage_bucket, storage_key, storage_region, "
       "metadata, encryption_algorithm, encryption_key_id, encryption_iv, "
@@ -467,7 +467,7 @@ Json::Value MediaService::CompleteUpload(const MediaCompleteInput& input) {
     throw MediaError(drogon::k400BadRequest, "Media file exceeds size limit");
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id, user_id, status, size_bytes, sha256, metadata, file_name "
       "FROM media_assets WHERE id = ? LIMIT 1",
       input.asset_id);
@@ -500,7 +500,7 @@ Json::Value MediaService::CompleteUpload(const MediaCompleteInput& input) {
           ? ""
           : ToJsonString(input.metadata);
 
-  const auto updated = db_->execSqlSync(
+  const auto updated = db::ExecSqlSync(db_, 
       "UPDATE media_assets SET status = 'uploaded', "
       "size_bytes = COALESCE(NULLIF(?, -1), size_bytes), "
       "sha256 = COALESCE(NULLIF(?, ''), sha256), "
@@ -530,7 +530,7 @@ Json::Value MediaService::CompleteUpload(const MediaCompleteInput& input) {
 std::optional<Json::Value> MediaService::GetAssetForUser(
     const std::string& asset_id,
     const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id, user_id, conversation_id, status, content_type, file_name, "
       "size_bytes, sha256, storage_bucket, storage_key, storage_region, metadata, "
       "encryption_algorithm, encryption_key_id, encryption_iv, encryption_key_hash, "
@@ -610,7 +610,7 @@ Json::Value MediaService::AssertAssetReadyForMessage(
     const std::string& asset_id,
     const std::string& user_id,
     const std::string& conversation_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id, user_id, conversation_id, status "
       "FROM media_assets WHERE id = ? LIMIT 1",
       asset_id);
@@ -632,7 +632,7 @@ Json::Value MediaService::AssertAssetReadyForMessage(
                        "Media asset is not in this conversation");
     }
   } else {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "UPDATE media_assets SET conversation_id = ?, updated_at = NOW() "
         "WHERE id = ?",
         conversation_id,

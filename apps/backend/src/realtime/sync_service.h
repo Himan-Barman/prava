@@ -6,6 +6,8 @@
 
 #include <drogon/orm/DbClient.h>
 
+#include "db/sql.h"
+
 struct SyncInput {
   std::string user_id;
   std::string device_id;

@@ -78,7 +78,7 @@ void AssertMediaAssetReady(drogon::orm::DbClientPtr db,
                            const std::string& asset_id,
                            const std::string& user_id,
                            const std::string& conversation_id) {
-  const auto rows = db->execSqlSync(
+  const auto rows = db::ExecSqlSync(db, 
       "SELECT id, user_id, conversation_id, status "
       "FROM media_assets WHERE id = ? LIMIT 1",
       asset_id);
@@ -101,7 +101,7 @@ void AssertMediaAssetReady(drogon::orm::DbClientPtr db,
                           "Media asset is not in this conversation");
     }
   } else {
-    db->execSqlSync(
+    db::ExecSqlSync(db, 
         "UPDATE media_assets SET conversation_id = ?, updated_at = NOW() "
         "WHERE id = ?",
         conversation_id,
@@ -153,7 +153,7 @@ Json::Value MessagesService::SendMessage(const SendMessageInput& input) {
   }
 
   if (input.client_temp_id && !input.client_temp_id->empty()) {
-    const auto existing = db_->execSqlSync(
+    const auto existing = db::ExecSqlSync(db_, 
         "SELECT id, conversation_id, sender_user_id, sender_device_id, seq, "
         "content_type, body, client_temp_id, media_asset_id, edit_version, "
         "to_char(client_timestamp at time zone 'utc', ?) AS client_timestamp, "
@@ -184,14 +184,14 @@ Json::Value MessagesService::SendMessage(const SendMessageInput& input) {
     }
   }
 
-  const auto convo_rows = db_->execSqlSync(
+  const auto convo_rows = db::ExecSqlSync(db_, 
       "SELECT id FROM conversations WHERE id = ? FOR UPDATE",
       input.conversation_id);
   if (convo_rows.empty()) {
     throw MessagesError(drogon::k400BadRequest, "Conversation not found");
   }
 
-  const auto seq_rows = db_->execSqlSync(
+  const auto seq_rows = db::ExecSqlSync(db_, 
       "SELECT COALESCE(MAX(seq), 0) + 1 AS next "
       "FROM messages WHERE conversation_id = ?",
       input.conversation_id);
@@ -205,7 +205,7 @@ Json::Value MessagesService::SendMessage(const SendMessageInput& input) {
 
   std::optional<drogon::orm::Result> inserted;
   try {
-    inserted = db_->execSqlSync(
+    inserted = db::ExecSqlSync(db_, 
         "INSERT INTO messages (conversation_id, sender_user_id, sender_device_id, "
         "body, content_type, client_timestamp, client_temp_id, media_asset_id, seq) "
         "VALUES (?, ?, ?, ?, ?, NULLIF(?, '')::timestamptz, "
@@ -233,7 +233,7 @@ Json::Value MessagesService::SendMessage(const SendMessageInput& input) {
         kTimestampFormat);
   } catch (const std::exception&) {
     if (input.client_temp_id && !input.client_temp_id->empty()) {
-      const auto existing = db_->execSqlSync(
+      const auto existing = db::ExecSqlSync(db_, 
           "SELECT id, conversation_id, sender_user_id, sender_device_id, seq, "
           "content_type, body, client_temp_id, media_asset_id, edit_version, "
           "to_char(client_timestamp at time zone 'utc', ?) AS client_timestamp, "
@@ -271,7 +271,7 @@ Json::Value MessagesService::SendMessage(const SendMessageInput& input) {
                         "Failed to create message");
   }
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE conversations SET updated_at = NOW() WHERE id = ?",
       input.conversation_id);
 
@@ -290,7 +290,7 @@ Json::Value MessagesService::ListMessages(
   const bool use_before = before_seq.has_value();
 
   auto rows = use_before
-    ? db_->execSqlSync(
+    ? db::ExecSqlSync(db_, 
         "SELECT "
         "m.id AS id, "
         "m.conversation_id AS conversation_id, "
@@ -329,7 +329,7 @@ Json::Value MessagesService::ListMessages(
         conversation_id,
         before_seq.value(),
         limit_value)
-    : db_->execSqlSync(
+    : db::ExecSqlSync(db_, 
         "SELECT "
         "m.id AS id, "
         "m.conversation_id AS conversation_id, "
@@ -387,7 +387,7 @@ Json::Value MessagesService::ListMessages(
 }
 
 void MessagesService::MarkRead(const ReceiptInput& input) {
-  const auto existing = db_->execSqlSync(
+  const auto existing = db::ExecSqlSync(db_, 
       "SELECT last_read_seq, last_delivered_seq "
       "FROM sync_state WHERE user_id = ? AND device_id = ? AND conversation_id = ? "
       "LIMIT 1",
@@ -400,7 +400,7 @@ void MessagesService::MarkRead(const ReceiptInput& input) {
           ? 0
           : existing.front()["last_read_seq"].as<int>();
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE conversation_members "
       "SET last_read_seq = GREATEST(COALESCE(last_read_seq, 0), ?) "
       "WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL",
@@ -408,7 +408,7 @@ void MessagesService::MarkRead(const ReceiptInput& input) {
       input.conversation_id,
       input.user_id);
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO sync_state (user_id, device_id, conversation_id, "
       "last_delivered_seq, last_read_seq, last_sync_at, updated_at) "
       "VALUES (?, ?, ?, ?, ?, NOW(), NOW()) "
@@ -423,7 +423,7 @@ void MessagesService::MarkRead(const ReceiptInput& input) {
       input.seq);
 
   if (input.seq > prev_read) {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "INSERT INTO message_device_states (message_id, device_id, delivered_at, read_at) "
         "SELECT m.id, ?, NOW(), NOW() "
         "FROM messages m "
@@ -436,7 +436,7 @@ void MessagesService::MarkRead(const ReceiptInput& input) {
         prev_read,
         input.seq);
 
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "DELETE FROM message_retries mr "
         "USING messages m "
         "WHERE mr.message_id = m.id AND mr.device_id = ? "
@@ -448,7 +448,7 @@ void MessagesService::MarkRead(const ReceiptInput& input) {
 }
 
 void MessagesService::MarkDelivered(const ReceiptInput& input) {
-  const auto existing = db_->execSqlSync(
+  const auto existing = db::ExecSqlSync(db_, 
       "SELECT last_delivered_seq "
       "FROM sync_state WHERE user_id = ? AND device_id = ? AND conversation_id = ? "
       "LIMIT 1",
@@ -461,7 +461,7 @@ void MessagesService::MarkDelivered(const ReceiptInput& input) {
           ? 0
           : existing.front()["last_delivered_seq"].as<int>();
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO sync_state (user_id, device_id, conversation_id, "
       "last_delivered_seq, last_sync_at, updated_at) "
       "VALUES (?, ?, ?, ?, NOW(), NOW()) "
@@ -474,7 +474,7 @@ void MessagesService::MarkDelivered(const ReceiptInput& input) {
       input.seq);
 
   if (input.seq > prev_delivered) {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "INSERT INTO message_device_states (message_id, device_id, delivered_at) "
         "SELECT m.id, ?, NOW() "
         "FROM messages m "
@@ -486,7 +486,7 @@ void MessagesService::MarkDelivered(const ReceiptInput& input) {
         prev_delivered,
         input.seq);
 
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "DELETE FROM message_retries mr "
         "USING messages m "
         "WHERE mr.message_id = m.id AND mr.device_id = ? "
@@ -500,7 +500,7 @@ void MessagesService::MarkDelivered(const ReceiptInput& input) {
 std::optional<Json::Value> MessagesService::GetMessage(
     const std::string& conversation_id,
     const std::string& message_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id, conversation_id, sender_user_id, sender_device_id, seq, "
       "content_type, body, client_temp_id, media_asset_id, edit_version, "
       "to_char(client_timestamp at time zone 'utc', ?) AS client_timestamp, "
@@ -529,7 +529,7 @@ std::optional<Json::Value> MessagesService::GetMessage(
 Json::Value MessagesService::ListMessageReceipts(
     const std::string& conversation_id,
     const std::string& message_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT DISTINCT ON (mds.device_id) "
       "mds.device_id AS device_id, "
       "to_char(mds.delivered_at at time zone 'utc', ?) AS delivered_at, "
@@ -563,7 +563,7 @@ std::optional<Json::Value> MessagesService::EditMessage(
     const std::string& message_id,
     const std::string& user_id,
     const std::string& body) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "UPDATE messages SET body = ?, edit_version = edit_version + 1 "
       "WHERE id = ? AND conversation_id = ? AND sender_user_id = ? "
       "AND content_type = 'text' AND deleted_for_all_at IS NULL "
@@ -595,7 +595,7 @@ std::optional<Json::Value> MessagesService::DeleteMessageForAll(
     const std::string& conversation_id,
     const std::string& message_id,
     const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "UPDATE messages SET deleted_for_all_at = NOW(), body = '', "
       "content_type = 'system' "
       "WHERE id = ? AND conversation_id = ? AND sender_user_id = ? "
@@ -625,7 +625,7 @@ std::optional<Json::Value> MessagesService::DeleteMessageForAll(
 
 std::optional<Json::Value> MessagesService::SetReaction(
     const ReactionInput& input) {
-  const auto exists = db_->execSqlSync(
+  const auto exists = db::ExecSqlSync(db_, 
       "SELECT id FROM messages WHERE id = ? AND conversation_id = ? "
       "AND deleted_for_all_at IS NULL LIMIT 1",
       input.message_id,
@@ -635,7 +635,7 @@ std::optional<Json::Value> MessagesService::SetReaction(
     return std::nullopt;
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "INSERT INTO message_reactions (message_id, user_id, emoji, reacted_at, updated_at) "
       "VALUES (?, ?, ?, NOW(), NOW()) "
       "ON CONFLICT (message_id, user_id) DO UPDATE SET "
@@ -666,7 +666,7 @@ std::optional<Json::Value> MessagesService::SetReaction(
 bool MessagesService::RemoveReaction(const std::string& conversation_id,
                                      const std::string& message_id,
                                      const std::string& user_id) {
-  const auto exists = db_->execSqlSync(
+  const auto exists = db::ExecSqlSync(db_, 
       "SELECT id FROM messages WHERE id = ? AND conversation_id = ? LIMIT 1",
       message_id,
       conversation_id);
@@ -674,7 +674,7 @@ bool MessagesService::RemoveReaction(const std::string& conversation_id,
     return false;
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? "
       "RETURNING message_id",
       message_id,

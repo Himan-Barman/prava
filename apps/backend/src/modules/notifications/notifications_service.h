@@ -4,6 +4,8 @@
 #include <string>
 
 #include <drogon/orm/DbClient.h>
+
+#include "db/sql.h"
 #include <json/json.h>
 
 struct NotificationInput {

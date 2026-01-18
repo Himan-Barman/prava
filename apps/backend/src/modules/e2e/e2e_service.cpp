@@ -51,7 +51,7 @@ void E2eService::EnsureKeyAccess(const std::string& requester_id,
     return;
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT 1 "
       "FROM conversation_members cm1 "
       "JOIN conversation_members cm2 ON cm1.conversation_id = cm2.conversation_id "
@@ -85,7 +85,7 @@ void E2eService::UpsertSignedPreKey(
     const std::string& user_id,
     const std::string& device_id,
     const SignedPreKeyInput& signed_pre_key) {
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE device_signed_prekeys SET revoked_at = NOW() "
       "WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL",
       user_id,
@@ -93,7 +93,7 @@ void E2eService::UpsertSignedPreKey(
 
   const std::string expires_at = NormalizeExpiresAt(signed_pre_key.expires_at);
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO device_signed_prekeys (user_id, device_id, key_id, public_key, "
       "signature, expires_at) "
       "VALUES (?, ?, ?, ?, ?, NULLIF(?, '')::timestamptz) "
@@ -117,7 +117,7 @@ Json::Value E2eService::RegisterDeviceKeys(
     const std::optional<int>& registration_id,
     const SignedPreKeyInput& signed_pre_key,
     const std::vector<PreKeyInput>& one_time_pre_keys) {
-  const auto existing = db_->execSqlSync(
+  const auto existing = db::ExecSqlSync(db_, 
       "SELECT identity_key FROM device_identity_keys "
       "WHERE user_id = ? AND device_id = ? LIMIT 1",
       user_id,
@@ -130,7 +130,7 @@ Json::Value E2eService::RegisterDeviceKeys(
   const std::string device_name_value = device_name.value_or("");
   const int registration_value = registration_id.value_or(-1);
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO device_identity_keys (user_id, device_id, platform, device_name, "
       "identity_key, registration_id, updated_at, last_seen_at, revoked_at) "
       "VALUES (?, ?, ?, NULLIF(?, ''), ?, NULLIF(?, -1), NOW(), NOW(), NULL) "
@@ -146,19 +146,19 @@ Json::Value E2eService::RegisterDeviceKeys(
       registration_value);
 
   if (identity_changed) {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "UPDATE device_signed_prekeys SET revoked_at = NOW() "
         "WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL",
         user_id,
         device_id);
 
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "UPDATE device_prekeys SET consumed_at = NOW() "
         "WHERE user_id = ? AND device_id = ? AND consumed_at IS NULL",
         user_id,
         device_id);
 
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "UPDATE device_trust SET status = 'unverified', verified_at = NULL, "
         "updated_at = NOW() "
         "WHERE trusted_user_id = ? AND trusted_device_id = ?",
@@ -169,7 +169,7 @@ Json::Value E2eService::RegisterDeviceKeys(
   UpsertSignedPreKey(user_id, device_id, signed_pre_key);
 
   for (const auto& key : one_time_pre_keys) {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "INSERT INTO device_prekeys (user_id, device_id, key_id, public_key) "
         "VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
         user_id,
@@ -188,7 +188,7 @@ Json::Value E2eService::UploadPreKeys(
     const std::string& user_id,
     const std::string& device_id,
     const std::vector<PreKeyInput>& pre_keys) {
-  const auto device = db_->execSqlSync(
+  const auto device = db::ExecSqlSync(db_, 
       "SELECT user_id FROM device_identity_keys "
       "WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL LIMIT 1",
       user_id,
@@ -202,7 +202,7 @@ Json::Value E2eService::UploadPreKeys(
   }
 
   for (const auto& key : pre_keys) {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "INSERT INTO device_prekeys (user_id, device_id, key_id, public_key) "
         "VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
         user_id,
@@ -220,7 +220,7 @@ Json::Value E2eService::RotateSignedPreKey(
     const std::string& user_id,
     const std::string& device_id,
     const SignedPreKeyInput& signed_pre_key) {
-  const auto device = db_->execSqlSync(
+  const auto device = db::ExecSqlSync(db_, 
       "SELECT user_id FROM device_identity_keys "
       "WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL LIMIT 1",
       user_id,
@@ -241,7 +241,7 @@ Json::Value E2eService::ListDevicesForUser(
     const std::string& target_user_id) {
   EnsureKeyAccess(requester_id, target_user_id);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT "
       "dik.device_id AS device_id, "
       "dik.platform AS platform, "
@@ -295,7 +295,7 @@ Json::Value E2eService::GetPreKeyBundle(
     const std::string& target_device_id) {
   EnsureKeyAccess(requester_id, target_user_id);
 
-  const auto device = db_->execSqlSync(
+  const auto device = db::ExecSqlSync(db_, 
       "SELECT device_id, identity_key, registration_id "
       "FROM device_identity_keys "
       "WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL LIMIT 1",
@@ -306,7 +306,7 @@ Json::Value E2eService::GetPreKeyBundle(
     throw E2eError(drogon::k404NotFound, "Device not found");
   }
 
-  const auto signed_pre_keys = db_->execSqlSync(
+  const auto signed_pre_keys = db::ExecSqlSync(db_, 
       "SELECT key_id, public_key, signature "
       "FROM device_signed_prekeys "
       "WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL "
@@ -319,7 +319,7 @@ Json::Value E2eService::GetPreKeyBundle(
     throw E2eError(drogon::k404NotFound, "Signed prekey missing");
   }
 
-  const auto pre_key_rows = db_->execSqlSync(
+  const auto pre_key_rows = db::ExecSqlSync(db_, 
       "SELECT key_id, public_key "
       "FROM device_prekeys "
       "WHERE user_id = ? AND device_id = ? AND consumed_at IS NULL "
@@ -336,7 +336,7 @@ Json::Value E2eService::GetPreKeyBundle(
     one_time_pre_key["keyId"] = row["key_id"].as<int>();
     one_time_pre_key["publicKey"] = row["public_key"].as<std::string>();
 
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "UPDATE device_prekeys SET consumed_at = NOW() "
         "WHERE user_id = ? AND device_id = ? AND key_id = ?",
         target_user_id,
@@ -371,7 +371,7 @@ Json::Value E2eService::SetTrust(const std::string& requester_id,
                                  const std::string& status) {
   EnsureKeyAccess(requester_id, target_user_id);
 
-  const auto device = db_->execSqlSync(
+  const auto device = db::ExecSqlSync(db_, 
       "SELECT user_id FROM device_identity_keys "
       "WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL LIMIT 1",
       target_user_id,
@@ -380,7 +380,7 @@ Json::Value E2eService::SetTrust(const std::string& requester_id,
     throw E2eError(drogon::k404NotFound, "Device not found");
   }
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO device_trust (trusting_user_id, trusted_user_id, "
       "trusted_device_id, status, verified_at, updated_at) "
       "VALUES (?, ?, ?, ?, CASE WHEN ? = 'trusted' THEN NOW() ELSE NULL END, NOW()) "
@@ -403,7 +403,7 @@ Json::Value E2eService::ListTrustForUser(const std::string& requester_id,
                                          const std::string& target_user_id) {
   EnsureKeyAccess(requester_id, target_user_id);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT "
       "dik.device_id AS device_id, "
       "dt.status AS status, "

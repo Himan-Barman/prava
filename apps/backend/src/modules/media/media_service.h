@@ -5,6 +5,8 @@
 
 #include <drogon/HttpTypes.h>
 #include <drogon/orm/DbClient.h>
+
+#include "db/sql.h"
 #include <json/json.h>
 
 struct MediaError : public std::runtime_error {

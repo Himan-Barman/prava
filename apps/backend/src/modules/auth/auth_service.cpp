@@ -64,12 +64,12 @@ Json::Value AuthService::Register(const RegisterInput& input) {
 
   EnsureEmailOtpVerified(email);
 
-  auto existing = db_->execSqlSync(
+  auto existing = db::ExecSqlSync(db_, 
       "SELECT id FROM users WHERE email = ? LIMIT 1", email);
   if (!existing.empty()) {
     throw AuthError(drogon::k409Conflict, "Email already exists");
   }
-  existing = db_->execSqlSync(
+  existing = db::ExecSqlSync(db_, 
       "SELECT id FROM users WHERE username = ? LIMIT 1", username);
   if (!existing.empty()) {
     throw AuthError(drogon::k409Conflict, "Username already exists");
@@ -77,7 +77,7 @@ Json::Value AuthService::Register(const RegisterInput& input) {
 
   const std::string password_hash = HashPassword(input.password);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "INSERT INTO users (email, username, display_name, password_hash, "
       "is_verified, email_verified_at) "
       "VALUES (?, ?, ?, ?, true, NOW()) "
@@ -127,7 +127,7 @@ Json::Value AuthService::Login(const LoginInput& input) {
   }
 
   const bool is_email = identifier.find('@') != std::string::npos;
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       std::string("SELECT id, email, username, display_name, is_verified, "
                   "password_hash FROM users WHERE ") +
           (is_email ? "email = ?" : "username = ?") + " LIMIT 1",
@@ -178,7 +178,7 @@ Json::Value AuthService::Refresh(const RefreshInput& input) {
   }
 
   const std::string token_hash = drogon::utils::getSha256(input.refresh_token);
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id, user_id, COALESCE(device_name, ''), COALESCE(platform, '') "
       "FROM refresh_tokens "
       "WHERE token_hash = ? AND device_id = ? AND revoked_at IS NULL "
@@ -196,7 +196,7 @@ Json::Value AuthService::Refresh(const RefreshInput& input) {
   const std::string device_name = row[2].as<std::string>();
   const std::string platform = row[3].as<std::string>();
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = ?",
       refresh_id);
 
@@ -215,7 +215,7 @@ Json::Value AuthService::Logout(const std::string& user_id,
     throw AuthError(drogon::k400BadRequest, "Invalid request");
   }
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE refresh_tokens SET revoked_at = NOW() "
       "WHERE user_id = ? AND device_id = ?",
       user_id,
@@ -227,7 +227,7 @@ Json::Value AuthService::Logout(const std::string& user_id,
 }
 
 Json::Value AuthService::LogoutAll(const std::string& user_id) {
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = ?",
       user_id);
 
@@ -242,7 +242,7 @@ Json::Value AuthService::RequestEmailVerification(const EmailInput& input) {
     throw AuthError(drogon::k400BadRequest, "Invalid email");
   }
 
-  const auto users = db_->execSqlSync(
+  const auto users = db::ExecSqlSync(db_, 
       "SELECT id, is_verified FROM users WHERE email = ? LIMIT 1",
       email);
   if (users.empty() || users.front()["is_verified"].as<bool>()) {
@@ -253,7 +253,7 @@ Json::Value AuthService::RequestEmailVerification(const EmailInput& input) {
 
   const std::string user_id = users.front()["id"].as<std::string>();
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE email_verification_tokens SET used_at = NOW() "
       "WHERE user_id = ? AND used_at IS NULL AND expires_at > NOW()",
       user_id);
@@ -272,7 +272,7 @@ Json::Value AuthService::VerifyEmail(const std::string& token) {
   }
 
   const std::string hash = drogon::utils::getSha256(trimmed);
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id, user_id FROM email_verification_tokens "
       "WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW() "
       "LIMIT 1",
@@ -285,11 +285,11 @@ Json::Value AuthService::VerifyEmail(const std::string& token) {
   const std::string token_id = rows.front()["id"].as<std::string>();
   const std::string user_id = rows.front()["user_id"].as<std::string>();
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE users SET is_verified = true, email_verified_at = NOW() "
       "WHERE id = ?",
       user_id);
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE email_verification_tokens SET used_at = NOW() WHERE id = ?",
       token_id);
 
@@ -304,7 +304,7 @@ Json::Value AuthService::RequestPasswordReset(const EmailInput& input) {
     throw AuthError(drogon::k400BadRequest, "Invalid email");
   }
 
-  const auto users = db_->execSqlSync(
+  const auto users = db::ExecSqlSync(db_, 
       "SELECT id FROM users WHERE email = ? LIMIT 1", email);
   if (users.empty()) {
     Json::Value response;
@@ -327,7 +327,7 @@ Json::Value AuthService::ResetPassword(const PasswordResetInput& input) {
   }
 
   const std::string hash = drogon::utils::getSha256(token);
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id, user_id FROM password_reset_tokens "
       "WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW() "
       "LIMIT 1",
@@ -341,14 +341,14 @@ Json::Value AuthService::ResetPassword(const PasswordResetInput& input) {
   const std::string user_id = rows.front()["user_id"].as<std::string>();
 
   const std::string new_hash = HashPassword(input.new_password);
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE users SET password_hash = ? WHERE id = ?",
       new_hash,
       user_id);
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE password_reset_tokens SET used_at = NOW() WHERE id = ?",
       token_id);
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = ?",
       user_id);
 
@@ -363,7 +363,7 @@ Json::Value AuthService::RequestEmailOtp(const EmailOtpInput& input) {
     throw AuthError(drogon::k400BadRequest, "Invalid email");
   }
 
-  const auto users = db_->execSqlSync(
+  const auto users = db::ExecSqlSync(db_, 
       "SELECT id, is_verified FROM users WHERE email = ? LIMIT 1",
       email);
   if (!users.empty() && users.front()["is_verified"].as<bool>()) {
@@ -372,7 +372,7 @@ Json::Value AuthService::RequestEmailOtp(const EmailOtpInput& input) {
     return response;
   }
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE email_otp_tokens SET used_at = NOW() "
       "WHERE email = ? AND used_at IS NULL AND expires_at > NOW()",
       email);
@@ -381,7 +381,7 @@ Json::Value AuthService::RequestEmailOtp(const EmailOtpInput& input) {
   const std::string code = GenerateOtpCode();
   const std::string hash = drogon::utils::getSha256(code);
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO email_otp_tokens (email, token_hash, expires_at) "
       "VALUES (?, ?, NOW() + interval '10 minutes')",
       email,
@@ -403,7 +403,7 @@ Json::Value AuthService::VerifyEmailOtp(const EmailOtpVerifyInput& input) {
     throw AuthError(drogon::k400BadRequest, "Invalid request");
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id, token_hash, attempts FROM email_otp_tokens "
       "WHERE email = ? AND used_at IS NULL AND expires_at > NOW() "
       "ORDER BY created_at DESC LIMIT 1",
@@ -419,7 +419,7 @@ Json::Value AuthService::VerifyEmailOtp(const EmailOtpVerifyInput& input) {
   const int attempts = row["attempts"].as<int>();
 
   if (attempts >= 5) {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "UPDATE email_otp_tokens SET used_at = NOW() WHERE id = ?",
         token_id);
     throw AuthError(drogon::k401Unauthorized, "Invalid or expired code");
@@ -428,7 +428,7 @@ Json::Value AuthService::VerifyEmailOtp(const EmailOtpVerifyInput& input) {
   const std::string hash = drogon::utils::getSha256(code);
   if (hash != token_hash) {
     const int next_attempts = attempts + 1;
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "UPDATE email_otp_tokens SET attempts = ?, used_at = "
         "CASE WHEN ? >= 5 THEN NOW() ELSE NULL END "
         "WHERE id = ?",
@@ -438,10 +438,10 @@ Json::Value AuthService::VerifyEmailOtp(const EmailOtpVerifyInput& input) {
     throw AuthError(drogon::k401Unauthorized, "Invalid or expired code");
   }
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE email_otp_tokens SET used_at = NOW() WHERE id = ?",
       token_id);
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE users SET is_verified = true, email_verified_at = NOW() "
       "WHERE email = ? AND is_verified = false",
       email);
@@ -452,7 +452,7 @@ Json::Value AuthService::VerifyEmailOtp(const EmailOtpVerifyInput& input) {
 }
 
 Json::Value AuthService::ListSessions(const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id, device_id, device_name, platform, "
       "to_char(created_at at time zone 'utc', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS created_at, "
       "to_char(last_seen_at at time zone 'utc', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS last_seen_at, "
@@ -475,7 +475,7 @@ Json::Value AuthService::RevokeSession(const std::string& user_id,
     throw AuthError(drogon::k400BadRequest, "Invalid request");
   }
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE refresh_tokens SET revoked_at = NOW() "
       "WHERE user_id = ? AND device_id = ? AND revoked_at IS NULL",
       user_id,
@@ -493,7 +493,7 @@ Json::Value AuthService::RevokeOtherSessions(
     throw AuthError(drogon::k400BadRequest, "Invalid request");
   }
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE refresh_tokens SET revoked_at = NOW() "
       "WHERE user_id = ? AND revoked_at IS NULL AND device_id <> ?",
       user_id,
@@ -509,7 +509,7 @@ std::string AuthService::IssueRefreshToken(const std::string& user_id,
                                            const std::string& device_name,
                                            const std::string& platform) {
   const auto token = tokens_.GenerateRefreshToken();
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO refresh_tokens (user_id, device_id, device_name, platform, "
       "token_hash, expires_at, last_seen_at) "
       "VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, NOW() + interval '30 days', NOW())",
@@ -554,7 +554,7 @@ Json::Value AuthService::BuildSessionRow(const drogon::orm::Row& row) const {
 }
 
 void AuthService::EnsureEmailOtpVerified(const std::string& email) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id FROM email_otp_tokens "
       "WHERE email = ? AND used_at IS NOT NULL "
       "AND used_at > NOW() - interval '15 minutes' "
@@ -571,7 +571,7 @@ void AuthService::CreateEmailVerification(const std::string& user_id,
   const std::string raw = drogon::utils::secureRandomString(64);
   const std::string hash = drogon::utils::getSha256(raw);
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) "
       "VALUES (?, ?, NOW() + interval '1 hour')",
       user_id,
@@ -583,7 +583,7 @@ void AuthService::CreateEmailVerification(const std::string& user_id,
 
 void AuthService::CreatePasswordReset(const std::string& user_id,
                                       const std::string& email) {
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE password_reset_tokens SET used_at = NOW() "
       "WHERE user_id = ? AND used_at IS NULL AND expires_at > NOW()",
       user_id);
@@ -592,7 +592,7 @@ void AuthService::CreatePasswordReset(const std::string& user_id,
   const std::string code = GenerateOtpCode();
   const std::string hash = drogon::utils::getSha256(code);
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) "
       "VALUES (?, ?, NOW() + interval '10 minutes')",
       user_id,

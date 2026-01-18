@@ -24,7 +24,7 @@ std::vector<SyncMessage> SyncService::SyncConversation(
     return {};
   }
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO sync_state (user_id, device_id, conversation_id, "
       "last_delivered_seq, last_sync_at, updated_at) "
       "VALUES (?, ?, ?, ?, NOW(), NOW()) "
@@ -37,7 +37,7 @@ std::vector<SyncMessage> SyncService::SyncConversation(
       input.conversation_id,
       input.last_delivered_seq);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id, conversation_id, sender_user_id, sender_device_id, seq, "
       "content_type, body, media_asset_id, edit_version, "
       "to_char(created_at at time zone 'utc', ?) AS created_at, "

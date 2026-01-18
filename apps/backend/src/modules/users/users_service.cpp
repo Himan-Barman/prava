@@ -278,7 +278,7 @@ Json::Value UsersService::SearchUsers(const SearchUsersInput& input) {
 
   const int limit = ClampLimit(input.limit, 20, 1, 25);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT "
       "u.id, "
       "u.username, "
@@ -339,7 +339,7 @@ bool UsersService::IsUsernameAvailable(const std::string& username) {
     throw UsersError(drogon::k400BadRequest, "Invalid username");
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id FROM users WHERE username = ? LIMIT 1", normalized);
   return rows.empty();
 }
@@ -351,13 +351,13 @@ Json::Value UsersService::ToggleFollow(const FollowInput& input) {
 
   EnsureNotBlocked(input.follower_id, input.following_id);
 
-  auto target = db_->execSqlSync(
+  auto target = db::ExecSqlSync(db_, 
       "SELECT id FROM users WHERE id = ? LIMIT 1", input.following_id);
   if (target.empty()) {
     throw UsersError(drogon::k404NotFound, "User not found");
   }
 
-  const auto existing = db_->execSqlSync(
+  const auto existing = db::ExecSqlSync(db_, 
       "SELECT follower_id FROM follows WHERE follower_id = ? AND "
       "following_id = ? LIMIT 1",
       input.follower_id,
@@ -365,7 +365,7 @@ Json::Value UsersService::ToggleFollow(const FollowInput& input) {
 
   Json::Value response;
   if (!existing.empty()) {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "DELETE FROM follows WHERE follower_id = ? AND following_id = ?",
         input.follower_id,
         input.following_id);
@@ -373,7 +373,7 @@ Json::Value UsersService::ToggleFollow(const FollowInput& input) {
     return response;
   }
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO follows (follower_id, following_id) VALUES (?, ?)",
       input.follower_id,
       input.following_id);
@@ -391,13 +391,13 @@ Json::Value UsersService::SetFollow(const SetFollowInput& input) {
 
   EnsureNotBlocked(input.follower_id, input.following_id);
 
-  const auto target = db_->execSqlSync(
+  const auto target = db::ExecSqlSync(db_, 
       "SELECT id FROM users WHERE id = ? LIMIT 1", input.following_id);
   if (target.empty()) {
     throw UsersError(drogon::k404NotFound, "User not found");
   }
 
-  const auto existing = db_->execSqlSync(
+  const auto existing = db::ExecSqlSync(db_, 
       "SELECT follower_id FROM follows WHERE follower_id = ? AND "
       "following_id = ? LIMIT 1",
       input.follower_id,
@@ -411,7 +411,7 @@ Json::Value UsersService::SetFollow(const SetFollowInput& input) {
       return response;
     }
 
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "INSERT INTO follows (follower_id, following_id) VALUES (?, ?)",
         input.follower_id,
         input.following_id);
@@ -429,7 +429,7 @@ Json::Value UsersService::SetFollow(const SetFollowInput& input) {
     return response;
   }
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "DELETE FROM follows WHERE follower_id = ? AND following_id = ?",
       input.follower_id,
       input.following_id);
@@ -444,7 +444,7 @@ Json::Value UsersService::RemoveFollower(const RemoveFollowerInput& input) {
     throw UsersError(drogon::k400BadRequest, "Cannot remove self");
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "DELETE FROM follows WHERE follower_id = ? AND following_id = ? "
       "RETURNING follower_id",
       input.follower_id,
@@ -461,7 +461,7 @@ Json::Value UsersService::RemoveConnection(
     throw UsersError(drogon::k400BadRequest, "Cannot remove self");
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "DELETE FROM follows WHERE "
       "(follower_id = ? AND following_id = ?) "
       "OR (follower_id = ? AND following_id = ?) "
@@ -479,7 +479,7 @@ Json::Value UsersService::RemoveConnection(
 Json::Value UsersService::GetConnections(const UserLimitInput& input) {
   const int limit = ClampLimit(input.limit, 20, 1, 50);
 
-  const auto requests_rows = db_->execSqlSync(
+  const auto requests_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "u.id, "
       "u.username, "
@@ -504,7 +504,7 @@ Json::Value UsersService::GetConnections(const UserLimitInput& input) {
       input.user_id,
       limit);
 
-  const auto sent_rows = db_->execSqlSync(
+  const auto sent_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "u.id, "
       "u.username, "
@@ -529,7 +529,7 @@ Json::Value UsersService::GetConnections(const UserLimitInput& input) {
       input.user_id,
       limit);
 
-  const auto friends_rows = db_->execSqlSync(
+  const auto friends_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "u.id, "
       "u.username, "
@@ -593,7 +593,7 @@ Json::Value UsersService::GetConnections(const UserLimitInput& input) {
 Json::Value UsersService::GetProfileSummary(const UserLimitInput& input) {
   const int limit = ClampLimit(input.limit, 12, 1, kMaxProfileLimit);
 
-  const auto users_rows = db_->execSqlSync(
+  const auto users_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "id, "
       "username, "
@@ -613,7 +613,7 @@ Json::Value UsersService::GetProfileSummary(const UserLimitInput& input) {
 
   const auto& user_row = users_rows.front();
 
-  const auto stats_rows = db_->execSqlSync(
+  const auto stats_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "(SELECT COUNT(*)::int FROM feed_posts WHERE author_id = ?) AS posts, "
       "(SELECT COUNT(*)::int FROM follows WHERE following_id = ?) AS followers, "
@@ -624,7 +624,7 @@ Json::Value UsersService::GetProfileSummary(const UserLimitInput& input) {
       input.user_id,
       input.user_id);
 
-  const auto posts_rows = db_->execSqlSync(
+  const auto posts_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "p.id AS id, "
       "p.body AS body, "
@@ -654,7 +654,7 @@ Json::Value UsersService::GetProfileSummary(const UserLimitInput& input) {
       input.user_id,
       limit);
 
-  const auto liked_rows = db_->execSqlSync(
+  const auto liked_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "p.id AS id, "
       "p.body AS body, "
@@ -736,7 +736,7 @@ Json::Value UsersService::GetPublicProfileSummary(
 
   const int limit = ClampLimit(input.limit, 12, 1, kMaxProfileLimit);
 
-  const auto users_rows = db_->execSqlSync(
+  const auto users_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "id, "
       "username, "
@@ -754,7 +754,7 @@ Json::Value UsersService::GetPublicProfileSummary(
     throw UsersError(drogon::k404NotFound, "User not found");
   }
 
-  const auto relationship_rows = db_->execSqlSync(
+  const auto relationship_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "EXISTS(SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?) "
       "AS is_following, "
@@ -765,7 +765,7 @@ Json::Value UsersService::GetPublicProfileSummary(
       input.target_user_id,
       input.viewer_id);
 
-  const auto stats_rows = db_->execSqlSync(
+  const auto stats_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "(SELECT COUNT(*)::int FROM feed_posts WHERE author_id = ?) AS posts, "
       "(SELECT COUNT(*)::int FROM follows WHERE following_id = ?) AS followers, "
@@ -776,7 +776,7 @@ Json::Value UsersService::GetPublicProfileSummary(
       input.target_user_id,
       input.target_user_id);
 
-  const auto posts_rows = db_->execSqlSync(
+  const auto posts_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "p.id AS id, "
       "p.body AS body, "
@@ -878,7 +878,7 @@ Json::Value UsersService::UpdateDetails(const std::string& user_id,
 
   const std::string display_name = *first_name + " " + *last_name;
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "UPDATE users SET "
       "first_name = ?, "
       "last_name = ?, "
@@ -914,7 +914,7 @@ Json::Value UsersService::UpdateDetails(const std::string& user_id,
 }
 
 Json::Value UsersService::GetSettings(const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT settings::text AS settings, "
       "to_char(updated_at at time zone 'utc', ?) AS updated_at "
       "FROM user_settings WHERE user_id = ? LIMIT 1",
@@ -945,7 +945,7 @@ Json::Value UsersService::GetSettings(const std::string& user_id) {
 
 Json::Value UsersService::UpdateSettings(const std::string& user_id,
                                          const Json::Value& updates) {
-  const auto existing = db_->execSqlSync(
+  const auto existing = db::ExecSqlSync(db_, 
       "SELECT settings::text AS settings FROM user_settings WHERE user_id = ? "
       "LIMIT 1",
       user_id);
@@ -959,7 +959,7 @@ Json::Value UsersService::UpdateSettings(const std::string& user_id,
   Json::Value next = MergeSettings(DefaultSettings(), current, updates);
   const std::string payload = ToJsonString(next);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "INSERT INTO user_settings (user_id, settings, updated_at) "
       "VALUES (?, ?::jsonb, NOW()) "
       "ON CONFLICT (user_id) DO UPDATE SET "
@@ -990,7 +990,7 @@ Json::Value UsersService::UpdateSettings(const std::string& user_id,
 }
 
 Json::Value UsersService::GetAccountInfo(const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT "
       "id, "
       "email, "
@@ -1063,7 +1063,7 @@ Json::Value UsersService::UpdateEmail(const std::string& user_id,
     throw UsersError(drogon::k400BadRequest, "Invalid email");
   }
 
-  const auto current_rows = db_->execSqlSync(
+  const auto current_rows = db::ExecSqlSync(db_, 
       "SELECT id, email, is_verified, "
       "to_char(email_verified_at at time zone 'utc', ?) AS email_verified_at "
       "FROM users WHERE id = ? LIMIT 1",
@@ -1088,14 +1088,14 @@ Json::Value UsersService::UpdateEmail(const std::string& user_id,
     return response;
   }
 
-  const auto existing = db_->execSqlSync(
+  const auto existing = db::ExecSqlSync(db_, 
       "SELECT id FROM users WHERE email = ? LIMIT 1", normalized);
   if (!existing.empty() &&
       existing.front()["id"].as<std::string>() != user_id) {
     throw UsersError(drogon::k409Conflict, "Email already exists");
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "UPDATE users SET "
       "email = ?, "
       "is_verified = false, "
@@ -1132,7 +1132,7 @@ Json::Value UsersService::UpdateEmail(const std::string& user_id,
 
 Json::Value UsersService::UpdateHandle(const std::string& user_id,
                                        const UpdateHandleInput& input) {
-  const auto current_rows = db_->execSqlSync(
+  const auto current_rows = db::ExecSqlSync(db_, 
       "SELECT username, display_name, bio, location, website, "
       "to_char(updated_at at time zone 'utc', ?) AS updated_at "
       "FROM users WHERE id = ? LIMIT 1",
@@ -1168,7 +1168,7 @@ Json::Value UsersService::UpdateHandle(const std::string& user_id,
     }
 
     if (username != next_username) {
-      const auto existing = db_->execSqlSync(
+      const auto existing = db::ExecSqlSync(db_, 
           "SELECT id FROM users WHERE username = ? LIMIT 1", username);
       if (!existing.empty() &&
           existing.front()["id"].as<std::string>() != user_id) {
@@ -1218,7 +1218,7 @@ Json::Value UsersService::UpdateHandle(const std::string& user_id,
     return response;
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "UPDATE users SET "
       "username = ?, "
       "display_name = NULLIF(?, ''), "
@@ -1265,7 +1265,7 @@ Json::Value UsersService::UpdateHandle(const std::string& user_id,
 Json::Value UsersService::ListBlockedUsers(const UserLimitInput& input) {
   const int limit = ClampLimit(input.limit, 30, 1, 50);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT "
       "u.id, "
       "u.username, "
@@ -1306,20 +1306,20 @@ Json::Value UsersService::BlockUser(const BlockInput& input) {
     throw UsersError(drogon::k400BadRequest, "Cannot block self");
   }
 
-  const auto target = db_->execSqlSync(
+  const auto target = db::ExecSqlSync(db_, 
       "SELECT id FROM users WHERE id = ? LIMIT 1", input.target_user_id);
   if (target.empty()) {
     throw UsersError(drogon::k404NotFound, "User not found");
   }
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO user_blocks (blocker_id, blocked_id) "
       "VALUES (?, ?) "
       "ON CONFLICT (blocker_id, blocked_id) DO NOTHING",
       input.user_id,
       input.target_user_id);
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "DELETE FROM follows WHERE "
       "(follower_id = ? AND following_id = ?) "
       "OR (follower_id = ? AND following_id = ?)",
@@ -1334,7 +1334,7 @@ Json::Value UsersService::BlockUser(const BlockInput& input) {
 }
 
 Json::Value UsersService::UnblockUser(const BlockInput& input) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "DELETE FROM user_blocks WHERE blocker_id = ? AND blocked_id = ? "
       "RETURNING id",
       input.user_id,
@@ -1352,7 +1352,7 @@ Json::Value UsersService::UnblockUser(const BlockInput& input) {
 Json::Value UsersService::ListMutedWords(const UserLimitInput& input) {
   const int limit = ClampLimit(input.limit, 50, 1, 200);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT "
       "id, "
       "phrase, "
@@ -1388,7 +1388,7 @@ Json::Value UsersService::AddMutedWord(const AddMutedWordInput& input) {
     throw UsersError(drogon::k400BadRequest, "Phrase required");
   }
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "INSERT INTO user_muted_words (user_id, phrase) "
       "VALUES (?, ?) "
       "ON CONFLICT (user_id, phrase) DO NOTHING "
@@ -1415,7 +1415,7 @@ Json::Value UsersService::AddMutedWord(const AddMutedWordInput& input) {
 }
 
 Json::Value UsersService::RemoveMutedWord(const RemoveMutedWordInput& input) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "DELETE FROM user_muted_words WHERE user_id = ? AND id = ? "
       "RETURNING id",
       input.user_id,
@@ -1431,7 +1431,7 @@ Json::Value UsersService::RemoveMutedWord(const RemoveMutedWordInput& input) {
 }
 
 Json::Value UsersService::CreateDataExport(const std::string& user_id) {
-  const auto user_rows = db_->execSqlSync(
+  const auto user_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "id, "
       "email, "
@@ -1456,7 +1456,7 @@ Json::Value UsersService::CreateDataExport(const std::string& user_id) {
 
   const auto settings_snapshot = GetSettings(user_id);
 
-  const auto stats_rows = db_->execSqlSync(
+  const auto stats_rows = db::ExecSqlSync(db_, 
       "SELECT "
       "(SELECT COUNT(*)::int FROM feed_posts WHERE author_id = ?) AS posts, "
       "(SELECT COUNT(*)::int FROM follows WHERE following_id = ?) AS followers, "
@@ -1467,7 +1467,7 @@ Json::Value UsersService::CreateDataExport(const std::string& user_id) {
       user_id,
       user_id);
 
-  const auto recent_posts = db_->execSqlSync(
+  const auto recent_posts = db::ExecSqlSync(db_, 
       "SELECT "
       "id, "
       "body, "
@@ -1482,9 +1482,9 @@ Json::Value UsersService::CreateDataExport(const std::string& user_id) {
       kTimestampFormat,
       user_id);
 
-  const auto blocked_rows = db_->execSqlSync(
+  const auto blocked_rows = db::ExecSqlSync(db_, 
       "SELECT blocked_id FROM user_blocks WHERE blocker_id = ?", user_id);
-  const auto muted_rows = db_->execSqlSync(
+  const auto muted_rows = db::ExecSqlSync(db_, 
       "SELECT phrase FROM user_muted_words WHERE user_id = ?", user_id);
 
   const auto& user_row = user_rows.front();
@@ -1571,7 +1571,7 @@ Json::Value UsersService::CreateDataExport(const std::string& user_id) {
   payload["mutedWords"] = muted;
 
   const std::string payload_json = ToJsonString(payload);
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "INSERT INTO user_data_exports "
       "(user_id, status, format, payload, created_at, completed_at) "
       "VALUES (?, 'ready', 'json', ?::jsonb, NOW(), NOW()) "
@@ -1608,7 +1608,7 @@ Json::Value UsersService::CreateDataExport(const std::string& user_id) {
 }
 
 Json::Value UsersService::GetLatestDataExport(const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id, status, format, payload::text AS payload, "
       "to_char(created_at at time zone 'utc', ?) AS created_at, "
       "to_char(completed_at at time zone 'utc', ?) AS completed_at "
@@ -1647,7 +1647,7 @@ Json::Value UsersService::GetLatestDataExport(const std::string& user_id) {
 }
 
 Json::Value UsersService::DeleteAccount(const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "DELETE FROM users WHERE id = ? RETURNING id", user_id);
 
   if (rows.empty()) {
@@ -1661,7 +1661,7 @@ Json::Value UsersService::DeleteAccount(const std::string& user_id) {
 
 void UsersService::EnsureNotBlocked(const std::string& user_id,
                                     const std::string& target_user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT id FROM user_blocks WHERE "
       "(blocker_id = ? AND blocked_id = ?) "
       "OR (blocker_id = ? AND blocked_id = ?) "
@@ -1679,7 +1679,7 @@ void UsersService::EnsureNotBlocked(const std::string& user_id,
 void UsersService::NotifyFollow(const std::string& follower_id,
                                 const std::string& following_id) {
   try {
-    const auto rows = db_->execSqlSync(
+    const auto rows = db::ExecSqlSync(db_, 
         "SELECT id, username, display_name FROM users WHERE id = ? LIMIT 1",
         follower_id);
     if (rows.empty()) {

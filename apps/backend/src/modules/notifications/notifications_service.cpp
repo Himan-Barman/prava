@@ -110,7 +110,7 @@ Json::Value NotificationsService::ListForUser(
   const bool use_cursor = cursor.has_value() && IsValidCursor(*cursor);
 
   auto rows = use_cursor
-    ? db_->execSqlSync(
+    ? db::ExecSqlSync(db_, 
         "SELECT "
         "n.id, "
         "n.type, "
@@ -133,7 +133,7 @@ Json::Value NotificationsService::ListForUser(
         user_id,
         *cursor,
         fetch_limit)
-    : db_->execSqlSync(
+    : db::ExecSqlSync(db_, 
         "SELECT "
         "n.id, "
         "n.type, "
@@ -209,7 +209,7 @@ Json::Value NotificationsService::ListForUser(
 }
 
 int NotificationsService::CountUnread(const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT COUNT(*)::int AS count FROM notifications "
       "WHERE user_id = ? AND read_at IS NULL",
       user_id);
@@ -223,7 +223,7 @@ int NotificationsService::CountUnread(const std::string& user_id) {
 Json::Value NotificationsService::MarkRead(
     const std::string& user_id,
     const std::string& notification_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "UPDATE notifications SET read_at = NOW() "
       "WHERE id = ? AND user_id = ? AND read_at IS NULL "
       "RETURNING id",
@@ -236,7 +236,7 @@ Json::Value NotificationsService::MarkRead(
 }
 
 Json::Value NotificationsService::MarkAllRead(const std::string& user_id) {
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE notifications SET read_at = NOW() "
       "WHERE user_id = ? AND read_at IS NULL",
       user_id);
@@ -257,7 +257,7 @@ std::optional<Json::Value> NotificationsService::CreateNotification(
       ToJsonString(input.data.isNull() ? Json::Value(Json::objectValue)
                                        : input.data);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "INSERT INTO notifications "
       "(user_id, actor_id, type, title, body, data) "
       "VALUES (?, NULLIF(?, ''), ?, ?, ?, ?::jsonb) "
@@ -279,7 +279,7 @@ std::optional<Json::Value> NotificationsService::CreateNotification(
 
   Json::Value actor_json = Json::nullValue;
   if (input.actor_id) {
-    const auto actor_rows = db_->execSqlSync(
+    const auto actor_rows = db::ExecSqlSync(db_, 
         "SELECT id, username, display_name, is_verified FROM users "
         "WHERE id = ? LIMIT 1",
         *input.actor_id);

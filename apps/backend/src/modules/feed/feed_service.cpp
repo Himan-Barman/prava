@@ -216,7 +216,7 @@ std::vector<std::string> ParseStringArrayField(const drogon::orm::Field& field) 
 
 std::vector<std::string> LoadMutedPhrases(drogon::orm::DbClientPtr db,
                                           const std::string& user_id) {
-  const auto rows = db->execSqlSync(
+  const auto rows = db::ExecSqlSync(db, 
       "SELECT phrase FROM user_muted_words WHERE user_id = ?",
       user_id);
   std::vector<std::string> phrases;
@@ -885,7 +885,7 @@ void UpdateInterestFromPost(drogon::orm::DbClientPtr db,
     return;
   }
 
-  const auto rows = db->execSqlSync(
+  const auto rows = db::ExecSqlSync(db, 
       "SELECT metadata::text AS metadata, body FROM feed_posts WHERE id = ? "
       "LIMIT 1",
       post_id);
@@ -911,7 +911,7 @@ void UpdateInterestFromPost(drogon::orm::DbClientPtr db,
   }
 
   for (const auto& tag : tags) {
-    db->execSqlSync(
+    db::ExecSqlSync(db, 
         "INSERT INTO user_interest_profiles (user_id, tag, score, updated_at) "
         "VALUES (?, ?, ?, NOW()) "
         "ON CONFLICT (user_id, tag) DO UPDATE SET "
@@ -926,7 +926,7 @@ void UpdateInterestFromPost(drogon::orm::DbClientPtr db,
   for (const auto& category : categories) {
     const double adjusted = delta * kInterestCategoryMultiplier;
     const std::string tag = "cat:" + category;
-    db->execSqlSync(
+    db::ExecSqlSync(db, 
         "INSERT INTO user_interest_profiles (user_id, tag, score, updated_at) "
         "VALUES (?, ?, ?, NOW()) "
         "ON CONFLICT (user_id, tag) DO UPDATE SET "
@@ -963,7 +963,7 @@ std::unordered_map<std::string, double> FetchInterestScores(
       "updated_at)) / 3600.0, 0) / " +
       std::to_string(kInterestDecayHours) +
       ")) AS score FROM user_interest_profiles WHERE user_id = ?";
-  const auto rows = db->execSqlSync(query, user_id);
+  const auto rows = db::ExecSqlSync(db, query, user_id);
 
   for (const auto& row : rows) {
     if (row["tag"].isNull() || row["score"].isNull()) {
@@ -1022,13 +1022,13 @@ void NotifyMentions(drogon::orm::DbClientPtr db,
   const std::string query =
       "SELECT id, username, display_name FROM users WHERE username IN (" +
       in_clause + ")";
-  const auto rows = db->execSqlSync(query);
+  const auto rows = db::ExecSqlSync(db, query);
   if (rows.empty()) {
     return;
   }
 
   std::string author_name = "Someone";
-  const auto author_rows = db->execSqlSync(
+  const auto author_rows = db::ExecSqlSync(db, 
       "SELECT id, username, display_name FROM users WHERE id = ? LIMIT 1",
       author_id);
   if (!author_rows.empty()) {
@@ -1116,7 +1116,7 @@ Json::Value ListFollowingFeed(drogon::orm::DbClientPtr db,
       "ORDER BY p.created_at DESC LIMIT ?";
 
   auto rows = use_before
-    ? db->execSqlSync(
+    ? db::ExecSqlSync(db, 
         query,
         kTimestampFormat,
         user_id,
@@ -1128,7 +1128,7 @@ Json::Value ListFollowingFeed(drogon::orm::DbClientPtr db,
         user_id,
         user_id,
         limit_value)
-    : db->execSqlSync(
+    : db::ExecSqlSync(db, 
         query,
         kTimestampFormat,
         user_id,
@@ -1220,7 +1220,7 @@ Json::Value ListForYouFeed(drogon::orm::DbClientPtr db,
       ") SELECT * FROM base ORDER BY created_at DESC LIMIT ?";
 
   auto rows = use_before
-    ? db->execSqlSync(
+    ? db::ExecSqlSync(db, 
         query,
         user_id,
         user_id,
@@ -1234,7 +1234,7 @@ Json::Value ListForYouFeed(drogon::orm::DbClientPtr db,
         user_id,
         user_id,
         candidate_limit)
-    : db->execSqlSync(
+    : db::ExecSqlSync(db, 
         query,
         user_id,
         user_id,
@@ -1485,7 +1485,7 @@ Json::Value FeedService::CreatePost(const std::string& user_id,
   const double quality_score =
       EstimateQualityScore(trimmed, hashtags, mentions, link_count);
 
-  const auto author_rows = db_->execSqlSync(
+  const auto author_rows = db::ExecSqlSync(db_, 
       "SELECT id, username, display_name, "
       "to_char(created_at at time zone 'utc', ?) AS created_at, "
       "(email_verified_at IS NOT NULL) AS email_verified, "
@@ -1544,7 +1544,7 @@ Json::Value FeedService::CreatePost(const std::string& user_id,
   builder["indentation"] = "";
   const std::string metadata_text = Json::writeString(builder, metadata);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "INSERT INTO feed_posts (author_id, body, metadata, updated_at) "
       "VALUES (?, ?, ?::jsonb, NOW()) "
       "RETURNING id, body, like_count, comment_count, share_count, "
@@ -1613,7 +1613,7 @@ Json::Value FeedService::ListFeed(const std::string& user_id,
 
 Json::Value FeedService::ToggleLike(const std::string& user_id,
                                     const std::string& post_id) {
-  const auto post_rows = db_->execSqlSync(
+  const auto post_rows = db::ExecSqlSync(db_, 
       "SELECT author_id FROM feed_posts WHERE id = ? LIMIT 1",
       post_id);
   if (post_rows.empty()) {
@@ -1621,7 +1621,7 @@ Json::Value FeedService::ToggleLike(const std::string& user_id,
   }
   const std::string author_id = post_rows.front()["author_id"].as<std::string>();
 
-  const auto existing = db_->execSqlSync(
+  const auto existing = db::ExecSqlSync(db_, 
       "SELECT post_id FROM feed_likes WHERE post_id = ? AND user_id = ? "
       "LIMIT 1",
       post_id,
@@ -1631,11 +1631,11 @@ Json::Value FeedService::ToggleLike(const std::string& user_id,
   int like_count = 0;
 
   if (!existing.empty()) {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "DELETE FROM feed_likes WHERE post_id = ? AND user_id = ?",
         post_id,
         user_id);
-    const auto rows = db_->execSqlSync(
+    const auto rows = db::ExecSqlSync(db_, 
         "UPDATE feed_posts SET "
         "like_count = GREATEST(like_count - 1, 0), "
         "updated_at = NOW() "
@@ -1647,12 +1647,12 @@ Json::Value FeedService::ToggleLike(const std::string& user_id,
       like_count = rows.front()["like_count"].as<int>();
     }
   } else {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "INSERT INTO feed_likes (post_id, user_id) VALUES (?, ?) "
         "ON CONFLICT DO NOTHING",
         post_id,
         user_id);
-    const auto rows = db_->execSqlSync(
+    const auto rows = db::ExecSqlSync(db_, 
         "UPDATE feed_posts SET "
         "like_count = (like_count + 1), "
         "updated_at = NOW() "
@@ -1714,7 +1714,7 @@ Json::Value FeedService::ListComments(const std::string& user_id,
                                       const std::optional<int>& limit) {
   const int limit_value = ClampLimit(limit, 30, 1, kMaxFeedLimit);
 
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT "
       "c.id AS id, "
       "c.body AS body, "
@@ -1778,7 +1778,7 @@ Json::Value FeedService::AddComment(const std::string& user_id,
     throw FeedError(drogon::k400BadRequest, "Comment blocked by moderation");
   }
 
-  const auto post_rows = db_->execSqlSync(
+  const auto post_rows = db::ExecSqlSync(db_, 
       "SELECT author_id FROM feed_posts WHERE id = ? LIMIT 1",
       post_id);
   if (post_rows.empty()) {
@@ -1787,7 +1787,7 @@ Json::Value FeedService::AddComment(const std::string& user_id,
   const std::string post_author_id =
       post_rows.front()["author_id"].as<std::string>();
 
-  const auto comment_rows = db_->execSqlSync(
+  const auto comment_rows = db::ExecSqlSync(db_, 
       "INSERT INTO feed_comments (post_id, author_id, body) "
       "VALUES (?, ?, ?) "
       "RETURNING id, body, "
@@ -1800,7 +1800,7 @@ Json::Value FeedService::AddComment(const std::string& user_id,
     throw FeedError(drogon::k500InternalServerError, "Comment not created");
   }
 
-  const auto count_rows = db_->execSqlSync(
+  const auto count_rows = db::ExecSqlSync(db_, 
       "UPDATE feed_posts SET "
       "comment_count = (comment_count + 1), "
       "updated_at = NOW() "
@@ -1812,7 +1812,7 @@ Json::Value FeedService::AddComment(const std::string& user_id,
     comment_count = count_rows.front()["comment_count"].as<int>();
   }
 
-  const auto author_rows = db_->execSqlSync(
+  const auto author_rows = db::ExecSqlSync(db_, 
       "SELECT id, username, display_name FROM users WHERE id = ? LIMIT 1",
       user_id);
 
@@ -1879,7 +1879,7 @@ Json::Value FeedService::AddComment(const std::string& user_id,
 
 Json::Value FeedService::SharePost(const std::string& user_id,
                                    const std::string& post_id) {
-  const auto post_rows = db_->execSqlSync(
+  const auto post_rows = db::ExecSqlSync(db_, 
       "SELECT author_id, share_count FROM feed_posts WHERE id = ? LIMIT 1",
       post_id);
   if (post_rows.empty()) {
@@ -1893,19 +1893,19 @@ Json::Value FeedService::SharePost(const std::string& user_id,
       post_row["share_count"].isNull() ? 0 : post_row["share_count"].as<int>();
   bool created = false;
 
-  const auto existing = db_->execSqlSync(
+  const auto existing = db::ExecSqlSync(db_, 
       "SELECT post_id FROM feed_shares WHERE post_id = ? AND user_id = ? "
       "LIMIT 1",
       post_id,
       user_id);
 
   if (existing.empty()) {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "INSERT INTO feed_shares (post_id, user_id) VALUES (?, ?) "
         "ON CONFLICT DO NOTHING",
         post_id,
         user_id);
-    const auto rows = db_->execSqlSync(
+    const auto rows = db::ExecSqlSync(db_, 
         "UPDATE feed_posts SET "
         "share_count = (share_count + 1), "
         "updated_at = NOW() "

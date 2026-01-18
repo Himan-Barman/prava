@@ -22,7 +22,7 @@ ConversationsService::ConversationsService(drogon::orm::DbClientPtr db)
 
 bool ConversationsService::HasMembership(const std::string& conversation_id,
                                          const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT user_id FROM conversation_members "
       "WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL "
       "LIMIT 1",
@@ -34,7 +34,7 @@ bool ConversationsService::HasMembership(const std::string& conversation_id,
 std::string ConversationsService::MembershipRole(
     const std::string& conversation_id,
     const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT role FROM conversation_members "
       "WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL "
       "LIMIT 1",
@@ -48,7 +48,7 @@ std::string ConversationsService::MembershipRole(
 
 std::vector<std::string> ConversationsService::ListConversationIdsForUser(
     const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT conversation_id FROM conversation_members "
       "WHERE user_id = ? AND left_at IS NULL",
       user_id);
@@ -62,7 +62,7 @@ std::vector<std::string> ConversationsService::ListConversationIdsForUser(
 }
 
 Json::Value ConversationsService::ListForUser(const std::string& user_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT "
       "c.id, "
       "c.type, "
@@ -148,7 +148,7 @@ Json::Value ConversationsService::CreateDm(const std::string& user_id,
                              "Cannot create DM with self");
   }
 
-  const auto existing = db_->execSqlSync(
+  const auto existing = db::ExecSqlSync(db_, 
       "SELECT c.id "
       "FROM conversations c "
       "JOIN conversation_members cm1 ON cm1.conversation_id = c.id "
@@ -169,7 +169,7 @@ Json::Value ConversationsService::CreateDm(const std::string& user_id,
     return response;
   }
 
-  const auto convo_rows = db_->execSqlSync(
+  const auto convo_rows = db::ExecSqlSync(db_, 
       "INSERT INTO conversations (type, created_by_user_id) "
       "VALUES ('dm', ?) "
       "RETURNING id",
@@ -183,7 +183,7 @@ Json::Value ConversationsService::CreateDm(const std::string& user_id,
   const std::string conversation_id =
       convo_rows.front()["id"].as<std::string>();
 
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "INSERT INTO conversation_members (conversation_id, user_id, role) "
       "VALUES (?, ?, 'member'), (?, ?, 'member')",
       conversation_id,
@@ -212,7 +212,7 @@ Json::Value ConversationsService::CreateGroup(const CreateGroupInput& input) {
     }
   }
 
-  const auto convo_rows = db_->execSqlSync(
+  const auto convo_rows = db::ExecSqlSync(db_, 
       "INSERT INTO conversations (type, title, created_by_user_id) "
       "VALUES ('group', ?, ?) "
       "RETURNING id",
@@ -230,7 +230,7 @@ Json::Value ConversationsService::CreateGroup(const CreateGroupInput& input) {
   for (const auto& member_id : unique) {
     const std::string role =
         member_id == input.user_id ? "admin" : "member";
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "INSERT INTO conversation_members (conversation_id, user_id, role) "
         "VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
         conversation_id,
@@ -249,7 +249,7 @@ Json::Value ConversationsService::AddMembers(const AddMembersInput& input) {
                              "Not a member of conversation");
   }
 
-  const auto convo_rows = db_->execSqlSync(
+  const auto convo_rows = db::ExecSqlSync(db_, 
       "SELECT type FROM conversations WHERE id = ? LIMIT 1",
       input.conversation_id);
   if (!convo_rows.empty()) {
@@ -281,7 +281,7 @@ Json::Value ConversationsService::AddMembers(const AddMembersInput& input) {
   }
 
   for (const auto& member_id : unique) {
-    db_->execSqlSync(
+    db::ExecSqlSync(db_, 
         "INSERT INTO conversation_members (conversation_id, user_id, role) "
         "VALUES (?, ?, 'member') ON CONFLICT DO NOTHING",
         input.conversation_id,
@@ -295,7 +295,7 @@ Json::Value ConversationsService::AddMembers(const AddMembersInput& input) {
 
 Json::Value ConversationsService::ListMembers(
     const std::string& conversation_id) {
-  const auto rows = db_->execSqlSync(
+  const auto rows = db::ExecSqlSync(db_, 
       "SELECT user_id, role, "
       "to_char(joined_at at time zone 'utc', ?) AS joined_at, "
       "to_char(left_at at time zone 'utc', ?) AS left_at "
@@ -322,7 +322,7 @@ Json::Value ConversationsService::ListMembers(
 void ConversationsService::LeaveConversation(
     const std::string& conversation_id,
     const std::string& user_id) {
-  db_->execSqlSync(
+  db::ExecSqlSync(db_, 
       "UPDATE conversation_members SET left_at = NOW() "
       "WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL",
       conversation_id,
