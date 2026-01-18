@@ -33,14 +33,16 @@ void PresenceManager::Connect(const std::string& user_id,
 
   try {
     if (!device_id.empty()) {
-      redis->execCommandSync(
+      redis->execCommandSync<int>(
+          [](const drogon::nosql::RedisResult&) { return 0; },
           "ZADD %s %lld %s",
           key.c_str(),
           static_cast<long long>(now),
           device_id.c_str());
     }
 
-    redis->execCommandSync(
+    redis->execCommandSync<int>(
+        [](const drogon::nosql::RedisResult&) { return 0; },
         "EXPIRE %s %d",
         key.c_str(),
         kPresenceTtlSec);
@@ -67,24 +69,29 @@ void PresenceManager::Disconnect(const std::string& user_id,
 
   try {
     if (!device_id.empty()) {
-      redis->execCommandSync(
+      redis->execCommandSync<int>(
+          [](const drogon::nosql::RedisResult&) { return 0; },
           "ZREM %s %s",
           key.c_str(),
           device_id.c_str());
     }
 
-    redis->execCommandSync(
+    redis->execCommandSync<int>(
+        [](const drogon::nosql::RedisResult&) { return 0; },
         "ZREMRANGEBYSCORE %s 0 %lld",
         key.c_str(),
         static_cast<long long>(cutoff));
 
-    const auto count_result = redis->execCommandSync(
+    const auto count = redis->execCommandSync<long long>(
+        [](const drogon::nosql::RedisResult& result) {
+          return static_cast<long long>(result.asInteger());
+        },
         "ZCARD %s",
         key.c_str());
-    const auto count = static_cast<long long>(count_result.asInteger());
 
     if (count == 0) {
-      redis->execCommandSync(
+      redis->execCommandSync<int>(
+          [](const drogon::nosql::RedisResult&) { return 0; },
           "DEL %s",
           key.c_str());
     }
@@ -109,15 +116,18 @@ bool PresenceManager::IsOnline(const std::string& user_id) const {
   const auto cutoff = now - static_cast<long long>(kPresenceTtlSec) * 1000;
 
   try {
-    redis->execCommandSync(
+    redis->execCommandSync<int>(
+        [](const drogon::nosql::RedisResult&) { return 0; },
         "ZREMRANGEBYSCORE %s 0 %lld",
         key.c_str(),
         static_cast<long long>(cutoff));
 
-    const auto count_result = redis->execCommandSync(
+    const auto count = redis->execCommandSync<long long>(
+        [](const drogon::nosql::RedisResult& result) {
+          return static_cast<long long>(result.asInteger());
+        },
         "ZCARD %s",
         key.c_str());
-    const auto count = static_cast<long long>(count_result.asInteger());
 
     return count > 0;
   } catch (const std::exception&) {
@@ -143,17 +153,21 @@ bool PresenceManager::IsDeviceOnline(const std::string& user_id,
   const auto cutoff = now - static_cast<long long>(kPresenceTtlSec) * 1000;
 
   try {
-    const double score = redis->execCommandSync(
+    const double score = redis->execCommandSync<double>(
+        [](const drogon::nosql::RedisResult& result) {
+          return result.asDouble();
+        },
         "ZSCORE %s %s",
         key.c_str(),
-        device_id.c_str()).asDouble();
+        device_id.c_str());
 
     if (score <= 0) {
       return false;
     }
 
     if (score < static_cast<double>(cutoff)) {
-      redis->execCommandSync(
+      redis->execCommandSync<int>(
+          [](const drogon::nosql::RedisResult&) { return 0; },
           "ZREM %s %s",
           key.c_str(),
           device_id.c_str());

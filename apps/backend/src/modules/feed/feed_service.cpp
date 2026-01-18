@@ -666,7 +666,8 @@ void PublishFeedEvent(const Json::Value& payload) {
     const std::string message = Json::writeString(builder, payload);
     const std::string channel = "ws:" + FeedTopic();
     try {
-      redis->execCommandSync(
+      redis->execCommandSync<int>(
+          [](const drogon::nosql::RedisResult&) { return 0; },
           "PUBLISH %s %s",
           channel.c_str(),
           message.c_str());

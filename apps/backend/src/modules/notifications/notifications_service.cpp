@@ -83,7 +83,8 @@ void PublishNotification(const std::string& user_id,
     const std::string message = Json::writeString(builder, payload);
     const std::string channel = "ws:" + UserTopic(user_id);
     try {
-      redis->execCommandSync(
+      redis->execCommandSync<int>(
+          [](const drogon::nosql::RedisResult&) { return 0; },
           "PUBLISH %s %s",
           channel.c_str(),
           message.c_str());
