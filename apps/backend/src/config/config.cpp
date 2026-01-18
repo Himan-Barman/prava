@@ -110,6 +110,14 @@ Config Config::Load() {
 
   cfg.app_name = GetEnvDefault("APP_NAME", "PRAVA");
   cfg.redis_url = GetEnv("REDIS_URL");
+  const bool is_render = std::getenv("RENDER") != nullptr ||
+                         std::getenv("RENDER_EXTERNAL_URL") != nullptr;
+  if (is_render &&
+      (cfg.redis_url.empty() ||
+       cfg.redis_url.find("0.0.0.0") != std::string::npos ||
+       cfg.redis_url.find("localhost") != std::string::npos)) {
+    cfg.redis_url = "redis://red-d5mdif9r0fns73et8gj0:6379";
+  }
   cfg.db_url = GetEnv("DATABASE_URL");
 
   cfg.jwt_private = NormalizePem(GetEnv("JWT_PRIVATE_KEY"));
