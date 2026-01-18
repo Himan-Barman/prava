@@ -153,9 +153,20 @@ bool PresenceManager::IsDeviceOnline(const std::string& user_id,
   const auto cutoff = now - static_cast<long long>(kPresenceTtlSec) * 1000;
 
   try {
-    const double score = redis->execCommandSync<double>(
-        [](const drogon::nosql::RedisResult& result) {
-          return result.asDouble();
+    const auto score = redis->execCommandSync<long long>(
+        [](const drogon::nosql::RedisResult& result) -> long long {
+          if (result.isNil()) {
+            return 0;
+          }
+          const auto value = result.asString();
+          if (value.empty()) {
+            return 0;
+          }
+          try {
+            return std::stoll(value);
+          } catch (const std::exception&) {
+            return 0;
+          }
         },
         "ZSCORE %s %s",
         key.c_str(),
@@ -165,7 +176,7 @@ bool PresenceManager::IsDeviceOnline(const std::string& user_id,
       return false;
     }
 
-    if (score < static_cast<double>(cutoff)) {
+    if (score < cutoff) {
       redis->execCommandSync<int>(
           [](const drogon::nosql::RedisResult&) { return 0; },
           "ZREM %s %s",
