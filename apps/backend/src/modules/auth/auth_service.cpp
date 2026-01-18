@@ -535,15 +535,21 @@ Json::Value AuthService::BuildSessionRow(const drogon::orm::Row& row) const {
   } else {
     item["platform"] = row["platform"].as<std::string>();
   }
-  item["createdAt"] = row["created_at"].isNull()
-                          ? Json::nullValue
-                          : row["created_at"].as<std::string>();
-  item["lastSeenAt"] = row["last_seen_at"].isNull()
-                           ? Json::nullValue
-                           : row["last_seen_at"].as<std::string>();
-  item["expiresAt"] = row["expires_at"].isNull()
-                          ? Json::nullValue
-                          : row["expires_at"].as<std::string>();
+  if (row["created_at"].isNull()) {
+    item["createdAt"] = Json::nullValue;
+  } else {
+    item["createdAt"] = row["created_at"].as<std::string>();
+  }
+  if (row["last_seen_at"].isNull()) {
+    item["lastSeenAt"] = Json::nullValue;
+  } else {
+    item["lastSeenAt"] = row["last_seen_at"].as<std::string>();
+  }
+  if (row["expires_at"].isNull()) {
+    item["expiresAt"] = Json::nullValue;
+  } else {
+    item["expiresAt"] = row["expires_at"].as<std::string>();
+  }
   return item;
 }
 
