@@ -1,8 +1,0 @@
-ALTER TABLE users
-ADD COLUMN IF NOT EXISTS bio text;
-
-ALTER TABLE users
-ADD COLUMN IF NOT EXISTS location varchar(120);
-
-ALTER TABLE users
-ADD COLUMN IF NOT EXISTS website varchar(255);
