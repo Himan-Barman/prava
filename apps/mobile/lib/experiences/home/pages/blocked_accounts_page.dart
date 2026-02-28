@@ -155,7 +155,7 @@ class _BlockedAccountsPageState extends State<BlockedAccountsPage> {
                                           ),
                                           if (user.isVerified) ...[
                                             const SizedBox(width: 6),
-                                            Icon(
+                                            const Icon(
                                               CupertinoIcons
                                                   .check_mark_circled_solid,
                                               size: 16,

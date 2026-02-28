@@ -1762,9 +1762,9 @@ class _Avatar extends StatelessWidget {
       children: [
         Container(
           padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               colors: [
                 PravaColors.accentPrimary,
                 PravaColors.accentMuted,
@@ -1998,7 +1998,7 @@ class _TogglePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseColor = PravaColors.accentPrimary;
+    const baseColor = PravaColors.accentPrimary;
     final inactive =
         isDark ? Colors.white10 : Colors.black12.withValues(alpha: 0.5);
     final textColor = active

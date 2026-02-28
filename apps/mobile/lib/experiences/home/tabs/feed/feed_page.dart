@@ -620,8 +620,8 @@ class _FeedPageState extends State<FeedPage> {
                         child: AnimatedOpacity(
                           opacity: _loadingMore ? 1 : 0,
                           duration: const Duration(milliseconds: 200),
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 24, top: 8),
+                          child: const Padding(
+                            padding: EdgeInsets.only(bottom: 24, top: 8),
                             child: Center(
                               child: CupertinoActivityIndicator(
                                 color: PravaColors.accentPrimary,
@@ -918,7 +918,7 @@ class _PostCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          Icon(
+                          const Icon(
                             CupertinoIcons.star_fill,
                             size: 14,
                             color: PravaColors.accentPrimary,
@@ -1416,7 +1416,7 @@ class _ShareSheetState extends State<_ShareSheet> {
                 style: PravaTypography.h3.copyWith(color: primary),
               ),
               const Spacer(),
-              Icon(
+              const Icon(
                 CupertinoIcons.paperplane_fill,
                 color: PravaColors.accentPrimary,
                 size: 18,

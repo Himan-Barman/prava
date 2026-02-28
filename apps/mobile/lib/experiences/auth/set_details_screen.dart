@@ -262,7 +262,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
             children: [
               Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.person_outline,
                     size: 18,
                     color: PravaColors.accentPrimary,
@@ -534,7 +534,6 @@ class _LuxeInput extends StatelessWidget {
     this.autofillHints,
     this.inputFormatters,
     this.suffixIcon,
-    this.prefixText,
     this.onSubmitted,
   });
 

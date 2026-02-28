@@ -21,7 +21,7 @@ class _StarredMessagesPageState extends State<StarredMessagesPage> {
   final TextEditingController _searchController = TextEditingController();
 
   _StarFilter _filter = _StarFilter.all;
-  List<_StarredMessage> _messages = List<_StarredMessage>.from(_seedMessages);
+  final List<_StarredMessage> _messages = List<_StarredMessage>.from(_seedMessages);
 
   @override
   void initState() {
@@ -262,7 +262,7 @@ class _FilterRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final activeColor = PravaColors.accentPrimary;
+    const activeColor = PravaColors.accentPrimary;
     final surface =
         isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
     final textColor =

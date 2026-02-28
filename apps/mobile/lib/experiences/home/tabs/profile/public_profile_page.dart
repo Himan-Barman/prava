@@ -555,7 +555,7 @@ class _HeroCard extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
                             CupertinoIcons.waveform_path_ecg,
                             color: PravaColors.accentPrimary,
                             size: 16,
@@ -694,7 +694,7 @@ class _HeaderCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 6),
                         if (profile.verified)
-                          Icon(
+                          const Icon(
                             CupertinoIcons.check_mark_circled_solid,
                             size: 16,
                             color: PravaColors.accentPrimary,

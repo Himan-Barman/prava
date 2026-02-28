@@ -579,8 +579,8 @@ class _StepIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: const [
+    return const Row(
+      children: [
         _StepPill(active: true),
         SizedBox(width: 6),
         _StepPill(active: false),

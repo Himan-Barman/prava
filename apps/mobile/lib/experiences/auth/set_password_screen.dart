@@ -278,7 +278,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
             children: [
               Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.lock_outline,
                     size: 18,
                     color: PravaColors.accentPrimary,

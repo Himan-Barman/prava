@@ -521,7 +521,7 @@ class _UserResultTile extends StatelessWidget {
                         ),
                         if (user.isVerified) ...[
                           const SizedBox(width: 6),
-                          Icon(
+                          const Icon(
                             CupertinoIcons.check_mark_circled_solid,
                             size: 14,
                             color: PravaColors.accentPrimary,
@@ -791,7 +791,7 @@ class _EmptyState extends StatelessWidget {
         const SizedBox(height: 12),
         Center(
           child: Text(
-            'No matches for \"$query\"',
+            'No matches for "${query}"',
             style: PravaTypography.bodyLarge.copyWith(
               color: primary,
               fontWeight: FontWeight.w600,

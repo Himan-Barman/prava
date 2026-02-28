@@ -239,8 +239,12 @@ final class KeyGeneration {
       x25519Sk[31] |= 64;
       
       // Zero sensitive data
-      for (var i = 0; i < skBytes.length; i++) skBytes[i] = 0;
-      for (var i = 0; i < seed.length; i++) seed[i] = 0;
+      for (var i = 0; i < skBytes.length; i++) {
+        skBytes[i] = 0;
+      }
+      for (var i = 0; i < seed.length; i++) {
+        seed[i] = 0;
+      }
       
       return sodium.secureCopy(x25519Sk);
     } catch (e) {

@@ -564,10 +564,10 @@ class _ChatsPageState extends State<ChatsPage> {
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: Row(
-                  children: const [
+                  children: [
                     _QuickAction(
                       icon: CupertinoIcons.person_2,
                       label: 'New group',
@@ -875,7 +875,7 @@ class _ChatTile extends StatelessWidget {
                             ),
                           ),
                           if (chat.isPinned)
-                            Icon(
+                            const Icon(
                               CupertinoIcons.pin_fill,
                               size: 14,
                               color: PravaColors.accentPrimary,
@@ -973,9 +973,9 @@ class _DeliveryIcon extends StatelessWidget {
       case MessageDeliveryState.delivered:
         return Icon(Icons.done_all, size: 14, color: muted);
       case MessageDeliveryState.read:
-        return Icon(Icons.done_all, size: 14, color: PravaColors.accentPrimary);
+        return const Icon(Icons.done_all, size: 14, color: PravaColors.accentPrimary);
       case MessageDeliveryState.failed:
-        return Icon(CupertinoIcons.exclamationmark_circle,
+        return const Icon(CupertinoIcons.exclamationmark_circle,
             size: 14, color: PravaColors.error);
     }
   }

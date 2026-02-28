@@ -30,7 +30,7 @@ class PravaButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             gradient: const LinearGradient(
-              colors: const [
+              colors: [
                 PravaColors.accentPrimary,
                 PravaColors.accentMuted,
               ],

@@ -686,13 +686,13 @@ class E2eeService {
 
     final signedPreKey =
         await SignedPreKeyStore.getSignedPreKey(signedPreKeyId);
-    if (signedPreKey == null || signedPreKey.privateKey == null) {
+    if (signedPreKey == null) {
       return null;
     }
 
     final sodium = await SodiumLoader.sodium;
     final mySignedPreKeyPrivate = sodium.secureCopy(
-      Uint8List.fromList(signedPreKey.privateKey!),
+      Uint8List.fromList(signedPreKey.privateKey),
     );
 
     SecureKey? myOneTimePreKeyPrivate;

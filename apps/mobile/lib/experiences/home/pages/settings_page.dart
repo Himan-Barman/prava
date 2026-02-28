@@ -260,6 +260,7 @@ class _SettingsPageState extends State<SettingsPage>
       builder: (context) {
         return _SettingsSheet(
           title: 'Appearance',
+          isDark: isDark,
           child: Column(
             children: [
               _SheetOption(
@@ -288,7 +289,6 @@ class _SettingsPageState extends State<SettingsPage>
               ),
             ],
           ),
-          isDark: isDark,
         );
       },
     );
@@ -1131,7 +1131,7 @@ class _SettingsHeaderCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 6),
                             if (verified)
-                              Icon(
+                              const Icon(
                                 CupertinoIcons.check_mark_circled_solid,
                                 size: 16,
                                 color: PravaColors.accentPrimary,
@@ -1215,7 +1215,7 @@ class _SettingsAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
           colors: [

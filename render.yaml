@@ -7,25 +7,17 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: WS_MODE
-        value: shared
-      - key: DATABASE_URL
+      - key: MONGODB_URI
         sync: false
-      - key: REDIS_URL
+      - key: MONGODB_DB_NAME
+        value: prava_chat
+      - key: JWT_SECRET
         sync: false
-      - key: JWT_PRIVATE_KEY
-        sync: false
-      - key: JWT_PUBLIC_KEY
-        sync: false
-      - key: DECISION_ENGINE_URL
-        sync: false
-      - key: ENGAGEMENT_ENGINE_URL
-        sync: false
-      - key: EXPERIMENTATION_ENGINE_URL
-        sync: false
-      - key: MODERATION_ENGINE_URL
-        sync: false
-      - key: TRUST_SAFETY_ENGINE_URL
+      - key: ACCESS_TOKEN_TTL_SECONDS
+        value: "900"
+      - key: REFRESH_TOKEN_TTL_SECONDS
+        value: "2592000"
+      - key: CORS_ORIGIN
         sync: false
   - type: web
     name: prava-decision-engine

@@ -6,12 +6,12 @@ class PravaTheme {
   static const PageTransitionsTheme _cupertinoTransitions =
       PageTransitionsTheme(
     builders: <TargetPlatform, PageTransitionsBuilder>{
-      TargetPlatform.android: const CupertinoPageTransitionsBuilder(),
-      TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
-      TargetPlatform.macOS: const CupertinoPageTransitionsBuilder(),
-      TargetPlatform.windows: const CupertinoPageTransitionsBuilder(),
-      TargetPlatform.linux: const CupertinoPageTransitionsBuilder(),
-      TargetPlatform.fuchsia: const CupertinoPageTransitionsBuilder(),
+      TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.fuchsia: CupertinoPageTransitionsBuilder(),
     },
   );
 

@@ -358,9 +358,9 @@ class _GroupDetailsCard extends StatelessWidget {
               Container(
                 width: 56,
                 height: 56,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     colors: [
                       PravaColors.accentPrimary,
                       PravaColors.accentMuted,

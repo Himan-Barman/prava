@@ -20,7 +20,7 @@ class ArchivedChatsPage extends StatefulWidget {
 class _ArchivedChatsPageState extends State<ArchivedChatsPage> {
   final TextEditingController _searchController = TextEditingController();
 
-  List<_ArchivedChat> _archived =
+  final List<_ArchivedChat> _archived =
       List<_ArchivedChat>.from(_seedArchivedChats);
   bool _keepArchived = true;
 

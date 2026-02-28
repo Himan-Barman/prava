@@ -110,7 +110,7 @@ final class SignedPreKeyStore {
   /// Delete old signed pre-keys
   static Future<int> deleteOld() async {
     final cutoff = DateTime. now()
-        .subtract(Duration(days: maxAgeDays))
+        .subtract(const Duration(days: maxAgeDays))
         .millisecondsSinceEpoch;
 
     return Vault.write((db) async {

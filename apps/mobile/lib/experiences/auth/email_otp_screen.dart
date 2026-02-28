@@ -341,7 +341,7 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
             children: [
               Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.mark_email_read_outlined,
                     size: 18,
                     color: PravaColors.accentPrimary,
@@ -395,7 +395,7 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           else
-                            Icon(
+                            const Icon(
                               Icons.refresh,
                               size: 14,
                               color: PravaColors.accentPrimary,
@@ -520,7 +520,7 @@ class _OtpBox extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: PravaColors.accentPrimary),
+            borderSide: const BorderSide(color: PravaColors.accentPrimary),
           ),
         ),
         onChanged: onChanged,

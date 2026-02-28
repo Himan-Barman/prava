@@ -472,7 +472,7 @@ class _ProfileHero extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
                             CupertinoIcons.waveform_path_ecg,
                             color: PravaColors.accentPrimary,
                             size: 16,
@@ -648,7 +648,7 @@ class _IdentityCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         if (profile.verified)
-                          Icon(
+                          const Icon(
                             CupertinoIcons.check_mark_circled_solid,
                             color: PravaColors.accentPrimary,
                             size: 18,
@@ -673,7 +673,7 @@ class _IdentityCard extends StatelessWidget {
                           label: profile.tierLabel,
                           color: PravaColors.accentPrimary,
                         ),
-                        _BadgeChip(
+                        const _BadgeChip(
                           icon: CupertinoIcons.shield_lefthalf_fill,
                           label: 'Secure verified',
                           color: PravaColors.success,
@@ -846,7 +846,7 @@ class _FollowButton extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: following
               ? null
-              : LinearGradient(
+              : const LinearGradient(
                   colors: [
                     PravaColors.accentPrimary,
                     PravaColors.accentMuted,
@@ -1009,7 +1009,7 @@ class _PremiumPanel extends StatelessWidget {
               color: PravaColors.accentPrimary.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(
+            child: const Icon(
               CupertinoIcons.star_circle_fill,
               color: PravaColors.accentPrimary,
               size: 24,
@@ -1481,7 +1481,7 @@ class _ProfilePostCard extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Icon(
+                      const Icon(
                         CupertinoIcons.pin_fill,
                         size: 12,
                         color: PravaColors.accentPrimary,

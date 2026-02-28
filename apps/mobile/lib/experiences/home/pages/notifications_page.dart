@@ -266,7 +266,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                 )
                               : Row(
                                   children: [
-                                    Icon(
+                                    const Icon(
                                       CupertinoIcons.check_mark_circled,
                                       size: 14,
                                       color: PravaColors.accentPrimary,

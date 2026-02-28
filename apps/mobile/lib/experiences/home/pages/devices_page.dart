@@ -271,7 +271,7 @@ class _DevicesPageState extends State<DevicesPage> {
                         ),
                       ),
                     );
-                  }).toList(),
+                  }),
               ],
             ),
     );

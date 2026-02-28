@@ -137,7 +137,7 @@ final class SodiumLoader {
   /// Get sodium version info
   static Future<SodiumVersion> getVersion() async {
     final s = await sodium;
-    return SodiumVersion(
+    return const SodiumVersion(
       major: 1,
       minor: 0,
       patch: 18,

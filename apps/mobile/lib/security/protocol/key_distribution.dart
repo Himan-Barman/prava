@@ -2,7 +2,6 @@
 import 'dart:typed_data';
 
 import '../crypto/key_generation.dart';
-import '../crypto/random_generator.dart';
 import '../device/device_bundle.dart';
 import '../storage/prekey_store.dart';
 import '../storage/signed_prekey_store.dart';

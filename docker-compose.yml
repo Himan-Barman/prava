@@ -1,10 +1,12 @@
 
-version: "3.9"
 services:
   api:
-    build: ./platform
-    ports: ["3000:3000"]
+    build: ./apps/backend
+    ports: ["3000:3000", "3100:3000"]
     env_file: [.env]
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/prava_chat
+      - MONGODB_DB_NAME=prava_chat
     depends_on: [mongo, redis]
 
   mongo:

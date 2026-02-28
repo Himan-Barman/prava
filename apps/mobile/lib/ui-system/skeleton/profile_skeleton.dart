@@ -7,9 +7,9 @@ class ProfileSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PravaSkeletonContainer(
-      child: const Column(
-        children: const [
+    return const PravaSkeletonContainer(
+      child: Column(
+        children: [
           SizedBox(height: 24),
           PravaSkeletonBlock(
             height: 96,

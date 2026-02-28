@@ -14,17 +14,17 @@ class ChatsSkeleton extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(height: 18),
         itemBuilder: (_, __) {
           return const Row(
-            children: const [
+            children: [
               PravaSkeletonBlock(
                 height: 52,
                 width: 52,
                 radius: BorderRadius.all(Radius.circular(26)),
               ),
               SizedBox(width: 14),
-              const Expanded(
-                child: const Column(
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     PravaSkeletonBlock(height: 14, width: 160),
                     SizedBox(height: 6),
                     PravaSkeletonBlock(height: 12, width: 220),

@@ -12,37 +12,37 @@ class FeedSkeleton extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         itemCount: 6,
         itemBuilder: (_, __) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 28),
+          return const Padding(
+            padding: EdgeInsets.only(bottom: 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 /// Header
-                const Row(
-                  children: const [
+                Row(
+                  children: [
                     PravaSkeletonBlock(
                       height: 44,
                       width: 44,
                       radius: BorderRadius.all(Radius.circular(22)),
                     ),
                     SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: PravaSkeletonBlock(height: 14),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
 
                 /// Text
-                const PravaSkeletonBlock(height: 14),
-                const SizedBox(height: 6),
-                const PravaSkeletonBlock(height: 14, width: 260),
+                PravaSkeletonBlock(height: 14),
+                SizedBox(height: 6),
+                PravaSkeletonBlock(height: 14, width: 260),
 
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
 
                 /// Media
-                const PravaSkeletonBlock(
+                PravaSkeletonBlock(
                   height: 180,
                   radius: BorderRadius.all(Radius.circular(16)),
                 ),

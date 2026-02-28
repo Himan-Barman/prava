@@ -214,7 +214,7 @@ class HardwareKeyResult {
       HardwareKeyResult._(success: false, error:  error);
 
   factory HardwareKeyResult.unsupported() =>
-      HardwareKeyResult._(success: false, error: 'Hardware keys not supported');
+      const HardwareKeyResult._(success: false, error: 'Hardware keys not supported');
 }
 
 /// Result of hardware signature operation
@@ -236,7 +236,7 @@ class SignatureResult {
       SignatureResult._(success: false, error:  error);
 
   factory SignatureResult.unsupported() =>
-      SignatureResult. _(success: false, error: 'Hardware signing not supported');
+      const SignatureResult. _(success: false, error: 'Hardware signing not supported');
 }
 
 /// Result of hardware encryption operation
@@ -258,6 +258,6 @@ class EncryptionResult {
       EncryptionResult._(success: false, error:  error);
 
   factory EncryptionResult.unsupported() =>
-      EncryptionResult._(
+      const EncryptionResult._(
           success: false, error: 'Hardware encryption not supported');
 }

@@ -1528,7 +1528,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 200),
                       child: _loading
-                          ? Center(
+                          ? const Center(
                               child: CircularProgressIndicator(
                                 color: PravaColors.accentPrimary,
                               ),
@@ -2130,7 +2130,7 @@ class _StatusIcon extends StatelessWidget {
       case MessageDeliveryState.read:
         return Icon(Icons.done_all, size: 14, color: color);
       case MessageDeliveryState.failed:
-        return Icon(
+        return const Icon(
           CupertinoIcons.exclamationmark_circle,
           size: 12,
           color: PravaColors.error,
@@ -2354,7 +2354,7 @@ class _EditingBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
+          const Icon(
             CupertinoIcons.pencil,
             size: 16,
             color: PravaColors.accentPrimary,
