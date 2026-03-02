@@ -151,6 +151,7 @@ before(async () => {
 
   const chatService = (await import("../src/services/chat/index.js")).default;
   const realtimeService = (await import("../src/services/realtime/index.js")).default;
+  const userService = (await import("../src/services/user/index.js")).default;
 
   app = Fastify({ logger: false });
   await app.register(websocket, {
@@ -160,6 +161,7 @@ before(async () => {
   });
   app.register(realtimeService);
   app.register(chatService, { prefix: "/api/conversations" });
+  app.register(userService, { prefix: "/api/users" });
 
   await app.listen({ host: "127.0.0.1", port: 0 });
   const address = app.server.address() as AddressInfo;
@@ -292,6 +294,28 @@ test("chat routes: dm create, send message, read + delivery + sync", async () =>
   assert.equal(sync.data.conversations.length, 1);
   assert.equal(sync.data.conversations[0].conversationId, conversationId);
   assert.equal(sync.data.conversations[0].messages.length, 1);
+});
+
+test("username availability: taken and available", async () => {
+  const taken = await httpJson<{ available: boolean }>(
+    baseUrl,
+    "/api/users/username-available?username=usera_test"
+  );
+  assert.equal(taken.status, 200);
+  assert.equal(taken.data.available, false);
+
+  const available = await httpJson<{ available: boolean }>(
+    baseUrl,
+    "/api/users/username-available?username=new_user_123"
+  );
+  assert.equal(available.status, 200);
+  assert.equal(available.data.available, true);
+
+  const invalid = await httpJson<{ message?: string }>(
+    baseUrl,
+    "/api/users/username-available?username=ab"
+  );
+  assert.equal(invalid.status, 400);
 });
 
 test("realtime websocket: push, ack, read-update", async () => {

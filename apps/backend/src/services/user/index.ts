@@ -221,16 +221,34 @@ export default async function userService(app) {
     return { userId: request.user.userId };
   });
 
-  app.get("/username-available", async (request) => {
-    const username = normalizeUsername(request.query?.username);
-    ensure(isValidUsername(username), 400, "Invalid username");
+  app.get("/username-available", {
+    schema: {
+      querystring: {
+        type: "object",
+        required: ["username"],
+        properties: {
+          username: { type: "string", minLength: 1, maxLength: 64 },
+        },
+      },
+    },
+  }, async (request) => {
+    try {
+      const username = normalizeUsername(request.query?.username);
+      ensure(isValidUsername(username), 400, "Invalid username");
 
-    const existing = await db.collection("users").findOne(
-      { usernameLower: username },
-      { projection: { userId: 1 } }
-    );
+      const existing = await db.collection("users").findOne(
+        { usernameLower: username },
+        { projection: { userId: 1 } }
+      );
 
-    return { available: !existing };
+      return { available: !existing };
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw error;
+      }
+      request.log.error({ err: error }, "username availability check failed");
+      throw new HttpError(503, "Username check temporarily unavailable");
+    }
   });
 
   app.put("/me/details", { preHandler: requireAuth }, async (request) => {
