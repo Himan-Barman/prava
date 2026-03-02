@@ -1,5 +1,22 @@
-const rawBaseUrl =
-  import.meta.env.VITE_API_BASE_URL ?? 'https://prava-humg.onrender.com/api';
+const resolveApiBaseUrl = (): string => {
+  const explicit = (
+    import.meta.env.VITE_API_URL
+    || import.meta.env.VITE_API_BASE_URL
+  ) as string | undefined;
+
+  if (explicit && explicit.trim().length > 0) {
+    return explicit.trim();
+  }
+
+  if (import.meta.env.PROD) {
+    console.warn('[apiClient] Missing VITE_API_URL. Falling back to same-origin /api.');
+    return '/api';
+  }
+
+  return 'http://localhost:3000/api';
+};
+
+const rawBaseUrl = resolveApiBaseUrl();
 
 export const apiBaseUrl = rawBaseUrl.replace(/\/$/, '');
 

@@ -7,12 +7,26 @@ import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios';
 import { secureStore } from './secure-store';
 import { getOrCreateDeviceId } from './device-id';
 
-// Get API URL from environment or default (include /api prefix)
-const API_BASE_URL = (
-  (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim().length > 0)
-    ? import.meta.env.VITE_API_URL
-    : (import.meta.env.PROD ? 'https://prava-humg.onrender.com/api' : 'http://localhost:3000/api')
-).replace(/\/+$/, '');
+const resolveApiBaseUrl = (): string => {
+  const explicit = (
+    import.meta.env.VITE_API_URL
+    || import.meta.env.VITE_API_BASE_URL
+  ) as string | undefined;
+
+  if (explicit && explicit.trim().length > 0) {
+    return explicit.trim().replace(/\/+$/, '');
+  }
+
+  if (import.meta.env.PROD) {
+    console.warn('[api-client] Missing VITE_API_URL. Falling back to same-origin /api.');
+    return '/api';
+  }
+
+  return 'http://localhost:3000/api';
+};
+
+// Always use a base with no trailing slash.
+const API_BASE_URL = resolveApiBaseUrl().replace(/\/+$/, '');
 
 export class ApiException extends Error {
   constructor(

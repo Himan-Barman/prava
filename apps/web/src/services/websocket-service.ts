@@ -8,9 +8,13 @@ const resolveWsBase = () => {
   }
 
   const apiBase = (
-    (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim().length > 0)
+    (
+      (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim().length > 0)
       ? import.meta.env.VITE_API_URL
-      : (import.meta.env.PROD ? 'https://prava-humg.onrender.com/api' : 'http://localhost:3000/api')
+      : (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim().length > 0)
+        ? import.meta.env.VITE_API_BASE_URL
+        : (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')
+    )
   ).replace(/\/+$/, '');
   const trimmed = apiBase.replace(/\/api$/i, '');
   return trimmed.replace(/^http/, 'ws');
