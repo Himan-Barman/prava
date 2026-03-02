@@ -44,6 +44,17 @@ class ApiClient {
   private isRefreshing = false;
   private refreshSubscribers: ((token: string) => void)[] = [];
 
+  private hasAuthHeader(config?: AxiosRequestConfig): boolean {
+    const headers = config?.headers;
+    if (!headers || typeof headers !== 'object') {
+      return false;
+    }
+
+    const asRecord = headers as Record<string, unknown>;
+    const authValue = asRecord.Authorization ?? asRecord.authorization;
+    return typeof authValue === 'string' && authValue.trim().length > 0;
+  }
+
   constructor() {
     this.client = axios.create({
       baseURL: API_BASE_URL,
@@ -64,7 +75,11 @@ class ApiClient {
         const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 
         // Handle 401 and attempt token refresh
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        if (
+          error.response?.status === 401
+          && !originalRequest._retry
+          && this.hasAuthHeader(originalRequest)
+        ) {
           if (this.isRefreshing) {
             return new Promise((resolve) => {
               this.refreshSubscribers.push((token: string) => {
