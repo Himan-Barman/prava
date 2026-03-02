@@ -19,6 +19,8 @@ This is the active TypeScript backend service for the project.
 - `MONGODB_URI`
 - `MONGODB_DB_NAME`
 - `JWT_SECRET`
+- `RESEND_API_KEY` (production email delivery)
+- `EMAIL_FROM` (verified sender in Resend)
 
 ### MongoDB Atlas / Render example
 Use a full Atlas SRV URI and keep credentials in Render env vars:
@@ -32,6 +34,23 @@ Important:
 - Replace `<db_password>` with the real password.
 - If the password has special characters, URL-encode it.
 - In MongoDB Atlas Network Access, allow Render outbound IPs (or temporary `0.0.0.0/0`).
+
+### OTP Email Delivery (Resend)
+OTP for email verification and password reset is sent through Resend.
+
+Required:
+- `RESEND_API_KEY`
+- `EMAIL_FROM` (example: `Prava <no-reply@mail.prava.app>`)
+
+Recommended:
+- `EMAIL_REPLY_TO` (example: `support@prava.app`)
+- `APP_NAME` (default: `Prava`)
+- `APP_PUBLIC_URL` (example: `https://prava.app`)
+- `OTP_EXPIRES_MINUTES` (default: `10`)
+
+Notes:
+- `EMAIL_FROM` must use a domain verified in Resend.
+- For production, server startup fails if `RESEND_API_KEY` or `EMAIL_FROM` is missing.
 
 ## Optional env vars
 - `CORS_ORIGIN` (comma-separated origins, defaults to `*`)

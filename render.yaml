@@ -19,6 +19,18 @@ services:
         value: "10000"
       - key: JWT_SECRET
         sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_REPLY_TO
+        sync: false
+      - key: APP_NAME
+        value: Prava
+      - key: APP_PUBLIC_URL
+        sync: false
+      - key: OTP_EXPIRES_MINUTES
+        value: "10"
       - key: ACCESS_TOKEN_TTL_SECONDS
         value: "900"
       - key: REFRESH_TOKEN_TTL_SECONDS

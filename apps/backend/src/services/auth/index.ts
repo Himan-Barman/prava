@@ -19,6 +19,7 @@ import {
   verifyPassword,
 } from "../../lib/security.js";
 import { requireAuth } from "../../lib/auth.js";
+import { sendOtpEmail } from "../../lib/email.js";
 
 function addSeconds(date, seconds) {
   return new Date(date.getTime() + seconds * 1000);
@@ -328,6 +329,17 @@ export default async function authService(app) {
       usedAt: null,
     });
 
+    try {
+      await sendOtpEmail({
+        to: emailLower,
+        code,
+        type: "verification",
+      });
+    } catch (error) {
+      request.log.error({ err: error, emailLower }, "failed to deliver email verification otp");
+      throw new HttpError(503, "Unable to send verification code");
+    }
+
     const payload: { success: boolean; expiresIn: number; devCode?: string } = {
       success: true,
       expiresIn: 600,
@@ -437,6 +449,17 @@ export default async function authService(app) {
       expiresAt: addMinutes(ts, 10),
       usedAt: null,
     });
+
+    try {
+      await sendOtpEmail({
+        to: emailLower,
+        code,
+        type: "password-reset",
+      });
+    } catch (error) {
+      request.log.error({ err: error, userId: user.userId }, "failed to deliver password reset otp");
+      throw new HttpError(503, "Unable to send reset code");
+    }
 
     const payload: { success: boolean; devToken?: string } = { success: true };
     if ((process.env.NODE_ENV || "development") !== "production") {
