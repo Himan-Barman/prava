@@ -391,6 +391,59 @@ test("username reservation: holds for signup flow and blocks others", async () =
   assert.equal(register.data.user.username, username);
 });
 
+test("register allows signup after reservation expiry when username is still free", async () => {
+  const email = "reserve_expire_case@example.com";
+  const username = "reserved_expire_1";
+
+  const otpRequest = await httpJson<{ success: boolean; devCode?: string }>(
+    baseUrl,
+    "/api/auth/email-otp/request",
+    {
+      method: "POST",
+      body: { email, username },
+    }
+  );
+  assert.equal(otpRequest.status, 200);
+  const otpCode = String(otpRequest.data.devCode || "");
+  assert.equal(otpCode.length, 6);
+
+  const otpVerify = await httpJson<{ verified: boolean }>(
+    baseUrl,
+    "/api/auth/email-otp/verify",
+    {
+      method: "POST",
+      body: { email, code: otpCode },
+    }
+  );
+  assert.equal(otpVerify.status, 200);
+  assert.equal(otpVerify.data.verified, true);
+
+  const mongoLib = await import("../src/lib/mongo.js");
+  const db = mongoLib.getDb();
+  await db.collection("username_reservations").updateOne(
+    { usernameLower: username },
+    { $set: { expiresAt: new Date(Date.now() - 60_000) } }
+  );
+
+  const register = await httpJson<{ user: { username: string } }>(
+    baseUrl,
+    "/api/auth/register",
+    {
+      method: "POST",
+      body: {
+        email,
+        username,
+        password: "SecurePass123!",
+        deviceId: "reserve-expire-device",
+        deviceName: "reserve-expire-test",
+        platform: "test",
+      },
+    }
+  );
+  assert.equal(register.status, 200);
+  assert.equal(register.data.user.username, username);
+});
+
 test("realtime websocket: push, ack, read-update", async () => {
   const dmCreate = await httpJson<{ conversationId: string }>(
     baseUrl,

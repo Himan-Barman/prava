@@ -150,25 +150,20 @@ async function ensureUsernameReservedForSignup(db, emailLower, usernameLower, ts
   }
 
   const reservation = await db.collection("username_reservations").findOne(
-    { usernameLower },
+    {
+      usernameLower,
+      expiresAt: { $gt: ts },
+    },
     {
       projection: {
         emailLower: 1,
-        expiresAt: 1,
       },
     }
   );
 
-  if (!reservation || !reservation.expiresAt) {
-    throw new HttpError(409, "Username reservation expired. Request a new verification code.");
-  }
-
-  const expiresAt = new Date(reservation.expiresAt);
-  if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= ts.getTime()) {
-    throw new HttpError(409, "Username reservation expired. Request a new verification code.");
-  }
-
-  if (reservation.emailLower !== emailLower) {
+  // Allow signup when no active reservation exists; only block if currently
+  // held by someone else.
+  if (reservation && reservation.emailLower !== emailLower) {
     throw new HttpError(409, "Username is temporarily reserved");
   }
 }
