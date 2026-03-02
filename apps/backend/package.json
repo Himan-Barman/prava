@@ -18,6 +18,8 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^13.0.2",
     "@fastify/rate-limit": "^10.3.0",
+    "@fastify/under-pressure": "^9.0.3",
+    "@fastify/websocket": "^11.2.0",
     "fastify": "^5.7.4",
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",

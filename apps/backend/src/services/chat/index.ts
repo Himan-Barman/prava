@@ -7,6 +7,10 @@ import {
   now,
   toIso,
 } from "../../lib/security.js";
+import {
+  publishToConversation,
+  publishToUsers,
+} from "../realtime/hub.js";
 
 function parseLimit(raw, fallback, min, max) {
   const parsed = Number.parseInt(String(raw || ""), 10);
@@ -18,6 +22,84 @@ function parseLimit(raw, fallback, min, max) {
 
 function normalizeMemberHash(ids) {
   return [...new Set(ids)].sort().join(":");
+}
+
+function normalizeString(value) {
+  return String(value || "").trim();
+}
+
+function normalizeIdList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const id = normalizeString(item);
+    if (id.length < 8 || id.length > 128 || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+function getGroupMeta(conversation) {
+  const memberIds = Array.isArray(conversation.memberIds)
+    ? conversation.memberIds.map((id) => String(id))
+    : [];
+
+  let ownerUserId = normalizeString(conversation.ownerUserId);
+  if (!ownerUserId || !memberIds.includes(ownerUserId)) {
+    ownerUserId = memberIds[0] || "";
+  }
+
+  const adminSet = new Set(
+    (Array.isArray(conversation.adminIds) ? conversation.adminIds : [])
+      .map((id) => String(id))
+      .filter((id) => memberIds.includes(id))
+  );
+  if (ownerUserId) {
+    adminSet.add(ownerUserId);
+  }
+
+  return {
+    memberIds,
+    ownerUserId,
+    adminIds: [...adminSet],
+  };
+}
+
+function roleForUser(groupMeta, userId) {
+  if (userId === groupMeta.ownerUserId) {
+    return "owner";
+  }
+  if (groupMeta.adminIds.includes(userId)) {
+    return "admin";
+  }
+  return "member";
+}
+
+function isGroupAdmin(groupMeta, userId) {
+  return roleForUser(groupMeta, userId) !== "member";
+}
+
+function toRealtimeMessagePayload(message) {
+  return {
+    conversationId: message.conversationId,
+    messageId: message.messageId,
+    senderUserId: message.senderUserId,
+    senderDeviceId: message.senderDeviceId || "",
+    seq: message.seq,
+    contentType: message.contentType,
+    body: message.body,
+    mediaAssetId: message.mediaAssetId || null,
+    editVersion: Number(message.editVersion || 0),
+    deletedForAllAt: toIso(message.deletedForAllAt),
+    createdAt: toIso(message.createdAt),
+  };
 }
 
 function mapMessage(message) {
@@ -130,6 +212,9 @@ export default async function chatService(app) {
 
       const lastReadSeq = readMap.get(conversation.conversationId) || 0;
       const lastSeq = Number(conversation.seqCounter || 0);
+      const groupMeta = conversation.type === "group"
+        ? getGroupMeta(conversation)
+        : undefined;
 
       return {
         id: conversation.conversationId,
@@ -144,8 +229,61 @@ export default async function chatService(app) {
         lastMessageContentType: conversation.lastMessageContentType || null,
         lastMessageDeletedForAllAt: toIso(conversation.lastMessageDeletedForAllAt),
         lastMessageCreatedAt: toIso(conversation.lastMessageCreatedAt),
+        memberCount: groupMeta
+          ? groupMeta.memberIds.length
+          : (Array.isArray(conversation.memberIds) ? conversation.memberIds.length : 0),
+        isAdmin: groupMeta
+          ? isGroupAdmin(groupMeta, request.user.userId)
+          : false,
+        myRole: groupMeta
+          ? roleForUser(groupMeta, request.user.userId)
+          : "member",
       };
     });
+  });
+
+  app.get("/:conversationId", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    const groupMeta = conversation.type === "group" ? getGroupMeta(conversation) : null;
+
+    let title = conversation.title || "Conversation";
+    if (conversation.type === "dm") {
+      const peerId = (conversation.memberIds || []).find((id) => id !== request.user.userId);
+      if (peerId) {
+        const peer = await db.collection("users").findOne(
+          { userId: peerId },
+          {
+            projection: {
+              username: 1,
+              displayName: 1,
+            },
+          }
+        );
+        title = peer?.displayName || peer?.username || "Conversation";
+      }
+    }
+
+    return {
+      id: conversation.conversationId,
+      type: conversation.type,
+      title,
+      createdBy: conversation.ownerUserId || null,
+      createdAt: toIso(conversation.createdAt),
+      updatedAt: toIso(conversation.updatedAt),
+      memberCount: Array.isArray(conversation.memberIds) ? conversation.memberIds.length : 0,
+      isAdmin: groupMeta ? isGroupAdmin(groupMeta, request.user.userId) : false,
+      myRole: groupMeta ? roleForUser(groupMeta, request.user.userId) : "member",
+      lastMessageId: conversation.lastMessageId || null,
+      lastMessageSeq: conversation.lastMessageSeq ?? null,
+      lastMessageSenderUserId: conversation.lastMessageSenderUserId || null,
+      lastMessageBody: conversation.lastMessageBody || null,
+      lastMessageContentType: conversation.lastMessageContentType || null,
+      lastMessageDeletedForAllAt: toIso(conversation.lastMessageDeletedForAllAt),
+      lastMessageCreatedAt: toIso(conversation.lastMessageCreatedAt),
+    };
   });
 
   app.post("/dm", { preHandler: requireAuth }, async (request) => {
@@ -170,6 +308,8 @@ export default async function chatService(app) {
           type: "dm",
           title: null,
           memberIds,
+          ownerUserId: memberIds[0] || request.user.userId,
+          adminIds: memberIds,
           memberHash,
           seqCounter: 0,
           createdAt: ts,
@@ -203,13 +343,11 @@ export default async function chatService(app) {
   });
 
   app.post("/group", { preHandler: requireAuth }, async (request) => {
-    const title = String(request.body?.title || "").trim();
-    const incoming = Array.isArray(request.body?.memberIds) ? request.body.memberIds : [];
-
-    const memberIds = [...new Set([request.user.userId, ...incoming.map((id) => String(id || "").trim())])]
-      .filter((id) => id.length >= 8);
+    const title = normalizeString(request.body?.title).slice(0, 120);
+    const memberIds = [...new Set([request.user.userId, ...normalizeIdList(request.body?.memberIds)])];
 
     ensure(memberIds.length >= 2, 400, "Group must have at least 2 members");
+    ensure(memberIds.length <= 1024, 400, "Group member limit exceeded");
     ensure(title.length > 0 && title.length <= 120, 400, "Invalid title");
 
     const users = await db.collection("users").find(
@@ -225,6 +363,8 @@ export default async function chatService(app) {
       type: "group",
       title,
       memberIds,
+      ownerUserId: request.user.userId,
+      adminIds: [request.user.userId],
       seqCounter: 0,
       createdAt: ts,
       updatedAt: ts,
@@ -240,14 +380,298 @@ export default async function chatService(app) {
     return { conversationId };
   });
 
-  app.get("/:conversationId/members", { preHandler: requireAuth }, async (request) => {
-    const conversationId = String(request.params.conversationId || "").trim();
+  app.patch("/:conversationId", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
     ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
     const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
-    return (conversation.memberIds || []).map((userId) => ({
+    ensure(conversation.type === "group", 400, "Conversation is not a group");
+
+    const groupMeta = getGroupMeta(conversation);
+    ensure(isGroupAdmin(groupMeta, request.user.userId), 403, "Admin privileges required");
+
+    const title = normalizeString(request.body?.title).slice(0, 120);
+    ensure(title.length > 0, 400, "Invalid title");
+
+    const ts = now();
+    await db.collection("conversations").updateOne(
+      { conversationId },
+      {
+        $set: {
+          title,
+          updatedAt: ts,
+        },
+      }
+    );
+
+    publishToConversation(groupMeta.memberIds, "CONVERSATION_UPDATED", {
+      conversationId,
+      title,
+      updatedAt: toIso(ts),
+    });
+
+    return {
+      success: true,
+      conversationId,
+      title,
+      updatedAt: toIso(ts),
+    };
+  });
+
+  app.post("/:conversationId/members", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    ensure(conversation.type === "group", 400, "Conversation is not a group");
+
+    const groupMeta = getGroupMeta(conversation);
+    ensure(isGroupAdmin(groupMeta, request.user.userId), 403, "Admin privileges required");
+
+    const incoming = normalizeIdList(request.body?.memberIds)
+      .filter((id) => id !== request.user.userId);
+    ensure(incoming.length > 0, 400, "No members to add");
+
+    const existingSet = new Set(groupMeta.memberIds);
+    const added = incoming.filter((id) => !existingSet.has(id));
+    ensure(added.length > 0, 400, "No new members were added");
+    ensure(groupMeta.memberIds.length + added.length <= 1024, 400, "Group member limit exceeded");
+
+    const users = await db.collection("users").find(
+      { userId: { $in: added } },
+      { projection: { userId: 1 } }
+    ).toArray();
+    ensure(users.length === added.length, 400, "One or more members not found");
+
+    const memberIds = [...groupMeta.memberIds, ...added];
+    const ts = now();
+    await db.collection("conversations").updateOne(
+      { conversationId },
+      {
+        $set: {
+          memberIds,
+          ownerUserId: groupMeta.ownerUserId || request.user.userId,
+          adminIds: groupMeta.adminIds,
+          updatedAt: ts,
+        },
+      }
+    );
+
+    publishToConversation(memberIds, "GROUP_MEMBER_ADDED", {
+      conversationId,
+      addedBy: request.user.userId,
+      memberIds: added,
+    });
+
+    return {
+      success: true,
+      conversationId,
+      added,
+      memberCount: memberIds.length,
+    };
+  });
+
+  app.delete("/:conversationId/members/:memberUserId", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    const memberUserId = normalizeString(request.params.memberUserId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+    ensure(memberUserId.length >= 8, 400, "Invalid user");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    ensure(conversation.type === "group", 400, "Conversation is not a group");
+
+    const groupMeta = getGroupMeta(conversation);
+    ensure(groupMeta.memberIds.includes(memberUserId), 404, "Member not found");
+
+    const selfLeave = memberUserId === request.user.userId;
+    if (!selfLeave) {
+      ensure(isGroupAdmin(groupMeta, request.user.userId), 403, "Admin privileges required");
+      if (memberUserId === groupMeta.ownerUserId) {
+        throw new HttpError(403, "Cannot remove group owner");
+      }
+      if (groupMeta.adminIds.includes(memberUserId) && request.user.userId !== groupMeta.ownerUserId) {
+        throw new HttpError(403, "Only owner can remove admins");
+      }
+    }
+
+    const memberIds = groupMeta.memberIds.filter((id) => id !== memberUserId);
+    const adminIds = groupMeta.adminIds.filter((id) => id !== memberUserId);
+    let ownerUserId = groupMeta.ownerUserId;
+
+    if (memberUserId === ownerUserId) {
+      const replacement = adminIds[0] || memberIds[0] || "";
+      ownerUserId = replacement;
+      if (replacement && !adminIds.includes(replacement)) {
+        adminIds.push(replacement);
+      }
+    }
+
+    const ts = now();
+    await db.collection("conversations").updateOne(
+      { conversationId },
+      {
+        $set: {
+          memberIds,
+          adminIds,
+          ownerUserId,
+          updatedAt: ts,
+        },
+      }
+    );
+
+    publishToConversation(memberIds, "GROUP_MEMBER_REMOVED", {
+      conversationId,
+      removedBy: request.user.userId,
+      memberUserId,
+      removedAt: toIso(ts),
+    });
+
+    return {
+      success: true,
+      conversationId,
+      removedUserId: memberUserId,
+      left: selfLeave,
+    };
+  });
+
+  app.post("/:conversationId/leave", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+    const memberUserId = request.user.userId;
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    ensure(conversation.type === "group", 400, "Conversation is not a group");
+    const groupMeta = getGroupMeta(conversation);
+    ensure(groupMeta.memberIds.includes(memberUserId), 403, "Not a member");
+
+    const memberIds = groupMeta.memberIds.filter((id) => id !== memberUserId);
+    const adminIds = groupMeta.adminIds.filter((id) => id !== memberUserId);
+    let ownerUserId = groupMeta.ownerUserId;
+
+    if (memberUserId === ownerUserId) {
+      const replacement = adminIds[0] || memberIds[0] || "";
+      ownerUserId = replacement;
+      if (replacement && !adminIds.includes(replacement)) {
+        adminIds.push(replacement);
+      }
+    }
+
+    const ts = now();
+    await db.collection("conversations").updateOne(
+      { conversationId },
+      {
+        $set: {
+          memberIds,
+          adminIds,
+          ownerUserId,
+          updatedAt: ts,
+        },
+      }
+    );
+
+    publishToConversation(memberIds, "GROUP_MEMBER_LEFT", {
+      conversationId,
+      userId: memberUserId,
+      leftAt: toIso(ts),
+    });
+
+    return {
+      success: true,
+      conversationId,
+    };
+  });
+
+  app.post("/:conversationId/admins", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    const userId = normalizeString(request.body?.userId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+    ensure(userId.length >= 8, 400, "Invalid user");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    ensure(conversation.type === "group", 400, "Conversation is not a group");
+    const groupMeta = getGroupMeta(conversation);
+    ensure(isGroupAdmin(groupMeta, request.user.userId), 403, "Admin privileges required");
+    ensure(groupMeta.memberIds.includes(userId), 404, "Member not found");
+    ensure(userId !== groupMeta.ownerUserId, 400, "Owner role cannot be changed");
+
+    const adminIds = [...new Set([...groupMeta.adminIds, userId])];
+    const ts = now();
+    await db.collection("conversations").updateOne(
+      { conversationId },
+      {
+        $set: {
+          adminIds,
+          ownerUserId: groupMeta.ownerUserId,
+          updatedAt: ts,
+        },
+      }
+    );
+
+    publishToConversation(groupMeta.memberIds, "GROUP_MEMBER_ROLE", {
+      conversationId,
+      changedBy: request.user.userId,
       userId,
-      role: userId === conversation.memberIds?.[0] ? "owner" : "member",
+      role: "admin",
+    });
+
+    return {
+      success: true,
+      conversationId,
+      userId,
+      role: "admin",
+    };
+  });
+
+  app.delete("/:conversationId/admins/:memberUserId", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    const memberUserId = normalizeString(request.params.memberUserId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+    ensure(memberUserId.length >= 8, 400, "Invalid user");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    ensure(conversation.type === "group", 400, "Conversation is not a group");
+    const groupMeta = getGroupMeta(conversation);
+    ensure(request.user.userId === groupMeta.ownerUserId, 403, "Only owner can remove admins");
+    ensure(groupMeta.adminIds.includes(memberUserId), 400, "Member is not an admin");
+    ensure(memberUserId !== groupMeta.ownerUserId, 400, "Cannot demote owner");
+
+    const adminIds = groupMeta.adminIds.filter((id) => id !== memberUserId);
+    const ts = now();
+    await db.collection("conversations").updateOne(
+      { conversationId },
+      {
+        $set: {
+          adminIds,
+          ownerUserId: groupMeta.ownerUserId,
+          updatedAt: ts,
+        },
+      }
+    );
+
+    publishToConversation(groupMeta.memberIds, "GROUP_MEMBER_ROLE", {
+      conversationId,
+      changedBy: request.user.userId,
+      userId: memberUserId,
+      role: "member",
+    });
+
+    return {
+      success: true,
+      conversationId,
+      userId: memberUserId,
+      role: "member",
+    };
+  });
+
+  app.get("/:conversationId/members", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    const groupMeta = getGroupMeta(conversation);
+    return groupMeta.memberIds.map((userId) => ({
+      userId,
+      role: conversation.type === "group" ? roleForUser(groupMeta, userId) : "member",
       joinedAt: toIso(conversation.createdAt),
       leftAt: null,
     }));
@@ -274,18 +698,24 @@ export default async function chatService(app) {
       limit,
     }).toArray();
 
-    return messages.map(mapMessage);
+    return messages.reverse().map(mapMessage);
   });
 
   app.post("/:conversationId/messages", { preHandler: requireAuth }, async (request) => {
-    const conversationId = String(request.params.conversationId || "").trim();
+    const conversationId = normalizeString(request.params.conversationId);
     ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
     const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    const memberIds = Array.isArray(conversation.memberIds)
+      ? conversation.memberIds.map((id) => String(id))
+      : [];
 
-    const body = String(request.body?.body || "").trim();
-    const contentType = String(request.body?.contentType || "text").trim().toLowerCase();
-    const deviceId = String(request.body?.deviceId || "").trim();
+    const body = normalizeString(request.body?.body);
+    const contentType = normalizeString(request.body?.contentType || "text").toLowerCase();
+    const deviceId = normalizeString(request.body?.deviceId);
+    const tempId = normalizeString(request.body?.tempId);
+    const mediaAssetId = normalizeString(request.body?.mediaAssetId);
+    const replyToMessageId = normalizeString(request.body?.replyToMessageId);
 
     ensure(["text", "system", "media"].includes(contentType), 400, "Invalid content type");
     ensure(body.length > 0 && body.length <= 65535, 400, "Invalid body");
@@ -318,8 +748,13 @@ export default async function chatService(app) {
       seq: nextSeq,
       contentType,
       body,
+      replyToMessageId: replyToMessageId || null,
+      mediaAssetId: mediaAssetId || null,
       clientTimestamp: request.body?.clientTimestamp || null,
       createdAt: ts,
+      updatedAt: ts,
+      editVersion: 0,
+      reactions: [],
       deletedForAllAt: null,
     };
 
@@ -337,9 +772,41 @@ export default async function chatService(app) {
           lastMessageContentType: message.contentType,
           lastMessageDeletedForAllAt: null,
           lastMessageCreatedAt: ts,
+          lastMessageEditVersion: 0,
         },
       }
     );
+
+    await db.collection("conversation_reads").updateOne(
+      {
+        conversationId,
+        userId: request.user.userId,
+      },
+      {
+        $set: {
+          conversationId,
+          userId: request.user.userId,
+          lastReadSeq: message.seq,
+          lastDeliveredSeq: message.seq,
+          updatedAt: ts,
+        },
+      },
+      {
+        upsert: true,
+      }
+    );
+
+    publishToConversation(memberIds, "MESSAGE_PUSH", toRealtimeMessagePayload(message));
+
+    if (tempId) {
+      publishToUsers([request.user.userId], "MESSAGE_ACK", {
+        conversationId,
+        tempId,
+        messageId: message.messageId,
+        seq: message.seq,
+        createdAt: toIso(ts),
+      });
+    }
 
     return {
       message: mapMessage(message),
@@ -347,14 +814,303 @@ export default async function chatService(app) {
     };
   });
 
-  app.post("/:conversationId/read", { preHandler: requireAuth }, async (request) => {
-    const conversationId = String(request.params.conversationId || "").trim();
+  app.patch("/:conversationId/messages/:messageId", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    const messageId = normalizeString(request.params.messageId);
+    const body = normalizeString(request.body?.body);
+
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+    ensure(messageId.length >= 8, 400, "Invalid message");
+    ensure(body.length > 0 && body.length <= 65535, 400, "Invalid body");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    const memberIds = Array.isArray(conversation.memberIds)
+      ? conversation.memberIds.map((id) => String(id))
+      : [];
+
+    const ts = now();
+    const result = await db.collection("messages").findOneAndUpdate(
+      {
+        conversationId,
+        messageId,
+        senderUserId: request.user.userId,
+        deletedForAllAt: null,
+      },
+      {
+        $set: {
+          body,
+          updatedAt: ts,
+        },
+        $inc: {
+          editVersion: 1,
+        },
+      },
+      {
+        returnDocument: "after",
+      }
+    );
+    const updated = result && typeof result === "object" && "value" in result
+      ? result.value
+      : result;
+
+    if (!updated) {
+      throw new HttpError(404, "Message not found");
+    }
+
+    if (conversation.lastMessageId === messageId) {
+      await db.collection("conversations").updateOne(
+        { conversationId },
+        {
+          $set: {
+            lastMessageBody: body,
+            lastMessageContentType: updated.contentType || "text",
+            lastMessageDeletedForAllAt: null,
+            lastMessageEditVersion: Number(updated.editVersion || 0),
+            updatedAt: ts,
+          },
+        }
+      );
+    }
+
+    publishToConversation(memberIds, "MESSAGE_EDIT", {
+      conversationId,
+      messageId,
+      body,
+      editVersion: Number(updated.editVersion || 0),
+    });
+
+    return {
+      success: true,
+      message: mapMessage(updated),
+    };
+  });
+
+  app.delete("/:conversationId/messages/:messageId", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    const messageId = normalizeString(request.params.messageId);
+
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+    ensure(messageId.length >= 8, 400, "Invalid message");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    const memberIds = Array.isArray(conversation.memberIds)
+      ? conversation.memberIds.map((id) => String(id))
+      : [];
+
+    const ts = now();
+    const result = await db.collection("messages").findOneAndUpdate(
+      {
+        conversationId,
+        messageId,
+        senderUserId: request.user.userId,
+        deletedForAllAt: null,
+      },
+      {
+        $set: {
+          deletedForAllAt: ts,
+          updatedAt: ts,
+          body: "",
+          contentType: "system",
+        },
+      },
+      {
+        returnDocument: "after",
+      }
+    );
+    const updated = result && typeof result === "object" && "value" in result
+      ? result.value
+      : result;
+
+    if (!updated) {
+      throw new HttpError(404, "Message not found");
+    }
+
+    if (conversation.lastMessageId === messageId) {
+      await db.collection("conversations").updateOne(
+        { conversationId },
+        {
+          $set: {
+            lastMessageBody: "",
+            lastMessageContentType: "system",
+            lastMessageDeletedForAllAt: ts,
+            lastMessageEditVersion: Number(updated.editVersion || 0),
+            updatedAt: ts,
+          },
+        }
+      );
+    }
+
+    publishToConversation(memberIds, "MESSAGE_DELETE", {
+      conversationId,
+      messageId,
+      deletedForAllAt: toIso(ts),
+    });
+
+    return {
+      success: true,
+      deletedForAllAt: toIso(ts),
+    };
+  });
+
+  app.post("/:conversationId/messages/:messageId/reactions", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    const messageId = normalizeString(request.params.messageId);
+    const emoji = normalizeString(request.body?.emoji);
+
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+    ensure(messageId.length >= 8, 400, "Invalid message");
+    ensure(emoji.length > 0 && emoji.length <= 16, 400, "Invalid emoji");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    const memberIds = Array.isArray(conversation.memberIds)
+      ? conversation.memberIds.map((id) => String(id))
+      : [];
+
+    const message = await db.collection("messages").findOne({ conversationId, messageId });
+    if (!message) {
+      throw new HttpError(404, "Message not found");
+    }
+
+    const ts = now();
+    const reactions = Array.isArray(message.reactions) ? [...message.reactions] : [];
+    const existingIndex = reactions.findIndex((reaction) => reaction.userId === request.user.userId);
+    if (existingIndex === -1) {
+      reactions.push({
+        userId: request.user.userId,
+        emoji,
+        reactedAt: ts,
+        updatedAt: ts,
+      });
+    } else {
+      reactions[existingIndex] = {
+        ...reactions[existingIndex],
+        emoji,
+        updatedAt: ts,
+      };
+    }
+
+    await db.collection("messages").updateOne(
+      { _id: message._id },
+      {
+        $set: {
+          reactions,
+          updatedAt: ts,
+        },
+      }
+    );
+
+    publishToConversation(memberIds, "REACTION_UPDATE", {
+      conversationId,
+      messageId,
+      userId: request.user.userId,
+      emoji,
+      updatedAt: toIso(ts),
+    });
+
+    return {
+      success: true,
+      reactions,
+    };
+  });
+
+  app.delete("/:conversationId/messages/:messageId/reactions", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    const messageId = normalizeString(request.params.messageId);
+
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+    ensure(messageId.length >= 8, 400, "Invalid message");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    const memberIds = Array.isArray(conversation.memberIds)
+      ? conversation.memberIds.map((id) => String(id))
+      : [];
+
+    const message = await db.collection("messages").findOne({ conversationId, messageId });
+    if (!message) {
+      throw new HttpError(404, "Message not found");
+    }
+
+    const ts = now();
+    const reactions = Array.isArray(message.reactions)
+      ? message.reactions.filter((reaction) => reaction.userId !== request.user.userId)
+      : [];
+
+    await db.collection("messages").updateOne(
+      { _id: message._id },
+      {
+        $set: {
+          reactions,
+          updatedAt: ts,
+        },
+      }
+    );
+
+    publishToConversation(memberIds, "REACTION_UPDATE", {
+      conversationId,
+      messageId,
+      userId: request.user.userId,
+      emoji: null,
+      updatedAt: toIso(ts),
+    });
+
+    return {
+      success: true,
+      reactions,
+    };
+  });
+
+  app.post("/:conversationId/delivery", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
     ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    await ensureConversationAccess(db, conversationId, request.user.userId);
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    const memberIds = Array.isArray(conversation.memberIds)
+      ? conversation.memberIds.map((id) => String(id))
+      : [];
 
-    const lastReadSeq = Number.parseInt(String(request.body?.lastReadSeq || "0"), 10);
-    ensure(!Number.isNaN(lastReadSeq) && lastReadSeq >= 0, 400, "Invalid lastReadSeq");
+    const parsed = Number.parseInt(String(request.body?.lastDeliveredSeq || "0"), 10);
+    ensure(!Number.isNaN(parsed) && parsed >= 0, 400, "Invalid lastDeliveredSeq");
+    const lastDeliveredSeq = Math.min(parsed, Number(conversation.seqCounter || parsed));
+
+    await db.collection("conversation_reads").updateOne(
+      {
+        conversationId,
+        userId: request.user.userId,
+      },
+      {
+        $set: {
+          conversationId,
+          userId: request.user.userId,
+          lastDeliveredSeq,
+          updatedAt: now(),
+        },
+      },
+      {
+        upsert: true,
+      }
+    );
+
+    publishToConversation(memberIds, "DELIVERY_UPDATE", {
+      conversationId,
+      userId: request.user.userId,
+      lastDeliveredSeq,
+    }, request.user.userId);
+
+    return { success: true, lastDeliveredSeq };
+  });
+
+  app.post("/:conversationId/read", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    const memberIds = Array.isArray(conversation.memberIds)
+      ? conversation.memberIds.map((id) => String(id))
+      : [];
+
+    const parsed = Number.parseInt(String(request.body?.lastReadSeq || "0"), 10);
+    ensure(!Number.isNaN(parsed) && parsed >= 0, 400, "Invalid lastReadSeq");
+    const lastReadSeq = Math.min(parsed, Number(conversation.seqCounter || parsed));
 
     await db.collection("conversation_reads").updateOne(
       {
@@ -374,6 +1130,12 @@ export default async function chatService(app) {
       }
     );
 
-    return { success: true };
+    publishToConversation(memberIds, "READ_UPDATE", {
+      conversationId,
+      userId: request.user.userId,
+      lastReadSeq,
+    }, request.user.userId);
+
+    return { success: true, lastReadSeq };
   });
 }

@@ -23,9 +23,7 @@ class ApiClient {
     Map<String, dynamic>? body,
     bool auth = false,
   }) async {
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-    };
+    final headers = <String, String>{'Content-Type': 'application/json'};
 
     if (auth) {
       final token = await _store.getAccessToken();
@@ -48,9 +46,7 @@ class ApiClient {
     Map<String, dynamic>? body,
     bool auth = false,
   }) async {
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-    };
+    final headers = <String, String>{'Content-Type': 'application/json'};
 
     if (auth) {
       final token = await _store.getAccessToken();
@@ -68,14 +64,35 @@ class ApiClient {
     return _decodeResponse(response);
   }
 
+  Future<dynamic> patch(
+    String path, {
+    Map<String, dynamic>? body,
+    bool auth = false,
+  }) async {
+    final headers = <String, String>{'Content-Type': 'application/json'};
+
+    if (auth) {
+      final token = await _store.getAccessToken();
+      if (token != null && token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+    }
+
+    final response = await _client.patch(
+      _buildUri(path),
+      headers: headers,
+      body: body == null ? null : jsonEncode(body),
+    );
+
+    return _decodeResponse(response);
+  }
+
   Future<dynamic> delete(
     String path, {
     Map<String, dynamic>? body,
     bool auth = false,
   }) async {
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-    };
+    final headers = <String, String>{'Content-Type': 'application/json'};
 
     if (auth) {
       final token = await _store.getAccessToken();
@@ -124,8 +141,9 @@ class ApiClient {
     final dynamic decoded = jsonDecode(response.body);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      final Map<String, dynamic> data =
-          decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+      final Map<String, dynamic> data = decoded is Map<String, dynamic>
+          ? decoded
+          : <String, dynamic>{};
       final message = data['message']?.toString() ?? 'Request failed';
       throw ApiException(response.statusCode, message);
     }

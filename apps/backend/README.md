@@ -5,6 +5,7 @@ This is the active TypeScript backend service for the project.
 ## Active API
 - Local: `http://localhost:3000/api`
 - Health: `GET /api/health`
+- WebSocket: `ws://localhost:3000` (or `/ws`) with `token` and `deviceId` query params
 
 ## Scripts
 - `npm run dev` - run in watch mode using TypeScript (`tsx`)
@@ -24,3 +25,13 @@ This is the active TypeScript backend service for the project.
 - `BODY_LIMIT_BYTES`
 - `ACCESS_TOKEN_TTL_SECONDS`
 - `REFRESH_TOKEN_TTL_SECONDS`
+- `REDIS_URL` (enables Redis-backed rate limiting)
+- `REDIS_TLS`
+- `REDIS_KEY_PREFIX`
+- `CONNECTION_TIMEOUT_MS`
+- `KEEP_ALIVE_TIMEOUT_MS`
+- `MAX_PARAM_LENGTH`
+- `PRESSURE_MAX_EVENT_LOOP_DELAY_MS`
+- `PRESSURE_MAX_HEAP_USED_BYTES`
+- `PRESSURE_MAX_RSS_BYTES`
+- `PRESSURE_RETRY_AFTER_SECONDS`

@@ -11,7 +11,7 @@ import { getOrCreateDeviceId } from './device-id';
 const API_BASE_URL = (
   (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim().length > 0)
     ? import.meta.env.VITE_API_URL
-    : (import.meta.env.PROD ? 'https://prava-humg.onrender.com/api' : 'http://localhost:3100/api')
+    : (import.meta.env.PROD ? 'https://prava-humg.onrender.com/api' : 'http://localhost:3000/api')
 ).replace(/\/+$/, '');
 
 export class ApiException extends Error {
@@ -134,6 +134,14 @@ class ApiClient {
       headers: options?.auth ? this.getAuthHeaders() : {},
     };
     const response = await this.client.put<T>(endpoint, options?.body, config);
+    return response.data;
+  }
+
+  async patch<T>(endpoint: string, options?: { body?: unknown; auth?: boolean }): Promise<T> {
+    const config: AxiosRequestConfig = {
+      headers: options?.auth ? this.getAuthHeaders() : {},
+    };
+    const response = await this.client.patch<T>(endpoint, options?.body, config);
     return response.data;
   }
 

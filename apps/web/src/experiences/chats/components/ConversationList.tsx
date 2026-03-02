@@ -3,6 +3,7 @@ import { Plus, Search } from 'lucide-react';
 import { PravaInput, GlassCard } from '../../../ui-system';
 import { messagesService, ConversationSummary } from '../../../services/messages-service';
 import { timeAgo } from '../../../utils/date-utils';
+import { webSocketService } from '../../../services/websocket-service';
 
 interface ConversationListProps {
   activeId?: string;
@@ -13,10 +14,68 @@ interface ConversationListProps {
 export function ConversationList({ activeId, onSelect, onNewChat }: ConversationListProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [typingByConversation, setTypingByConversation] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadConversations();
   }, []);
+
+  useEffect(() => {
+    const unsubscribePush = webSocketService.subscribe('MESSAGE_PUSH', (payload: any) => {
+      const conversationId = String(payload?.conversationId || '');
+      if (!conversationId) return;
+
+      setConversations((prev) => {
+        const index = prev.findIndex((item) => item.id === conversationId);
+        if (index === -1) return prev;
+
+        const next = [...prev];
+        const current = next[index];
+        const body = String(payload?.body || '');
+        const isEncrypted = body.startsWith('e2ee.v1:') || body.startsWith('e2ee.g1:');
+        const nextPreview = payload?.deletedForAllAt
+          ? 'Message deleted'
+          : payload?.contentType === 'media'
+            ? 'Media message'
+            : isEncrypted
+              ? 'Encrypted message'
+              : (body || current.lastMessageBody || '');
+
+        next[index] = {
+          ...current,
+          lastMessageId: payload?.messageId ?? current.lastMessageId,
+          lastMessageSeq: typeof payload?.seq === 'number' ? payload.seq : current.lastMessageSeq,
+          lastMessageSenderUserId: payload?.senderUserId ?? current.lastMessageSenderUserId,
+          lastMessageBody: nextPreview,
+          lastMessageContentType: payload?.contentType ?? current.lastMessageContentType,
+          lastMessageDeletedForAllAt: payload?.deletedForAllAt ?? null,
+          lastMessageCreatedAt: payload?.createdAt ?? new Date().toISOString(),
+          updatedAt: payload?.createdAt ?? new Date().toISOString(),
+          unreadCount: activeId === conversationId ? 0 : (current.unreadCount || 0) + 1,
+        };
+
+        const moved = next[index];
+        next.splice(index, 1);
+        next.unshift(moved);
+        return next;
+      });
+    });
+
+    const unsubscribeTyping = webSocketService.subscribe('TYPING', (payload: any) => {
+      const conversationId = String(payload?.conversationId || '');
+      if (!conversationId) return;
+
+      setTypingByConversation((prev) => ({
+        ...prev,
+        [conversationId]: payload?.isTyping === true,
+      }));
+    });
+
+    return () => {
+      unsubscribePush?.();
+      unsubscribeTyping?.();
+    };
+  }, [activeId]);
 
   const loadConversations = async () => {
     try {
@@ -67,14 +126,23 @@ export function ConversationList({ activeId, onSelect, onNewChat }: Conversation
             ? 'Message deleted'
             : chat.lastMessageContentType === 'media'
               ? 'Media message'
-              : chat.lastMessageBody?.trim()
+              : typingByConversation[chat.id]
+                ? 'typing...'
+                : chat.lastMessageBody?.trim()
                 ? chat.lastMessageBody
                 : 'No messages yet';
 
           return (
             <button
               key={chat.id}
-              onClick={() => onSelect(chat)}
+              onClick={() => {
+                setConversations((prev) => prev.map((item) => (
+                  item.id === chat.id
+                    ? { ...item, unreadCount: 0 }
+                    : item
+                )));
+                onSelect({ ...chat, unreadCount: 0 });
+              }}
               className={`w-full flex items-center gap-3 p-3 rounded-[16px] transition-colors ${activeId === chat.id
                   ? 'bg-prava-accent text-white shadow-prava-glow'
                   : 'hover:bg-white/50 dark:hover:bg-white/5'

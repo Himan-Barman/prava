@@ -23,6 +23,7 @@ Set at least:
 Optional:
 - `ACCESS_TOKEN_TTL_SECONDS`
 - `REFRESH_TOKEN_TTL_SECONDS`
+- `REDIS_URL` (enables Redis-backed rate limiting)
 
 ## Notes
 

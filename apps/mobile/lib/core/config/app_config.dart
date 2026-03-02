@@ -12,6 +12,6 @@ class AppConfig {
     'WS_BASE_URL',
     defaultValue: isRelease
         ? 'wss://prava-humg.onrender.com'
-        : 'ws://10.0.2.2:3001',
+        : 'ws://10.0.2.2:3000',
   );
 }

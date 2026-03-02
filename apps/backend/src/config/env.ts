@@ -12,6 +12,16 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().optional(),
   MONGODB_URI: z.string().min(1).default("mongodb://127.0.0.1:27017/prava_chat"),
   MONGODB_DB_NAME: z.string().min(1).default("prava_chat"),
+  REDIS_URL: z.string().optional(),
+  REDIS_TLS: z.string().optional(),
+  REDIS_KEY_PREFIX: z.string().optional(),
+  CONNECTION_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  KEEP_ALIVE_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  MAX_PARAM_LENGTH: z.coerce.number().int().positive().optional(),
+  PRESSURE_MAX_EVENT_LOOP_DELAY_MS: z.coerce.number().int().positive().optional(),
+  PRESSURE_MAX_HEAP_USED_BYTES: z.coerce.number().int().positive().optional(),
+  PRESSURE_MAX_RSS_BYTES: z.coerce.number().int().positive().optional(),
+  PRESSURE_RETRY_AFTER_SECONDS: z.coerce.number().int().positive().optional(),
   JWT_SECRET: z.string().min(1).optional(),
   JWT_PRIVATE_KEY: z.string().min(1).optional(),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
@@ -61,6 +71,11 @@ export const env = {
   LOG_LEVEL: parsed.LOG_LEVEL ?? defaultLogLevel,
   TRUST_PROXY: parseBoolean(parsed.TRUST_PROXY, true),
   CORS_ORIGINS: parseCorsOrigins(parsed.CORS_ORIGIN),
+  REDIS_TLS: parseBoolean(parsed.REDIS_TLS, false),
+  REDIS_KEY_PREFIX: parsed.REDIS_KEY_PREFIX ?? "prava",
+  CONNECTION_TIMEOUT_MS: parsed.CONNECTION_TIMEOUT_MS ?? 10_000,
+  KEEP_ALIVE_TIMEOUT_MS: parsed.KEEP_ALIVE_TIMEOUT_MS ?? 60_000,
+  MAX_PARAM_LENGTH: parsed.MAX_PARAM_LENGTH ?? 200,
 };
 
 export type AppEnv = typeof env;

@@ -279,31 +279,28 @@ class ConversationSummary {
       unreadCount: json['unreadCount'] is int
           ? json['unreadCount'] as int
           : int.tryParse(json['unreadCount']?.toString() ?? '') ?? 0,
-      lastMessageSenderUserId:
-          json['lastMessageSenderUserId']?.toString(),
+      lastMessageSenderUserId: json['lastMessageSenderUserId']?.toString(),
       lastMessageAt: DateTime.tryParse(
         json['lastMessageCreatedAt']?.toString() ?? '',
       ),
-      updatedAt:
-          DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
+      updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
       lastMessageId: json['lastMessageId']?.toString(),
       lastMessageSeq: _parseInt(json['lastMessageSeq']),
       lastMessageType: json['lastMessageContentType'] != null
-          ? _parseContentType(
-              json['lastMessageContentType']?.toString(),
-            )
+          ? _parseContentType(json['lastMessageContentType']?.toString())
           : null,
       lastMessageEditVersion: _parseInt(json['lastMessageEditVersion']),
-      lastMessageDeletedForAllAt:
-          _parseDate(json['lastMessageDeletedForAllAt']),
+      lastMessageDeletedForAllAt: _parseDate(
+        json['lastMessageDeletedForAllAt'],
+      ),
     );
   }
 }
 
 class ChatService {
   ChatService({SecureStore? store})
-      : _deviceIdStore = DeviceIdStore(store ?? SecureStore()),
-        _client = ApiClient(store ?? SecureStore());
+    : _deviceIdStore = DeviceIdStore(store ?? SecureStore()),
+      _client = ApiClient(store ?? SecureStore());
 
   final DeviceIdStore _deviceIdStore;
   final ApiClient _client;
@@ -337,12 +334,7 @@ class ChatService {
 
     return data
         .whereType<Map<String, dynamic>>()
-        .map(
-          (row) => ChatMessage.fromJson(
-            row,
-            currentUserId: currentUserId,
-          ),
-        )
+        .map((row) => ChatMessage.fromJson(row, currentUserId: currentUserId))
         .toList();
   }
 
@@ -396,9 +388,7 @@ class ChatService {
     final data = await _client.post(
       '/conversations/dm',
       auth: true,
-      body: {
-        'otherUserId': otherUserId,
-      },
+      body: {'otherUserId': otherUserId},
     );
 
     if (data is Map<String, dynamic>) {
@@ -406,5 +396,200 @@ class ChatService {
     }
 
     return null;
+  }
+
+  Future<String?> createGroup({
+    required String title,
+    required List<String> memberIds,
+  }) async {
+    final data = await _client.post(
+      '/conversations/group',
+      auth: true,
+      body: {'title': title, 'memberIds': memberIds},
+    );
+
+    if (data is Map<String, dynamic>) {
+      return data['conversationId']?.toString();
+    }
+    return null;
+  }
+
+  Future<bool> updateGroup({
+    required String conversationId,
+    required String title,
+  }) async {
+    final data = await _client.patch(
+      '/conversations/$conversationId',
+      auth: true,
+      body: {'title': title},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> addMembers({
+    required String conversationId,
+    required List<String> memberIds,
+  }) async {
+    final data = await _client.post(
+      '/conversations/$conversationId/members',
+      auth: true,
+      body: {'memberIds': memberIds},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> removeMember({
+    required String conversationId,
+    required String memberUserId,
+  }) async {
+    final data = await _client.delete(
+      '/conversations/$conversationId/members/$memberUserId',
+      auth: true,
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> leaveGroup({required String conversationId}) async {
+    final data = await _client.post(
+      '/conversations/$conversationId/leave',
+      auth: true,
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> promoteAdmin({
+    required String conversationId,
+    required String userId,
+  }) async {
+    final data = await _client.post(
+      '/conversations/$conversationId/admins',
+      auth: true,
+      body: {'userId': userId},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> demoteAdmin({
+    required String conversationId,
+    required String userId,
+  }) async {
+    final data = await _client.delete(
+      '/conversations/$conversationId/admins/$userId',
+      auth: true,
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> markRead({
+    required String conversationId,
+    required int lastReadSeq,
+  }) async {
+    final data = await _client.post(
+      '/conversations/$conversationId/read',
+      auth: true,
+      body: {'lastReadSeq': lastReadSeq},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> markDelivered({
+    required String conversationId,
+    required int lastDeliveredSeq,
+  }) async {
+    final data = await _client.post(
+      '/conversations/$conversationId/delivery',
+      auth: true,
+      body: {'lastDeliveredSeq': lastDeliveredSeq},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<ChatMessage?> editMessage({
+    required String conversationId,
+    required String messageId,
+    required String body,
+    String? currentUserId,
+  }) async {
+    final data = await _client.patch(
+      '/conversations/$conversationId/messages/$messageId',
+      auth: true,
+      body: {'body': body},
+    );
+
+    if (data is Map<String, dynamic>) {
+      final message = data['message'];
+      if (message is Map<String, dynamic>) {
+        return ChatMessage.fromJson(message, currentUserId: currentUserId);
+      }
+    }
+    return null;
+  }
+
+  Future<bool> deleteMessage({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final data = await _client.delete(
+      '/conversations/$conversationId/messages/$messageId',
+      auth: true,
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> setReaction({
+    required String conversationId,
+    required String messageId,
+    required String emoji,
+  }) async {
+    final data = await _client.post(
+      '/conversations/$conversationId/messages/$messageId/reactions',
+      auth: true,
+      body: {'emoji': emoji},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> removeReaction({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final data = await _client.delete(
+      '/conversations/$conversationId/messages/$messageId/reactions',
+      auth: true,
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
   }
 }

@@ -4,16 +4,21 @@ import compress from "@fastify/compress";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import underPressure from "@fastify/under-pressure";
+import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 
 import { env } from "./config/env.js";
 import { closeMongo, connectMongo } from "./lib/mongo.js";
+import { closeRedis, connectRedis } from "./lib/redis.js";
 import { HttpError } from "./lib/security.js";
 import authService from "./services/auth/index.js";
 import chatService from "./services/chat/index.js";
 import cryptoService from "./services/crypto/index.js";
 import feedService from "./services/feed/index.js";
 import notificationService from "./services/notification/index.js";
+import { closeRealtimeHub, initRealtimeHub } from "./services/realtime/hub.js";
+import realtimeService from "./services/realtime/index.js";
 import supportService from "./services/support/index.js";
 import userService from "./services/user/index.js";
 
@@ -31,6 +36,9 @@ const prettyTransport = env.NODE_ENV === "development"
 const app = Fastify({
   trustProxy: env.TRUST_PROXY,
   bodyLimit: env.BODY_LIMIT_BYTES,
+  connectionTimeout: env.CONNECTION_TIMEOUT_MS,
+  keepAliveTimeout: env.KEEP_ALIVE_TIMEOUT_MS,
+  maxParamLength: env.MAX_PARAM_LENGTH,
   requestIdHeader: "x-request-id",
   genReqId: (request) => {
     const incoming = request.headers["x-request-id"];
@@ -73,6 +81,26 @@ function buildCorsOrigin(origins: string[]) {
 }
 
 async function registerPlugins(): Promise<void> {
+  await app.register(websocket, {
+    options: {
+      maxPayload: 1024 * 1024,
+    },
+  });
+
+  if (
+    env.PRESSURE_MAX_EVENT_LOOP_DELAY_MS
+    || env.PRESSURE_MAX_HEAP_USED_BYTES
+    || env.PRESSURE_MAX_RSS_BYTES
+  ) {
+    await app.register(underPressure, {
+      maxEventLoopDelay: env.PRESSURE_MAX_EVENT_LOOP_DELAY_MS,
+      maxHeapUsedBytes: env.PRESSURE_MAX_HEAP_USED_BYTES,
+      maxRssBytes: env.PRESSURE_MAX_RSS_BYTES,
+      retryAfter: env.PRESSURE_RETRY_AFTER_SECONDS,
+      exposeStatusRoute: false,
+    });
+  }
+
   await app.register(helmet, {
     contentSecurityPolicy: false,
     crossOriginResourcePolicy: false,
@@ -97,7 +125,8 @@ async function registerPlugins(): Promise<void> {
     maxAge: 86400,
   });
 
-  await app.register(rateLimit, {
+  const redis = await connectRedis();
+  const rateLimitOptions = {
     global: true,
     max: env.RATE_LIMIT_MAX,
     timeWindow: env.RATE_LIMIT_WINDOW_MS,
@@ -112,7 +141,17 @@ async function registerPlugins(): Promise<void> {
         message: `Rate limit exceeded, retry in ${Math.ceil(afterMs / 1000)}s`,
       };
     },
-  });
+  } as const;
+
+  if (redis) {
+    await app.register(rateLimit, {
+      ...rateLimitOptions,
+      redis,
+      nameSpace: `${env.REDIS_KEY_PREFIX}:rate-limit`,
+    });
+  } else {
+    await app.register(rateLimit, rateLimitOptions);
+  }
 }
 
 function registerHooks(): void {
@@ -131,6 +170,7 @@ function registerHooks(): void {
 }
 
 function registerRoutes(): void {
+  app.register(realtimeService);
   app.register(authService, { prefix: "/api/auth" });
   app.register(feedService, { prefix: "/api/feed" });
   app.register(userService, { prefix: "/api/users" });
@@ -210,6 +250,11 @@ async function bootstrap(): Promise<void> {
   registerRoutes();
 
   await connectMongo();
+  try {
+    await initRealtimeHub();
+  } catch (error) {
+    app.log.error({ err: error }, "realtime hub unavailable");
+  }
   ready = true;
 
   await app.listen({
@@ -239,6 +284,18 @@ async function shutdown(signal: string): Promise<void> {
     await closeMongo();
   } catch (error) {
     app.log.error({ err: error }, "failed to close mongo cleanly");
+  }
+
+  try {
+    await closeRealtimeHub();
+  } catch (error) {
+    app.log.error({ err: error }, "failed to close realtime hub cleanly");
+  }
+
+  try {
+    await closeRedis();
+  } catch (error) {
+    app.log.error({ err: error }, "failed to close redis cleanly");
   }
 
   process.exit(0);

@@ -10,7 +10,7 @@ const resolveWsBase = () => {
   const apiBase = (
     (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim().length > 0)
       ? import.meta.env.VITE_API_URL
-      : (import.meta.env.PROD ? 'https://prava-humg.onrender.com/api' : 'http://localhost:3100/api')
+      : (import.meta.env.PROD ? 'https://prava-humg.onrender.com/api' : 'http://localhost:3000/api')
   ).replace(/\/+$/, '');
   const trimmed = apiBase.replace(/\/api$/i, '');
   return trimmed.replace(/^http/, 'ws');
@@ -28,13 +28,21 @@ class WebSocketService {
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private isConnecting = false;
 
+  isConnected() {
+    return this.socket?.readyState === WebSocket.OPEN;
+  }
+
   connect() {
     if (this.socket?.readyState === WebSocket.OPEN || this.isConnecting) return;
 
     this.isConnecting = true;
     const token = secureStore.getAccessToken();
+    if (!token) {
+      this.isConnecting = false;
+      return;
+    }
     const deviceId = getOrCreateDeviceId();
-    const url = `${WS_BASE_URL}?token=${token}&deviceId=${deviceId}`;
+    const url = `${WS_BASE_URL}/ws?token=${token}&deviceId=${deviceId}`;
 
     this.socket = new WebSocket(url);
 

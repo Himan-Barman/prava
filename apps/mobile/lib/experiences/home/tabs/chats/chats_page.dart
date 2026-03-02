@@ -17,6 +17,7 @@ import '../../../../services/e2ee_service.dart';
 import '../../../../services/group_e2ee_service.dart';
 import '../../../../core/storage/secure_store.dart';
 import 'chat_thread_page.dart';
+import '../../pages/new_group_page.dart';
 
 DateTime? _parseDate(dynamic value) {
   if (value == null) return null;
@@ -127,11 +128,12 @@ class _ChatsPageState extends State<ChatsPage> {
     if (!_realtime.isConnected) return;
     final state = await _syncStore.getLastDeliveredMap();
     final payload = _chats
-        .map((chat) => {
-              'conversationId': chat.id,
-              'lastDeliveredSeq':
-                  state[chat.id] ?? chat.lastMessageSeq ?? 0,
-            })
+        .map(
+          (chat) => {
+            'conversationId': chat.id,
+            'lastDeliveredSeq': state[chat.id] ?? chat.lastMessageSeq ?? 0,
+          },
+        )
         .toList();
     if (payload.isEmpty) return;
     _realtime.syncInit(payload);
@@ -140,8 +142,9 @@ class _ChatsPageState extends State<ChatsPage> {
   ChatPreview _mapConversation(ConversationSummary convo) {
     final isGroup = convo.type == 'group';
     final title = convo.title.trim();
-    final name =
-        title.isNotEmpty ? title : (isGroup ? 'Group chat' : 'Conversation');
+    final name = title.isNotEmpty
+        ? title
+        : (isGroup ? 'Group chat' : 'Conversation');
 
     final lastBody = convo.lastMessageBody.trim();
     final lastType = convo.lastMessageType;
@@ -150,18 +153,15 @@ class _ChatsPageState extends State<ChatsPage> {
     final lastMessage = isDeleted
         ? 'Message deleted'
         : (lastType == ChatMessageType.media
-            ? 'Media message'
-            : (isEncrypted
-                ? 'Encrypted message'
-                : (lastBody.isNotEmpty
-                    ? lastBody
-                    : 'No messages yet')));
+              ? 'Media message'
+              : (isEncrypted
+                    ? 'Encrypted message'
+                    : (lastBody.isNotEmpty ? lastBody : 'No messages yet')));
 
     final lastMessageFromMe =
         _userId != null && convo.lastMessageSenderUserId == _userId;
 
-    final time =
-        _formatChatTime(convo.lastMessageAt ?? convo.updatedAt);
+    final time = _formatChatTime(convo.lastMessageAt ?? convo.updatedAt);
 
     final onlineSet = _onlineByConversation[convo.id];
 
@@ -230,8 +230,10 @@ class _ChatsPageState extends State<ChatsPage> {
     if (conversationId == null || userId == null) return;
     if (userId == _userId) return;
 
-    final set =
-        _onlineByConversation.putIfAbsent(conversationId, () => <String>{});
+    final set = _onlineByConversation.putIfAbsent(
+      conversationId,
+      () => <String>{},
+    );
 
     if (isOnline) {
       set.add(userId);
@@ -300,8 +302,9 @@ class _ChatsPageState extends State<ChatsPage> {
         delivery: isFromMe ? MessageDeliveryState.sent : chat.delivery,
         lastMessageId: messageId ?? chat.lastMessageId,
         lastMessageSeq: seq ?? chat.lastMessageSeq,
-        lastMessageType:
-            contentType != null ? _parseContentType(contentType) : chat.lastMessageType,
+        lastMessageType: contentType != null
+            ? _parseContentType(contentType)
+            : chat.lastMessageType,
         lastMessageDeletedForAllAt:
             deletedForAllAt ?? chat.lastMessageDeletedForAllAt,
       ),
@@ -340,8 +343,7 @@ class _ChatsPageState extends State<ChatsPage> {
 
     _updateChat(conversationId, (chat) {
       if (!chat.lastMessageFromMe) return chat;
-      if (chat.lastMessageSeq != null &&
-          lastReadSeq >= chat.lastMessageSeq!) {
+      if (chat.lastMessageSeq != null && lastReadSeq >= chat.lastMessageSeq!) {
         return chat.copyWith(delivery: MessageDeliveryState.read);
       }
       return chat;
@@ -428,10 +430,7 @@ class _ChatsPageState extends State<ChatsPage> {
   }
 
   void _setTyping(String conversationId, bool isTyping) {
-    _updateChat(
-      conversationId,
-      (chat) => chat.copyWith(isTyping: isTyping),
-    );
+    _updateChat(conversationId, (chat) => chat.copyWith(isTyping: isTyping));
   }
 
   void _updateChat(
@@ -496,22 +495,22 @@ class _ChatsPageState extends State<ChatsPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
     final query = _searchController.text.trim().toLowerCase();
     final visibleChats = query.isEmpty
         ? _chats
         : _chats
-            .where(
-              (chat) =>
-                  chat.name.toLowerCase().contains(query) ||
-                  chat.lastMessage.toLowerCase().contains(query),
-            )
-            .toList();
+              .where(
+                (chat) =>
+                    chat.name.toLowerCase().contains(query) ||
+                    chat.lastMessage.toLowerCase().contains(query),
+              )
+              .toList();
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -564,13 +563,22 @@ class _ChatsPageState extends State<ChatsPage> {
                   ),
                 ),
               ),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: Row(
                   children: [
                     _QuickAction(
                       icon: CupertinoIcons.person_2,
                       label: 'New group',
+                      onTap: () async {
+                        final created = await PravaNavigator.push(
+                          context,
+                          const NewGroupPage(),
+                        );
+                        if (created != null) {
+                          _loadChats(showLoading: false);
+                        }
+                      },
                     ),
                     SizedBox(width: 10),
                     _QuickAction(
@@ -578,10 +586,7 @@ class _ChatsPageState extends State<ChatsPage> {
                       label: 'Broadcast',
                     ),
                     SizedBox(width: 10),
-                    _QuickAction(
-                      icon: CupertinoIcons.star,
-                      label: 'Starred',
-                    ),
+                    _QuickAction(icon: CupertinoIcons.star, label: 'Starred'),
                   ],
                 ),
               ),
@@ -591,16 +596,17 @@ class _ChatsPageState extends State<ChatsPage> {
                   child: _loading
                       ? const ChatListSkeleton()
                       : RefreshIndicator(
-                          onRefresh: () =>
-                              _loadChats(showLoading: false),
+                          onRefresh: () => _loadChats(showLoading: false),
                           color: PravaColors.accentPrimary,
                           child: visibleChats.isEmpty
-                              ? _EmptyChatsState(
-                                  hasQuery: query.isNotEmpty,
-                                )
+                              ? _EmptyChatsState(hasQuery: query.isNotEmpty)
                               : ListView.separated(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    0,
+                                    16,
+                                    16,
+                                  ),
                                   physics: const BouncingScrollPhysics(
                                     parent: AlwaysScrollableScrollPhysics(),
                                   ),
@@ -658,10 +664,7 @@ class _HeaderPill extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [
-              PravaColors.accentPrimary,
-              PravaColors.accentMuted,
-            ],
+            colors: [PravaColors.accentPrimary, PravaColors.accentMuted],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -694,46 +697,49 @@ class _HeaderPill extends StatelessWidget {
 }
 
 class _QuickAction extends StatelessWidget {
-  const _QuickAction({
-    required this.icon,
-    required this.label,
-  });
+  const _QuickAction({required this.icon, required this.label, this.onTap});
 
   final IconData icon;
   final String label;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06);
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final surface = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.06);
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: PravaColors.accentPrimary),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: PravaTypography.caption.copyWith(
-                  color: secondary,
-                  fontWeight: FontWeight.w600,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 16, color: PravaColors.accentPrimary),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.caption.copyWith(
+                    color: secondary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -773,12 +779,15 @@ class _ChatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
 
     final isUnread = chat.unreadCount > 0;
     final baseColor = isDark
@@ -825,10 +834,7 @@ class _ChatTile extends StatelessWidget {
                       radius: 26,
                       backgroundColor: accent.withValues(alpha: 0.18),
                       child: chat.isGroup
-                          ? Icon(
-                              CupertinoIcons.person_2_fill,
-                              color: accent,
-                            )
+                          ? Icon(CupertinoIcons.person_2_fill, color: accent)
                           : Text(
                               chat.name[0].toUpperCase(),
                               style: PravaTypography.h3.copyWith(
@@ -847,10 +853,7 @@ class _ChatTile extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: PravaColors.success,
                             shape: BoxShape.circle,
-                            border: Border.all(
-                              color: baseColor,
-                              width: 2,
-                            ),
+                            border: Border.all(color: baseColor, width: 2),
                           ),
                         ),
                       ),
@@ -888,9 +891,7 @@ class _ChatTile extends StatelessWidget {
                           if (chat.lastMessageFromMe)
                             Padding(
                               padding: const EdgeInsets.only(right: 4),
-                              child: _DeliveryIcon(
-                                state: chat.delivery,
-                              ),
+                              child: _DeliveryIcon(state: chat.delivery),
                             ),
                           Expanded(
                             child: Text(
@@ -912,11 +913,10 @@ class _ChatTile extends StatelessWidget {
                     Text(
                       chat.time,
                       style: PravaTypography.caption.copyWith(
-                        color: isUnread
-                            ? PravaColors.accentPrimary
-                            : secondary,
-                        fontWeight:
-                            isUnread ? FontWeight.w600 : FontWeight.w400,
+                        color: isUnread ? PravaColors.accentPrimary : secondary,
+                        fontWeight: isUnread
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -973,10 +973,17 @@ class _DeliveryIcon extends StatelessWidget {
       case MessageDeliveryState.delivered:
         return Icon(Icons.done_all, size: 14, color: muted);
       case MessageDeliveryState.read:
-        return const Icon(Icons.done_all, size: 14, color: PravaColors.accentPrimary);
+        return const Icon(
+          Icons.done_all,
+          size: 14,
+          color: PravaColors.accentPrimary,
+        );
       case MessageDeliveryState.failed:
-        return const Icon(CupertinoIcons.exclamationmark_circle,
-            size: 14, color: PravaColors.error);
+        return const Icon(
+          CupertinoIcons.exclamationmark_circle,
+          size: 14,
+          color: PravaColors.error,
+        );
     }
   }
 }
@@ -1064,21 +1071,19 @@ class _EmptyChatsState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
       children: [
         Center(
-          child: Icon(
-            CupertinoIcons.chat_bubble_2,
-            size: 40,
-            color: secondary,
-          ),
+          child: Icon(CupertinoIcons.chat_bubble_2, size: 40, color: secondary),
         ),
         const SizedBox(height: 12),
         Center(

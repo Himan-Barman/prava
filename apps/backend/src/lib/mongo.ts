@@ -59,6 +59,7 @@ async function ensureIndexes(database: Db): Promise<void> {
       { key: { userId: 1 }, unique: true },
       { key: { emailLower: 1 }, unique: true },
       { key: { usernameLower: 1 }, unique: true },
+      { key: { displayNameLower: 1 } },
       { key: { createdAt: -1 } },
     ]),
     database.collection("refresh_tokens").createIndexes([
@@ -103,6 +104,7 @@ async function ensureIndexes(database: Db): Promise<void> {
     ]),
     database.collection("conversation_reads").createIndexes([
       { key: { conversationId: 1, userId: 1 }, unique: true },
+      { key: { userId: 1, conversationId: 1 } },
     ]),
     database.collection("user_settings").createIndexes([
       { key: { userId: 1 }, unique: true },
