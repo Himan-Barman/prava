@@ -85,7 +85,10 @@ export default function EmailOtpPage() {
     setResending(true);
 
     try {
-      await authService.requestEmailOtp(email);
+      await authService.requestEmailOtp(
+        email,
+        flow === 'signup' ? username : undefined
+      );
       toast.success('Verification code sent');
       setSecondsLeft(60);
     } catch (err) {

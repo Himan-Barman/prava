@@ -228,6 +228,7 @@ export default async function userService(app) {
         required: ["username"],
         properties: {
           username: { type: "string", minLength: 1, maxLength: 64 },
+          email: { type: "string", minLength: 3, maxLength: 255 },
         },
       },
     },
@@ -235,13 +236,38 @@ export default async function userService(app) {
     try {
       const username = normalizeUsername(request.query?.username);
       ensure(isValidUsername(username), 400, "Invalid username");
+      const emailLower = normalizeEmail(request.query?.email);
+      const hasEmail = isValidEmail(emailLower);
+      const ts = now();
 
       const existing = await db.collection("users").findOne(
         { usernameLower: username },
         { projection: { userId: 1 } }
       );
+      if (existing) {
+        return { available: false };
+      }
 
-      return { available: !existing };
+      const reservation = await db.collection("username_reservations").findOne(
+        {
+          usernameLower: username,
+          expiresAt: { $gt: ts },
+        },
+        { projection: { emailLower: 1, expiresAt: 1 } }
+      );
+
+      if (!reservation) {
+        return { available: true };
+      }
+
+      if (hasEmail && reservation.emailLower === emailLower) {
+        return {
+          available: true,
+          reservedByRequester: true,
+        };
+      }
+
+      return { available: false };
     } catch (error) {
       if (error instanceof HttpError) {
         throw error;

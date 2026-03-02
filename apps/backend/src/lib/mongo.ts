@@ -99,6 +99,11 @@ async function ensureIndexes(database: Db): Promise<void> {
       { key: { emailLower: 1, createdAt: -1 } },
       { key: { expiresAt: 1 }, expireAfterSeconds: 0 },
     ]),
+    database.collection("username_reservations").createIndexes([
+      { key: { usernameLower: 1 }, unique: true },
+      { key: { emailLower: 1, expiresAt: -1 } },
+      { key: { expiresAt: 1 }, expireAfterSeconds: 0 },
+    ]),
     database.collection("password_reset_tokens").createIndexes([
       { key: { tokenHash: 1 }, unique: true },
       { key: { expiresAt: 1 }, expireAfterSeconds: 0 },

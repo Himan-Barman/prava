@@ -96,10 +96,18 @@ class AuthService {
     return session;
   }
 
-  Future<bool> isUsernameAvailable(String username) async {
+  Future<bool> isUsernameAvailable(
+    String username, {
+    String? email,
+  }) async {
+    final query = <String, String>{'username': username};
+    if (email != null && email.trim().isNotEmpty) {
+      query['email'] = email.trim().toLowerCase();
+    }
+
     final data = await _client.get(
       '/users/username-available',
-      query: {'username': username},
+      query: query,
     );
     if (data is Map<String, dynamic>) {
       return data['available'] == true;
@@ -127,10 +135,16 @@ class AuthService {
 
   Future<void> requestEmailOtp({
     required String email,
+    String? username,
   }) async {
-    await _client.post('/auth/email-otp/request', body: {
+    final body = <String, dynamic>{
       'email': email,
-    });
+    };
+    if (username != null && username.trim().isNotEmpty) {
+      body['username'] = username.trim().toLowerCase();
+    }
+
+    await _client.post('/auth/email-otp/request', body: body);
   }
 
   Future<void> verifyEmailOtp({

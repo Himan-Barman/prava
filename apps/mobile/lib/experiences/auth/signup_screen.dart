@@ -131,7 +131,10 @@ class _SignupScreenState extends State<SignupScreen> {
       });
 
       try {
-        final available = await _auth.isUsernameAvailable(normalized);
+        final available = await _auth.isUsernameAvailable(
+          normalized,
+          email: _emailValue.toLowerCase(),
+        );
         if (!mounted || currentCheck != _usernameCheckToken) return;
 
         setState(() {
@@ -213,7 +216,7 @@ class _SignupScreenState extends State<SignupScreen> {
     final username = _usernameValue.toLowerCase();
 
     try {
-      await _auth.requestEmailOtp(email: email);
+      await _auth.requestEmailOtp(email: email, username: username);
       if (!mounted) return;
 
       setState(() => _loading = false);

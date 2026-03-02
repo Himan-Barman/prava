@@ -23,6 +23,7 @@ const envSchema = z.object({
   APP_NAME: z.string().min(1).default("Prava"),
   APP_PUBLIC_URL: z.string().optional(),
   OTP_EXPIRES_MINUTES: z.coerce.number().int().positive().default(10),
+  USERNAME_RESERVATION_MINUTES: z.coerce.number().int().positive().default(5),
   REDIS_URL: z.string().optional(),
   REDIS_TLS: z.string().optional(),
   REDIS_KEY_PREFIX: z.string().optional(),

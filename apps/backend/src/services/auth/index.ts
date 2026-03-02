@@ -1,4 +1,5 @@
 import { getDb } from "../../lib/mongo.js";
+import { env } from "../../config/env.js";
 import {
   HttpError,
   buildUserView,
@@ -86,6 +87,92 @@ async function loadUserForLogin(db, identifierLower) {
   return db.collection("users").findOne({ usernameLower: identifierLower });
 }
 
+function isDuplicateKeyError(error: unknown): boolean {
+  return (
+    typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as { code?: number }).code === 11000
+  );
+}
+
+async function reserveSignupUsername(db, emailLower, usernameLower, ts) {
+  const existingUser = await db.collection("users").findOne(
+    { usernameLower },
+    { projection: { userId: 1 } }
+  );
+  if (existingUser) {
+    throw new HttpError(409, "Username already exists");
+  }
+
+  const expiresAt = addMinutes(ts, env.USERNAME_RESERVATION_MINUTES);
+
+  try {
+    await db.collection("username_reservations").updateOne(
+      {
+        usernameLower,
+        $or: [
+          { emailLower },
+          { expiresAt: { $lte: ts } },
+        ],
+      },
+      {
+        $set: {
+          usernameLower,
+          emailLower,
+          purpose: "signup",
+          updatedAt: ts,
+          expiresAt,
+        },
+        $setOnInsert: {
+          createdAt: ts,
+        },
+      },
+      { upsert: true }
+    );
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      throw new HttpError(409, "Username is temporarily reserved");
+    }
+    throw error;
+  }
+
+  return expiresAt;
+}
+
+async function ensureUsernameReservedForSignup(db, emailLower, usernameLower, ts) {
+  const existingUser = await db.collection("users").findOne(
+    { usernameLower },
+    { projection: { userId: 1 } }
+  );
+  if (existingUser) {
+    throw new HttpError(409, "Username already exists");
+  }
+
+  const reservation = await db.collection("username_reservations").findOne(
+    { usernameLower },
+    {
+      projection: {
+        emailLower: 1,
+        expiresAt: 1,
+      },
+    }
+  );
+
+  if (!reservation || !reservation.expiresAt) {
+    throw new HttpError(409, "Username reservation expired. Request a new verification code.");
+  }
+
+  const expiresAt = new Date(reservation.expiresAt);
+  if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= ts.getTime()) {
+    throw new HttpError(409, "Username reservation expired. Request a new verification code.");
+  }
+
+  if (reservation.emailLower !== emailLower) {
+    throw new HttpError(409, "Username is temporarily reserved");
+  }
+}
+
 export default async function authService(app) {
   const db = getDb();
 
@@ -95,13 +182,21 @@ export default async function authService(app) {
     ensure(isValidEmail(emailLower), 400, "Invalid email");
     ensure(isValidPassword(body.password), 400, "Invalid password");
 
-    let usernameLower = normalizeUsername(body.username);
+    const requestedUsername = normalizeUsername(body.username);
+    const hasExplicitUsername = requestedUsername.length > 0;
+
+    let usernameLower = requestedUsername;
     if (!usernameLower) {
       usernameLower = normalizeUsername(emailLower.split("@")[0]);
     }
     ensure(isValidUsername(usernameLower), 400, "Invalid username");
 
     await ensureRecentEmailOtp(db, emailLower);
+
+    const ts = now();
+    if (hasExplicitUsername) {
+      await ensureUsernameReservedForSignup(db, emailLower, usernameLower, ts);
+    }
 
     const existing = await db.collection("users").findOne({
       $or: [{ emailLower }, { usernameLower }],
@@ -113,7 +208,6 @@ export default async function authService(app) {
       throw new HttpError(409, "Username already exists");
     }
 
-    const ts = now();
     const user = {
       userId: generateId(),
       email: emailLower,
@@ -131,6 +225,12 @@ export default async function authService(app) {
     };
 
     await db.collection("users").insertOne(user);
+    if (hasExplicitUsername) {
+      await db.collection("username_reservations").deleteOne({
+        usernameLower,
+        emailLower,
+      });
+    }
 
     const session = await createSession(db, user, {
       deviceId: body.deviceId,
@@ -308,6 +408,16 @@ export default async function authService(app) {
     ensure(isValidEmail(emailLower), 400, "Invalid email");
 
     const ts = now();
+    const usernameLower = normalizeUsername(body.username);
+    const hasUsername = usernameLower.length > 0;
+    if (body.username !== undefined) {
+      ensure(isValidUsername(usernameLower), 400, "Invalid username");
+    }
+
+    if (hasUsername) {
+      await reserveSignupUsername(db, emailLower, usernameLower, ts);
+    }
+
     await db.collection("email_otp_tokens").updateMany(
       {
         emailLower,
@@ -325,7 +435,7 @@ export default async function authService(app) {
       tokenHash: sha256(code),
       attempts: 0,
       createdAt: ts,
-      expiresAt: addMinutes(ts, 10),
+      expiresAt: addMinutes(ts, env.OTP_EXPIRES_MINUTES),
       usedAt: null,
     });
 
@@ -336,13 +446,25 @@ export default async function authService(app) {
         type: "verification",
       });
     } catch (error) {
+      if (hasUsername) {
+        await db.collection("username_reservations").deleteOne({
+          usernameLower,
+          emailLower,
+        });
+      }
       request.log.error({ err: error, emailLower }, "failed to deliver email verification otp");
       throw new HttpError(503, "Unable to send verification code");
     }
 
-    const payload: { success: boolean; expiresIn: number; devCode?: string } = {
+    const payload: {
+      success: boolean;
+      expiresIn: number;
+      reservationExpiresIn?: number;
+      devCode?: string;
+    } = {
       success: true,
-      expiresIn: 600,
+      expiresIn: env.OTP_EXPIRES_MINUTES * 60,
+      ...(hasUsername ? { reservationExpiresIn: env.USERNAME_RESERVATION_MINUTES * 60 } : {}),
     };
     if ((process.env.NODE_ENV || "development") !== "production") {
       payload.devCode = code;
@@ -446,7 +568,7 @@ export default async function authService(app) {
       emailLower,
       tokenHash: sha256(code),
       createdAt: ts,
-      expiresAt: addMinutes(ts, 10),
+      expiresAt: addMinutes(ts, env.OTP_EXPIRES_MINUTES),
       usedAt: null,
     });
 

@@ -78,7 +78,10 @@ export default function SignupPage() {
       setUsernameCheckFailed(false);
 
       try {
-        const available = await authService.isUsernameAvailable(normalized);
+        const available = await authService.isUsernameAvailable(
+          normalized,
+          email.toLowerCase().trim()
+        );
         setUsernameAvailable(available);
         setUsernameChecked(true);
         setUsernameCheckFailed(false);
@@ -92,7 +95,7 @@ export default function SignupPage() {
     }
 
     checkUsername();
-  }, [debouncedUsername]);
+  }, [debouncedUsername, email]);
 
   const handleUsernameChange = (e: ChangeEvent<HTMLInputElement>) => {
     // Force lowercase and valid characters only
@@ -121,7 +124,10 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      await authService.requestEmailOtp(email.toLowerCase());
+      await authService.requestEmailOtp(
+        email.toLowerCase(),
+        username.toLowerCase()
+      );
       toast.success('Verification code sent');
       navigate('/verify-email', {
         state: {

@@ -122,6 +122,8 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
 
   Future<void> _pasteOtp() async {
     final data = await Clipboard.getData('text/plain');
+    if (!mounted) return;
+
     final value = data?.text ?? '';
     final digits = value.replaceAll(RegExp(r'\D'), '');
     if (digits.length < 6) {
@@ -207,7 +209,10 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
     setState(() => _resending = true);
 
     try {
-      await _auth.requestEmailOtp(email: widget.email);
+      await _auth.requestEmailOtp(
+        email: widget.email,
+        username: widget.flow == EmailOtpFlow.signup ? widget.username : null,
+      );
       if (!mounted) return;
       setState(() => _resending = false);
       _startTimer();

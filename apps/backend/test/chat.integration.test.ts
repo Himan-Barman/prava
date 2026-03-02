@@ -152,6 +152,7 @@ before(async () => {
   const chatService = (await import("../src/services/chat/index.js")).default;
   const realtimeService = (await import("../src/services/realtime/index.js")).default;
   const userService = (await import("../src/services/user/index.js")).default;
+  const authService = (await import("../src/services/auth/index.js")).default;
 
   app = Fastify({ logger: false });
   await app.register(websocket, {
@@ -160,6 +161,7 @@ before(async () => {
     },
   });
   app.register(realtimeService);
+  app.register(authService, { prefix: "/api/auth" });
   app.register(chatService, { prefix: "/api/conversations" });
   app.register(userService, { prefix: "/api/users" });
 
@@ -316,6 +318,77 @@ test("username availability: taken and available", async () => {
     "/api/users/username-available?username=ab"
   );
   assert.equal(invalid.status, 400);
+});
+
+test("username reservation: holds for signup flow and blocks others", async () => {
+  const email = "reserve_case@example.com";
+  const username = "reserved_case_1";
+
+  const before = await httpJson<{ available: boolean }>(
+    baseUrl,
+    `/api/users/username-available?username=${username}`
+  );
+  assert.equal(before.status, 200);
+  assert.equal(before.data.available, true);
+
+  const otpRequest = await httpJson<{ success: boolean; devCode?: string }>(
+    baseUrl,
+    "/api/auth/email-otp/request",
+    {
+      method: "POST",
+      body: { email, username },
+    }
+  );
+  assert.equal(otpRequest.status, 200);
+  assert.equal(otpRequest.data.success, true);
+  const otpCode = String(otpRequest.data.devCode || "");
+  assert.equal(otpCode.length, 6);
+
+  const afterReserve = await httpJson<{ available: boolean }>(
+    baseUrl,
+    `/api/users/username-available?username=${username}`
+  );
+  assert.equal(afterReserve.status, 200);
+  assert.equal(afterReserve.data.available, false);
+
+  const secondUserTry = await httpJson<{ message?: string }>(
+    baseUrl,
+    "/api/auth/email-otp/request",
+    {
+      method: "POST",
+      body: { email: "other_person@example.com", username },
+    }
+  );
+  assert.equal(secondUserTry.status, 409);
+
+  const otpVerify = await httpJson<{ verified: boolean }>(
+    baseUrl,
+    "/api/auth/email-otp/verify",
+    {
+      method: "POST",
+      body: { email, code: otpCode },
+    }
+  );
+  assert.equal(otpVerify.status, 200);
+  assert.equal(otpVerify.data.verified, true);
+
+  const register = await httpJson<{ user: { username: string } }>(
+    baseUrl,
+    "/api/auth/register",
+    {
+      method: "POST",
+      body: {
+        email,
+        username,
+        password: "SecurePass123!",
+        deviceId: "reserve-device",
+        deviceName: "reserve-test",
+        platform: "test",
+      },
+    }
+  );
+  assert.equal(register.status, 200);
+  assert.equal(register.data.user.username, username);
 });
 
 test("realtime websocket: push, ack, read-update", async () => {

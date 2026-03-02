@@ -28,6 +28,7 @@ interface AuthResponse {
 
 interface UsernameAvailableResponse {
   available: boolean;
+  reservedByRequester?: boolean;
 }
 
 class AuthService {
@@ -75,16 +76,26 @@ class AuthService {
     return session;
   }
 
-  async isUsernameAvailable(username: string): Promise<boolean> {
+  async isUsernameAvailable(username: string, email?: string): Promise<boolean> {
+    const query: Record<string, string> = { username };
+    if (email && email.trim().length > 0) {
+      query.email = email.trim().toLowerCase();
+    }
+
     const data = await apiClient.get<UsernameAvailableResponse>('/users/username-available', {
-      query: { username },
+      query,
     });
     return data.available === true;
   }
 
-  async requestEmailOtp(email: string): Promise<void> {
+  async requestEmailOtp(email: string, username?: string): Promise<void> {
+    const body: { email: string; username?: string } = { email };
+    if (username && username.trim().length > 0) {
+      body.username = username.trim().toLowerCase();
+    }
+
     await apiClient.post('/auth/email-otp/request', {
-      body: { email },
+      body,
     });
   }
 

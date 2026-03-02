@@ -47,10 +47,13 @@ Recommended:
 - `APP_NAME` (default: `Prava`)
 - `APP_PUBLIC_URL` (example: `https://prava.app`)
 - `OTP_EXPIRES_MINUTES` (default: `10`)
+- `USERNAME_RESERVATION_MINUTES` (default: `5`)
 
 Notes:
 - `EMAIL_FROM` must use a domain verified in Resend.
 - For production, server startup fails if `RESEND_API_KEY` or `EMAIL_FROM` is missing.
+- Signup usernames are temporarily reserved for `USERNAME_RESERVATION_MINUTES` after OTP request.
+- If signup is not completed in that window, reservation expires automatically and username becomes available again.
 
 ## Optional env vars
 - `CORS_ORIGIN` (comma-separated origins, defaults to `*`)

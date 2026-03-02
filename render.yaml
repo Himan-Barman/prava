@@ -31,6 +31,8 @@ services:
         sync: false
       - key: OTP_EXPIRES_MINUTES
         value: "10"
+      - key: USERNAME_RESERVATION_MINUTES
+        value: "5"
       - key: ACCESS_TOKEN_TTL_SECONDS
         value: "900"
       - key: REFRESH_TOKEN_TTL_SECONDS
