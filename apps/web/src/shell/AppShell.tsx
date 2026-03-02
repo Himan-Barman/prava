@@ -11,7 +11,7 @@ interface AppShellProps {
 }
 
 // Routes that don't show the sidebar
-const authRoutes = ['/login', '/signup', '/verify-email', '/set-password', '/forgot-password', '/reset-password'];
+const authRoutes = ['/login', '/signup', '/verify-email', '/set-password', '/forgot-password', '/reset-password', '/set-details'];
 
 export default function AppShell({ children }: AppShellProps) {
   const location = useLocation();

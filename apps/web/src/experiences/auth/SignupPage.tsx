@@ -105,7 +105,7 @@ export default function SignupPage() {
     e.preventDefault();
     if (!canSubmit) {
       if (checkingUsername) {
-        toast('Checking username availability...', { icon: '⏳' });
+        toast('Checking username availability...');
       } else if (usernameCheckFailed) {
         toast.error('Unable to verify username. Try again.');
       } else if (!isUsernameValid(username)) {

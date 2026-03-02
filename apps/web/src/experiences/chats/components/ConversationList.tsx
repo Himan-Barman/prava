@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Search } from 'lucide-react';
-import { PravaInput, GlassCard } from '../../../ui-system';
+import { PravaInput } from '../../../ui-system';
 import { messagesService, ConversationSummary } from '../../../services/messages-service';
 import { timeAgo } from '../../../utils/date-utils';
 import { webSocketService } from '../../../services/websocket-service';
+import { chatSyncStore } from '../../../services/chat-sync-store';
 
 interface ConversationListProps {
   activeId?: string;
@@ -15,6 +16,22 @@ export function ConversationList({ activeId, onSelect, onNewChat }: Conversation
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [typingByConversation, setTypingByConversation] = useState<Record<string, boolean>>({});
+  const [query, setQuery] = useState('');
+  const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const syncInit = (rows: ConversationSummary[]) => {
+    const payload = rows.map((row) => {
+      const known = chatSyncStore.getLastDeliveredSeq(row.id) || row.lastMessageSeq || 0;
+      return {
+        conversationId: row.id,
+        lastDeliveredSeq: known,
+      };
+    });
+
+    if (payload.length > 0) {
+      webSocketService.send('SYNC_INIT', { conversations: payload });
+    }
+  };
 
   useEffect(() => {
     loadConversations();
@@ -53,6 +70,10 @@ export function ConversationList({ activeId, onSelect, onNewChat }: Conversation
           updatedAt: payload?.createdAt ?? new Date().toISOString(),
           unreadCount: activeId === conversationId ? 0 : (current.unreadCount || 0) + 1,
         };
+        const seq = typeof payload?.seq === 'number' ? payload.seq : 0;
+        if (seq > 0) {
+          chatSyncStore.updateLastDeliveredSeq(conversationId, seq);
+        }
 
         const moved = next[index];
         next.splice(index, 1);
@@ -64,30 +85,79 @@ export function ConversationList({ activeId, onSelect, onNewChat }: Conversation
     const unsubscribeTyping = webSocketService.subscribe('TYPING', (payload: any) => {
       const conversationId = String(payload?.conversationId || '');
       if (!conversationId) return;
+      const userId = String(payload?.userId || '');
+      if (userId === String(localStorage.getItem('prava_user_id') || '')) {
+        return;
+      }
 
+      const active = payload?.isTyping === true;
       setTypingByConversation((prev) => ({
         ...prev,
-        [conversationId]: payload?.isTyping === true,
+        [conversationId]: active,
       }));
+
+      const existingTimer = typingTimers.current.get(conversationId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      if (active) {
+        const timer = setTimeout(() => {
+          setTypingByConversation((prev) => ({
+            ...prev,
+            [conversationId]: false,
+          }));
+          typingTimers.current.delete(conversationId);
+        }, 4000);
+        typingTimers.current.set(conversationId, timer);
+      }
+    });
+
+    const unsubscribeConnection = webSocketService.subscribe('connection', (payload: any) => {
+      if (payload?.status === 'connected') {
+        syncInit(conversations);
+      }
     });
 
     return () => {
       unsubscribePush?.();
       unsubscribeTyping?.();
+      unsubscribeConnection?.();
+      for (const timer of typingTimers.current.values()) {
+        clearTimeout(timer);
+      }
+      typingTimers.current.clear();
     };
-  }, [activeId]);
+  }, [activeId, conversations]);
 
   const loadConversations = async () => {
     try {
       setLoading(true);
       const data = await messagesService.listConversations();
       setConversations(data);
+      for (const row of data) {
+        if (row.lastMessageSeq && row.lastMessageSeq > 0) {
+          chatSyncStore.updateLastDeliveredSeq(row.id, row.lastMessageSeq);
+        }
+      }
+      syncInit(data);
     } catch (error) {
       console.error('Failed to load conversations:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  const visibleConversations = useMemo(() => {
+    const trimmed = query.trim().toLowerCase();
+    if (!trimmed) {
+      return conversations;
+    }
+    return conversations.filter((chat) => {
+      const title = String(chat.title || '').toLowerCase();
+      const preview = String(chat.lastMessageBody || '').toLowerCase();
+      return title.includes(trimmed) || preview.includes(trimmed);
+    });
+  }, [conversations, query]);
 
   return (
     <div className="h-full flex flex-col">
@@ -106,6 +176,8 @@ export function ConversationList({ activeId, onSelect, onNewChat }: Conversation
         <PravaInput
           placeholder="Search..."
           prefixIcon={<Search className="w-4 h-4" />}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
         />
       </div>
 
@@ -115,7 +187,7 @@ export function ConversationList({ activeId, onSelect, onNewChat }: Conversation
             Loading chats...
           </div>
         ) : (
-          conversations.map((chat) => {
+          visibleConversations.map((chat) => {
           const displayName = chat.title?.trim()
             ? chat.title
             : chat.type === 'group'

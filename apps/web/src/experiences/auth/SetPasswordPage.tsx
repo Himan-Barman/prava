@@ -1,7 +1,7 @@
-import { useState, useEffect, type FormEvent } from 'react';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Shield, CheckCircle } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import {
   PravaBackground,
   GlassCard,
@@ -10,11 +10,48 @@ import {
 } from '../../ui-system';
 import { useAuth } from '../../context/auth-context';
 import { ApiException } from '../../adapters/api-client';
-import toast from 'react-hot-toast';
+import { smartToast } from '../../ui-system/components/SmartToast';
 
 interface LocationState {
   email: string;
   username?: string;
+}
+
+function getPasswordScore(password: string): number {
+  let score = 0;
+  if (password.length >= 12) score += 0.25;
+  if (/[A-Z]/.test(password)) score += 0.15;
+  if (/[a-z]/.test(password)) score += 0.15;
+  if (/\d/.test(password)) score += 0.2;
+  if (/[!@#$&*~%^()\-_=+]/.test(password)) score += 0.25;
+  return Math.min(1, Math.max(0, score));
+}
+
+function getStrengthColor(score: number): string {
+  if (score < 0.4) return 'bg-prava-error';
+  if (score < 0.7) return 'bg-prava-warning';
+  return 'bg-prava-success';
+}
+
+function RuleItem({ label, satisfied }: { label: string; satisfied: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className={`w-4 h-4 rounded-full border ${satisfied
+          ? 'bg-prava-success border-prava-success'
+          : 'border-prava-light-border dark:border-prava-dark-border'
+          }`}
+      />
+      <span
+        className={`text-caption ${satisfied
+          ? 'text-prava-success'
+          : 'text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary'
+          }`}
+      >
+        {label}
+      </span>
+    </div>
+  );
 }
 
 export default function SetPasswordPage() {
@@ -27,42 +64,52 @@ export default function SetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const email = state?.email || '';
-  const username = state?.username;
+  const email = state?.email?.trim() || '';
+  const username = state?.username?.trim();
 
-  // Redirect if no email
   useEffect(() => {
     if (!email) {
-      navigate('/signup');
+      navigate('/signup', { replace: true });
     }
   }, [email, navigate]);
 
-  const isPasswordValid = password.length >= 8;
-  const passwordsMatch = password === confirmPassword && confirmPassword.length > 0;
-  const canSubmit = isPasswordValid && passwordsMatch && !loading;
+  const hasLength = password.length >= 12;
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  const hasSymbol = /[!@#$&*~%^()\-_=+]/.test(password);
+  const matches = confirmPassword.length > 0 && confirmPassword === password;
+
+  const passwordScore = useMemo(() => getPasswordScore(password), [password]);
+  const canSubmit =
+    hasLength &&
+    hasUpper &&
+    hasLower &&
+    hasNumber &&
+    hasSymbol &&
+    matches &&
+    !loading;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!canSubmit) {
-      if (!isPasswordValid) {
-        toast.error('Password must be at least 8 characters');
-      } else if (!passwordsMatch) {
-        toast.error('Passwords do not match');
-      }
-      return;
-    }
+    if (!canSubmit) return;
 
     setLoading(true);
 
     try {
-      await register(email, password, username);
-      toast.success('Account created successfully!');
-      navigate('/feed');
+      const session = await register(email, password, username);
+
+      if (!session.isVerified) {
+        smartToast.info('Check your email to verify the account');
+      }
+
+      smartToast.success('Password set successfully');
+      navigate('/set-details', { replace: true });
     } catch (err) {
       const message = err instanceof ApiException
         ? err.message
-        : 'Registration failed, please try again';
-      toast.error(message);
+        : 'Failed to set password';
+      smartToast.error(message);
     } finally {
       setLoading(false);
     }
@@ -76,112 +123,77 @@ export default function SetPasswordPage() {
 
       <main className="flex-1 flex items-center justify-center px-5 py-8 sm:px-6 sm:py-12">
         <div className="w-full max-w-[440px]">
-          {/* Header */}
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.52, ease: [0.4, 0, 0.2, 1] }}
-            className="mb-4"
+            className="mb-6"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1">
-                <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary tracking-[-0.6px]">
-                  Create password
-                </h1>
-                <p className="mt-2 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-                  Choose a strong password to secure your account.
-                </p>
-              </div>
-
-              {/* Step Badge */}
-              <div className="shrink-0 px-3 py-2 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border border-black/[0.08] dark:border-white/[0.16]">
-                <span className="text-caption font-semibold text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-                  Step 3 of 3
-                </span>
-              </div>
-            </div>
-
-            {/* Step Indicator */}
-            <div className="flex gap-1.5 mt-4">
-              <div className="h-1.5 w-9 rounded-full bg-prava-accent" />
-              <div className="h-1.5 w-9 rounded-full bg-prava-accent" />
-              <div className="h-1.5 w-9 rounded-full bg-prava-accent" />
-            </div>
+            <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary tracking-[-0.6px]">
+              Secure your account
+            </h1>
+            <p className="mt-2 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+              Create a strong password to unlock your private workspace.
+            </p>
           </motion.div>
 
-          {/* Password Card */}
-          <GlassCard delay={0.12} className="mt-5 mb-6">
-            {/* Account Info */}
-            <div className="flex items-center gap-3 p-3 rounded-[14px] bg-prava-success/10 mb-5">
-              <div className="p-2 rounded-full bg-prava-success/20">
-                <CheckCircle className="w-5 h-5 text-prava-success" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-body-sm font-medium text-prava-light-text-primary dark:text-prava-dark-text-primary truncate">
-                  {email}
-                </p>
-                {username && (
-                  <p className="text-caption text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-                    @{username}
-                  </p>
-                )}
-              </div>
+          <GlassCard delay={0.12} className="mb-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Lock className="w-[18px] h-[18px] text-prava-accent" />
+              <span className="text-body font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary">
+                Password security
+              </span>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <PravaPasswordInput
                 label="Password"
-                placeholder="Create a strong password"
+                placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
-                showStrength
               />
+
+              <div className="h-1.5 rounded-full bg-black/[0.12] dark:bg-white/[0.12] overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-200 ${getStrengthColor(passwordScore)}`}
+                  style={{ width: `${Math.max(6, passwordScore * 100)}%` }}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <RuleItem label="12+ characters" satisfied={hasLength} />
+                <RuleItem label="Uppercase letter" satisfied={hasUpper} />
+                <RuleItem label="Lowercase letter" satisfied={hasLower} />
+                <RuleItem label="Number" satisfied={hasNumber} />
+                <RuleItem label="Symbol" satisfied={hasSymbol} />
+              </div>
 
               <PravaPasswordInput
                 label="Confirm password"
-                placeholder="Re-enter your password"
+                placeholder="Confirm password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
                 error={
-                  confirmPassword && !passwordsMatch
-                    ? 'Passwords do not match'
+                  confirmPassword && !matches
+                    ? 'Passwords must match'
                     : undefined
                 }
               />
 
-              {/* Security Hint */}
-              <div className="flex items-start gap-2 p-3 rounded-[12px] bg-prava-accent/10">
-                <Shield className="w-4 h-4 text-prava-accent mt-0.5 shrink-0" />
-                <p className="text-caption text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-                  Your password is hashed with Argon2 — the most secure hashing algorithm available.
-                </p>
-              </div>
-
               <PravaButton
                 type="submit"
-                label="Complete Registration"
+                label="Set password"
                 loading={loading}
                 disabled={!canSubmit}
               />
             </form>
           </GlassCard>
 
-          {/* Back Link */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="text-center"
-          >
-            <Link
-              to="/signup"
-              className="text-body font-semibold text-prava-accent hover:text-prava-accent-muted transition-colors"
-            >
-              Start over
-            </Link>
-          </motion.div>
+          <p className="text-caption text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+            Protected with Argon2id hashing and zero-knowledge design.
+          </p>
         </div>
       </main>
     </div>

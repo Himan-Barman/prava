@@ -12,6 +12,8 @@ This is the active TypeScript backend service for the project.
 - `npm run build` - compile TypeScript to `dist/`
 - `npm run start` - run compiled production server
 - `npm run typecheck` - run TypeScript type checks
+- `npm run test` - run backend integration tests (chat routes + websocket)
+- `npm run load:chat` - run chat message load test with autocannon
 
 ## Required env vars
 - `MONGODB_URI`
@@ -35,3 +37,10 @@ This is the active TypeScript backend service for the project.
 - `PRESSURE_MAX_HEAP_USED_BYTES`
 - `PRESSURE_MAX_RSS_BYTES`
 - `PRESSURE_RETRY_AFTER_SECONDS`
+
+## Chat Load Test
+Set these env vars, then run `npm run load:chat`:
+- `CHAT_LOAD_BASE_URL` (example: `http://127.0.0.1:3000`)
+- `CHAT_LOAD_ACCESS_TOKEN`
+- `CHAT_LOAD_CONVERSATION_ID`
+- Optional tuning: `CHAT_LOAD_CONNECTIONS`, `CHAT_LOAD_DURATION_SEC`, `CHAT_LOAD_WORKERS`, `CHAT_LOAD_PIPELINING`, `CHAT_LOAD_TIMEOUT_SEC`

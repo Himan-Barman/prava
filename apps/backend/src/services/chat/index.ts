@@ -112,6 +112,8 @@ function mapMessage(message) {
     body: message.body,
     contentType: message.contentType,
     seq: message.seq,
+    mediaAssetId: message.mediaAssetId || null,
+    replyToMessageId: message.replyToMessageId || null,
     editVersion: Number(message.editVersion || 0),
     reactions: Array.isArray(message.reactions) ? message.reactions : [],
     createdAt: toIso(message.createdAt),
@@ -699,6 +701,131 @@ export default async function chatService(app) {
     }).toArray();
 
     return messages.reverse().map(mapMessage);
+  });
+
+  app.get("/:conversationId/reads", { preHandler: requireAuth }, async (request) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+
+    const conversation = await ensureConversationAccess(db, conversationId, request.user.userId);
+    const memberIds = Array.isArray(conversation.memberIds)
+      ? conversation.memberIds.map((id) => String(id))
+      : [];
+
+    const reads = await db.collection("conversation_reads").find(
+      {
+        conversationId,
+        userId: { $in: memberIds },
+      },
+      {
+        projection: {
+          userId: 1,
+          lastReadSeq: 1,
+          lastDeliveredSeq: 1,
+          updatedAt: 1,
+        },
+      }
+    ).toArray();
+
+    const readsByUserId = new Map(
+      reads.map((item) => [
+        String(item.userId),
+        {
+          userId: String(item.userId),
+          lastReadSeq: Number(item.lastReadSeq || 0),
+          lastDeliveredSeq: Number(item.lastDeliveredSeq || 0),
+          updatedAt: toIso(item.updatedAt),
+        },
+      ])
+    );
+
+    return memberIds.map((userId) => (
+      readsByUserId.get(userId) || {
+        userId,
+        lastReadSeq: 0,
+        lastDeliveredSeq: 0,
+        updatedAt: null,
+      }
+    ));
+  });
+
+  app.post("/sync", { preHandler: requireAuth }, async (request) => {
+    const payload = Array.isArray(request.body?.conversations)
+      ? request.body.conversations
+      : [];
+    const limitPerConversation = parseLimit(
+      request.body?.limitPerConversation,
+      50,
+      1,
+      100
+    );
+
+    const normalized: Array<{ conversationId: string; lastKnownSeq: number }> = [];
+    const seen = new Set();
+    for (const row of payload) {
+      if (!row || typeof row !== "object") continue;
+      const conversationId = normalizeString(row.conversationId);
+      if (conversationId.length < 8 || seen.has(conversationId)) continue;
+      seen.add(conversationId);
+      const lastKnownSeqRaw = Number.parseInt(String(row.lastKnownSeq || "0"), 10);
+      normalized.push({
+        conversationId,
+        lastKnownSeq: Number.isNaN(lastKnownSeqRaw) || lastKnownSeqRaw < 0
+          ? 0
+          : lastKnownSeqRaw,
+      });
+    }
+
+    if (normalized.length === 0) {
+      return {
+        conversations: [],
+      };
+    }
+
+    const allowedConversations = await db.collection("conversations").find(
+      {
+        conversationId: { $in: normalized.map((item) => item.conversationId) },
+        memberIds: request.user.userId,
+      },
+      {
+        projection: {
+          conversationId: 1,
+          seqCounter: 1,
+          updatedAt: 1,
+          lastMessageSeq: 1,
+        },
+      }
+    ).toArray();
+
+    const allowedSet = new Set(allowedConversations.map((item) => String(item.conversationId)));
+    const conversations: Array<any> = [];
+    for (const item of normalized) {
+      if (!allowedSet.has(item.conversationId)) continue;
+
+      const deltaMessages = await db.collection("messages").find(
+        {
+          conversationId: item.conversationId,
+          seq: { $gt: item.lastKnownSeq },
+        },
+        {
+          sort: { seq: 1 },
+          limit: limitPerConversation,
+        }
+      ).toArray();
+
+      const meta = allowedConversations.find((c) => c.conversationId === item.conversationId);
+      conversations.push({
+        conversationId: item.conversationId,
+        hasMore: deltaMessages.length === limitPerConversation,
+        currentSeq: Number(meta?.seqCounter || meta?.lastMessageSeq || 0),
+        updatedAt: toIso(meta?.updatedAt),
+        messages: deltaMessages.map(mapMessage),
+      });
+    }
+
+    return {
+      conversations,
+    };
   });
 
   app.post("/:conversationId/messages", { preHandler: requireAuth }, async (request) => {

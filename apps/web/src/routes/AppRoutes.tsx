@@ -9,6 +9,8 @@ import {
   EmailOtpPage,
   SetPasswordPage,
   ForgotPasswordPage,
+  ResetPasswordPage,
+  SetDetailsPage,
 } from '../experiences/auth';
 
 // Main Pages
@@ -106,6 +108,8 @@ const AppRoutes = () => {
       <Route path="/verify-email" element={<EmailOtpPage />} />
       <Route path="/set-password" element={<SetPasswordPage />} />
       <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
+      <Route path="/reset-password" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
+      <Route path="/set-details" element={<ProtectedRoute><SetDetailsPage /></ProtectedRoute>} />
 
       {/* Protected Routes */}
       <Route path="/" element={<AuthRedirect />} />

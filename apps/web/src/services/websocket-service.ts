@@ -24,9 +24,11 @@ class WebSocketService {
   private socket: WebSocket | null = null;
   private subscribers: Map<string, Set<WebSocketCallback>> = new Map();
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
+  private maxReconnectAttempts = 50;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private isConnecting = false;
+  private manualDisconnect = false;
+  private pending: Array<{ type: string; payload: any }> = [];
 
   isConnected() {
     return this.socket?.readyState === WebSocket.OPEN;
@@ -36,6 +38,7 @@ class WebSocketService {
     if (this.socket?.readyState === WebSocket.OPEN || this.isConnecting) return;
 
     this.isConnecting = true;
+    this.manualDisconnect = false;
     const token = secureStore.getAccessToken();
     if (!token) {
       this.isConnecting = false;
@@ -50,6 +53,7 @@ class WebSocketService {
       console.log('WebSocket connected');
       this.isConnecting = false;
       this.reconnectAttempts = 0;
+      this.flushPending();
       this.notify('connection', { status: 'connected' });
     };
 
@@ -68,7 +72,9 @@ class WebSocketService {
       console.log('WebSocket disconnected');
       this.isConnecting = false;
       this.notify('connection', { status: 'disconnected' });
-      this.attemptReconnect();
+      if (!this.manualDisconnect) {
+        this.attemptReconnect();
+      }
     };
 
     this.socket.onerror = (error) => {
@@ -78,6 +84,7 @@ class WebSocketService {
   }
 
   disconnect() {
+    this.manualDisconnect = true;
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -111,7 +118,19 @@ class WebSocketService {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify({ type, payload }));
     } else {
-      console.warn('WebSocket not connected, cannot send message:', type);
+      if (this.pending.length > 1000) {
+        this.pending.shift();
+      }
+      this.pending.push({ type, payload });
+    }
+  }
+
+  private flushPending() {
+    if (this.socket?.readyState !== WebSocket.OPEN || this.pending.length === 0) {
+      return;
+    }
+    for (const item of this.pending.splice(0, this.pending.length)) {
+      this.socket.send(JSON.stringify(item));
     }
   }
 

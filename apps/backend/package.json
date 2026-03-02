@@ -11,6 +11,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test test/chat.integration.test.ts",
+    "load:chat": "node scripts/load-chat.mjs",
     "clean": "rimraf dist"
   },
   "dependencies": {
@@ -29,8 +31,11 @@
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.10.2",
+    "autocannon": "^7.15.0",
+    "mongodb-memory-server": "^10.1.4",
     "rimraf": "^6.0.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "ws": "^8.18.0"
   }
 }

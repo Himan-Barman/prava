@@ -120,6 +120,14 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
     const sendReadUpdate = async (conversationId: string, lastReadSeq: number) => {
       const meta = await getConversationMeta(conversationId);
       if (!meta) return;
+      const conversation = await db.collection("conversations").findOne(
+        { conversationId },
+        { projection: { seqCounter: 1 } }
+      );
+      const clampedLastReadSeq = Math.min(
+        Math.max(lastReadSeq, 0),
+        Number(conversation?.seqCounter || lastReadSeq)
+      );
 
       await db.collection("conversation_reads").updateOne(
         { conversationId, userId },
@@ -127,7 +135,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
           $set: {
             conversationId,
             userId,
-            lastReadSeq,
+            lastReadSeq: clampedLastReadSeq,
             updatedAt: now(),
           },
         },
@@ -137,7 +145,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       publishToConversation(
         meta.memberIds,
         "READ_UPDATE",
-        { conversationId, userId, lastReadSeq },
+        { conversationId, userId, lastReadSeq: clampedLastReadSeq },
         userId
       );
     };
@@ -145,6 +153,14 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
     const sendDeliveryUpdate = async (conversationId: string, lastDeliveredSeq: number) => {
       const meta = await getConversationMeta(conversationId);
       if (!meta) return;
+      const conversation = await db.collection("conversations").findOne(
+        { conversationId },
+        { projection: { seqCounter: 1 } }
+      );
+      const clampedLastDeliveredSeq = Math.min(
+        Math.max(lastDeliveredSeq, 0),
+        Number(conversation?.seqCounter || lastDeliveredSeq)
+      );
 
       await db.collection("conversation_reads").updateOne(
         { conversationId, userId },
@@ -152,7 +168,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
           $set: {
             conversationId,
             userId,
-            lastDeliveredSeq,
+            lastDeliveredSeq: clampedLastDeliveredSeq,
             updatedAt: now(),
           },
         },
@@ -162,7 +178,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       publishToConversation(
         meta.memberIds,
         "DELIVERY_UPDATE",
-        { conversationId, userId, lastDeliveredSeq },
+        { conversationId, userId, lastDeliveredSeq: clampedLastDeliveredSeq },
         userId
       );
     };
@@ -221,6 +237,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       const contentType = normalizeString(payload.contentType || "text").toLowerCase();
       const tempId = normalizeString(payload.tempId);
       const mediaAssetId = normalizeString(payload.mediaAssetId);
+      const replyToMessageId = normalizeString(payload.replyToMessageId);
       const clientTimestamp = payload.clientTimestamp ?? null;
       const senderDeviceId = normalizeString(payload.deviceId || deviceId);
 
@@ -247,6 +264,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
         seq: nextSeq,
         contentType,
         body,
+        replyToMessageId: replyToMessageId || null,
         mediaAssetId: mediaAssetId || null,
         clientTimestamp,
         createdAt: ts,
@@ -270,8 +288,23 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
             lastMessageContentType: message.contentType,
             lastMessageDeletedForAllAt: null,
             lastMessageCreatedAt: ts,
+            lastMessageEditVersion: 0,
           },
         }
+      );
+
+      await db.collection("conversation_reads").updateOne(
+        { conversationId, userId },
+        {
+          $set: {
+            conversationId,
+            userId,
+            lastReadSeq: message.seq,
+            lastDeliveredSeq: message.seq,
+            updatedAt: now(),
+          },
+        },
+        { upsert: true }
       );
 
       publishToConversation(
@@ -285,6 +318,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
           seq: message.seq,
           contentType: message.contentType,
           body: message.body,
+          replyToMessageId: message.replyToMessageId || null,
           mediaAssetId: message.mediaAssetId,
           editVersion: message.editVersion,
           deletedForAllAt: message.deletedForAllAt,
@@ -335,6 +369,25 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
         : result;
       if (!updated) return;
 
+      const conversation = await db.collection("conversations").findOne(
+        { conversationId },
+        { projection: { lastMessageId: 1 } }
+      );
+      if (conversation?.lastMessageId === messageId) {
+        await db.collection("conversations").updateOne(
+          { conversationId },
+          {
+            $set: {
+              lastMessageBody: body,
+              lastMessageContentType: updated.contentType || "text",
+              lastMessageDeletedForAllAt: null,
+              lastMessageEditVersion: Number(updated.editVersion || 0),
+              updatedAt: ts,
+            },
+          }
+        );
+      }
+
       publishToConversation(
         meta.memberIds,
         "MESSAGE_EDIT",
@@ -378,6 +431,25 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
         : result;
       if (!updated) return;
 
+      const conversation = await db.collection("conversations").findOne(
+        { conversationId },
+        { projection: { lastMessageId: 1 } }
+      );
+      if (conversation?.lastMessageId === messageId) {
+        await db.collection("conversations").updateOne(
+          { conversationId },
+          {
+            $set: {
+              lastMessageBody: "",
+              lastMessageContentType: "system",
+              lastMessageDeletedForAllAt: ts,
+              lastMessageEditVersion: Number(updated.editVersion || 0),
+              updatedAt: ts,
+            },
+          }
+        );
+      }
+
       publishToConversation(
         meta.memberIds,
         "MESSAGE_DELETE",
@@ -403,7 +475,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       if (!message) return;
 
       const ts = now();
-      const reactions = Array.isArray(message.reactions) ? message.reactions : [];
+      const reactions = Array.isArray(message.reactions) ? [...message.reactions] : [];
       const existingIndex = reactions.findIndex((reaction) => reaction.userId === userId);
 
       if (remove) {

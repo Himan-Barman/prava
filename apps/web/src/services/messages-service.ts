@@ -55,6 +55,21 @@ export interface ConversationDetail extends ConversationSummary {
   createdAt?: string | null;
 }
 
+export interface ConversationReadState {
+  userId: string;
+  lastReadSeq: number;
+  lastDeliveredSeq: number;
+  updatedAt?: string | null;
+}
+
+export interface ConversationDelta {
+  conversationId: string;
+  hasMore: boolean;
+  currentSeq: number;
+  updatedAt?: string | null;
+  messages: Message[];
+}
+
 type BackendMessage = {
   id?: string;
   messageId?: string;
@@ -202,6 +217,46 @@ class MessagesService {
       }
     );
     return (Array.isArray(data) ? data : []).map(normalizeMessage);
+  }
+
+  async listReadStates(conversationId: string) {
+    return apiClient.get<ConversationReadState[]>(
+      `/conversations/${conversationId}/reads`,
+      {
+        auth: true,
+      }
+    );
+  }
+
+  async syncConversations(
+    conversations: Array<{ conversationId: string; lastKnownSeq: number }>,
+    limitPerConversation = 50
+  ) {
+    const data = await apiClient.post<{ conversations?: Array<{
+      conversationId: string;
+      hasMore: boolean;
+      currentSeq: number;
+      updatedAt?: string | null;
+      messages: BackendMessage[];
+    }> }>(
+      '/conversations/sync',
+      {
+        auth: true,
+        body: {
+          conversations,
+          limitPerConversation,
+        },
+      }
+    );
+
+    const payload = Array.isArray(data.conversations) ? data.conversations : [];
+    return payload.map((item) => ({
+      conversationId: item.conversationId,
+      hasMore: item.hasMore,
+      currentSeq: item.currentSeq,
+      updatedAt: item.updatedAt ?? null,
+      messages: (Array.isArray(item.messages) ? item.messages : []).map(normalizeMessage),
+    })) as ConversationDelta[];
   }
 
   async sendMessage(

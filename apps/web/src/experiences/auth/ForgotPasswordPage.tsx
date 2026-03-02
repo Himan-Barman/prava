@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Mail } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import {
   PravaBackground,
   GlassCard,
@@ -9,7 +9,8 @@ import {
   PravaButton
 } from '../../ui-system';
 import { authService } from '../../services/auth-service';
-import toast from 'react-hot-toast';
+import { ApiException } from '../../adapters/api-client';
+import { smartToast } from '../../ui-system/components/SmartToast';
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
@@ -18,26 +19,39 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 
-  const isEmailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+  const normalizedEmail = email.trim().toLowerCase();
+  const isEmailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail);
   const canSubmit = isEmailValid && !loading;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      smartToast.warning('Enter a valid email address');
+      return;
+    }
 
     setLoading(true);
 
     try {
-      await authService.requestPasswordReset(email.toLowerCase());
+      await authService.requestPasswordReset(normalizedEmail);
       setSent(true);
-      toast.success('Password reset link sent');
+      smartToast.info('If an account exists, we sent a reset code');
     } catch (err) {
-      // Don't reveal if email exists or not for security
-      setSent(true);
-      toast.success('If an account exists, a reset link has been sent');
+      const message = err instanceof ApiException
+        ? err.message
+        : 'Unable to send reset code';
+      smartToast.error(message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenReset = () => {
+    navigate('/reset-password', {
+      state: {
+        email: normalizedEmail,
+      },
+    });
   };
 
   return (
@@ -46,7 +60,6 @@ export default function ForgotPasswordPage() {
 
       <main className="flex-1 flex items-center justify-center px-5 py-8 sm:px-6 sm:py-12">
         <div className="w-full max-w-[440px]">
-          {/* Back Link */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -62,7 +75,6 @@ export default function ForgotPasswordPage() {
             </Link>
           </motion.div>
 
-          {/* Header */}
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -70,53 +82,50 @@ export default function ForgotPasswordPage() {
             className="mb-6"
           >
             <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary tracking-[-0.6px]">
-              Reset password
+              Reset your password
             </h1>
             <p className="mt-2 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-              {sent
-                ? "Check your email for a password reset link."
-                : "Enter your email and we'll send you a reset link."
-              }
+              Enter your email and we will send a secure reset code.
             </p>
           </motion.div>
 
-          {/* Card */}
           <GlassCard delay={0.12}>
-            {sent ? (
-              <div className="text-center py-4">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-prava-success/10 flex items-center justify-center">
-                  <Mail className="w-8 h-8 text-prava-success" />
-                </div>
-                <h2 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary mb-2">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <PravaInput
+                label="Email address"
+                type="email"
+                placeholder="Email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+              />
+
+              <PravaButton
+                type="submit"
+                label={sent ? 'Resend reset code' : 'Send reset code'}
+                loading={loading}
+                disabled={!canSubmit}
+              />
+            </form>
+
+            {sent && (
+              <div className="mt-5 p-4 rounded-[16px] bg-black/[0.04] dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/[0.08]">
+                <h2 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary">
                   Check your inbox
                 </h2>
-                <p className="text-body-sm text-prava-light-text-secondary dark:text-prava-dark-text-secondary mb-6">
-                  We've sent a password reset link to <strong>{email}</strong>
+                <p className="mt-1 text-body-sm text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+                  We sent a reset code to {normalizedEmail}.
                 </p>
-                <PravaButton
-                  label="Back to login"
-                  variant="ghost"
-                  onClick={() => navigate('/login')}
-                />
+                <p className="mt-1 text-caption text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+                  Reset codes expire in 10 minutes.
+                </p>
+                <div className="mt-4">
+                  <PravaButton
+                    label="Enter reset code"
+                    onClick={handleOpenReset}
+                  />
+                </div>
               </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <PravaInput
-                  label="Email address"
-                  type="email"
-                  placeholder="Enter your email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="email"
-                />
-
-                <PravaButton
-                  type="submit"
-                  label="Send reset link"
-                  loading={loading}
-                  disabled={!canSubmit}
-                />
-              </form>
             )}
           </GlassCard>
         </div>
