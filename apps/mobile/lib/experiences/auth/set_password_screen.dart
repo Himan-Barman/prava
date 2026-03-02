@@ -106,6 +106,15 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
       _hasSymbol &&
       _matches;
 
+  bool _shouldAutoLoginAfterRegisterError(ApiException error) {
+    if (error.statusCode >= 500) {
+      return true;
+    }
+    final lower = error.message.toLowerCase();
+    return lower.contains('account created') ||
+        lower.contains('email already exists');
+  }
+
   Future<void> _setPassword() async {
     if (!_valid || _loading) return;
 
@@ -145,8 +154,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
       );
     } catch (err) {
       if (err is ApiException &&
-          err.statusCode == 503 &&
-          err.message.toLowerCase().contains('account created')) {
+          _shouldAutoLoginAfterRegisterError(err)) {
         try {
           await _auth.login(
             email: widget.email,

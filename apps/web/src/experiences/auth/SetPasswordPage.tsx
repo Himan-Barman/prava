@@ -17,6 +17,13 @@ interface LocationState {
   username?: string;
 }
 
+function shouldAutoLoginAfterRegisterError(error: ApiException): boolean {
+  if (typeof error.statusCode === 'number' && error.statusCode >= 500) {
+    return true;
+  }
+  return /account created|email already exists/i.test(error.message);
+}
+
 function getPasswordScore(password: string): number {
   let score = 0;
   if (password.length >= 12) score += 0.25;
@@ -106,11 +113,7 @@ export default function SetPasswordPage() {
       smartToast.success('Account created successfully');
       navigate('/set-details', { replace: true });
     } catch (err) {
-      if (
-        err instanceof ApiException
-        && err.statusCode === 503
-        && /account created/i.test(err.message)
-      ) {
+      if (err instanceof ApiException && shouldAutoLoginAfterRegisterError(err)) {
         try {
           await login(email, password);
           smartToast.success('Account created successfully');
