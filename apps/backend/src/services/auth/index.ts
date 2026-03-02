@@ -61,23 +61,30 @@ async function createSession(db, user, context) {
   const refreshToken = generateRefreshToken();
   const expiresAt = addSeconds(issuedAt, getRefreshTtlSeconds());
   const accessToken = issueAccessToken(user);
+  let nextRefreshToken = "";
 
-  await db.collection("refresh_tokens").insertOne({
-    refreshTokenId: generateId(),
-    userId: user.userId,
-    deviceId: sanitizeDevice(context.deviceId),
-    deviceName: sanitizeDevice(context.deviceName),
-    platform: sanitizeDevice(context.platform),
-    tokenHash: refreshToken.hash,
-    createdAt: issuedAt,
-    lastSeenAt: issuedAt,
-    expiresAt,
-    revokedAt: null,
-  });
+  try {
+    await db.collection("refresh_tokens").insertOne({
+      refreshTokenId: generateId(),
+      userId: user.userId,
+      deviceId: sanitizeDevice(context.deviceId),
+      deviceName: sanitizeDevice(context.deviceName),
+      platform: sanitizeDevice(context.platform),
+      tokenHash: refreshToken.hash,
+      createdAt: issuedAt,
+      lastSeenAt: issuedAt,
+      expiresAt,
+      revokedAt: null,
+    });
+    nextRefreshToken = refreshToken.raw;
+  } catch {
+    // Best-effort session creation: keep user signed in with access token even
+    // if refresh token persistence fails.
+  }
 
   return {
     accessToken,
-    refreshToken: refreshToken.raw,
+    refreshToken: nextRefreshToken,
   };
 }
 
