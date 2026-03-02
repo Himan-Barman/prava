@@ -11,6 +11,12 @@ services:
         sync: false
       - key: MONGODB_DB_NAME
         value: prava_chat
+      - key: MONGODB_CONNECT_RETRIES
+        value: "5"
+      - key: MONGODB_CONNECT_RETRY_DELAY_MS
+        value: "2000"
+      - key: MONGODB_SERVER_SELECTION_TIMEOUT_MS
+        value: "10000"
       - key: JWT_SECRET
         sync: false
       - key: ACCESS_TOKEN_TTL_SECONDS

@@ -12,14 +12,43 @@ export async function connectMongo(): Promise<Db> {
     return db;
   }
 
-  const uri = env.MONGODB_URI || "mongodb://127.0.0.1:27017/prava_chat";
-  client = new MongoClient(uri, {
-    maxPoolSize: 30,
-    minPoolSize: 2,
-    serverSelectionTimeoutMS: 5000,
-  });
+  const uri = env.MONGODB_URI;
+  const maxAttempts = env.MONGODB_CONNECT_RETRIES;
+  let attempt = 0;
+  let lastError: unknown;
 
-  await client.connect();
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    try {
+      client = new MongoClient(uri, {
+        maxPoolSize: env.MONGODB_MAX_POOL_SIZE,
+        minPoolSize: env.MONGODB_MIN_POOL_SIZE,
+        serverSelectionTimeoutMS: env.MONGODB_SERVER_SELECTION_TIMEOUT_MS,
+      });
+
+      await client.connect();
+      await client.db("admin").command({ ping: 1 });
+      break;
+    } catch (error) {
+      lastError = error;
+      if (client) {
+        await client.close().catch(() => undefined);
+        client = undefined;
+      }
+
+      if (attempt >= maxAttempts) {
+        throw error;
+      }
+
+      await wait(env.MONGODB_CONNECT_RETRY_DELAY_MS);
+    }
+  }
+
+  if (!client) {
+    throw (lastError instanceof Error
+      ? lastError
+      : new Error("MongoDB connection failed"));
+  }
 
   const explicitName = env.MONGODB_DB_NAME;
   if (explicitName && explicitName.trim()) {
@@ -139,4 +168,10 @@ async function ensureIndexes(database: Db): Promise<void> {
       { key: { userId: 1, deviceId: 1, isUsed: 1, keyId: 1 } },
     ]),
   ]);
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

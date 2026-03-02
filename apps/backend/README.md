@@ -20,6 +20,19 @@ This is the active TypeScript backend service for the project.
 - `MONGODB_DB_NAME`
 - `JWT_SECRET`
 
+### MongoDB Atlas / Render example
+Use a full Atlas SRV URI and keep credentials in Render env vars:
+
+`MONGODB_URI=mongodb+srv://srhimanbarman:<db_password>@cluster0.zbmrn7v.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`
+
+Also set:
+- `MONGODB_DB_NAME=prava_chat`
+
+Important:
+- Replace `<db_password>` with the real password.
+- If the password has special characters, URL-encode it.
+- In MongoDB Atlas Network Access, allow Render outbound IPs (or temporary `0.0.0.0/0`).
+
 ## Optional env vars
 - `CORS_ORIGIN` (comma-separated origins, defaults to `*`)
 - `RATE_LIMIT_MAX`

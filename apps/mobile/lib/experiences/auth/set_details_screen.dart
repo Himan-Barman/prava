@@ -546,7 +546,6 @@ class _LuxeInput extends StatelessWidget {
   final Iterable<String>? autofillHints;
   final List<TextInputFormatter>? inputFormatters;
   final Widget? suffixIcon;
-  final String? prefixText;
   final ValueChanged<String>? onSubmitted;
 
   @override
@@ -572,13 +571,6 @@ class _LuxeInput extends StatelessWidget {
           color: isDark
               ? PravaColors.darkTextTertiary
               : PravaColors.lightTextTertiary,
-        ),
-        prefixText: prefixText,
-        prefixStyle: PravaTypography.body.copyWith(
-          color: isDark
-              ? PravaColors.darkTextPrimary
-              : PravaColors.lightTextPrimary,
-          fontWeight: FontWeight.w600,
         ),
         filled: true,
         fillColor: isDark
