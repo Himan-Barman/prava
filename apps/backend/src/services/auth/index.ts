@@ -60,6 +60,7 @@ async function createSession(db, user, context) {
   const issuedAt = now();
   const refreshToken = generateRefreshToken();
   const expiresAt = addSeconds(issuedAt, getRefreshTtlSeconds());
+  const accessToken = issueAccessToken(user);
 
   await db.collection("refresh_tokens").insertOne({
     refreshTokenId: generateId(),
@@ -75,7 +76,7 @@ async function createSession(db, user, context) {
   });
 
   return {
-    accessToken: issueAccessToken(user),
+    accessToken,
     refreshToken: refreshToken.raw,
   };
 }
@@ -219,7 +220,22 @@ export default async function authService(app) {
       updatedAt: ts,
     };
 
-    await db.collection("users").insertOne(user);
+    try {
+      await db.collection("users").insertOne(user);
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        const duplicateDetails = JSON.stringify(error);
+        if (duplicateDetails.includes("emailLower")) {
+          throw new HttpError(409, "Email already exists");
+        }
+        if (duplicateDetails.includes("usernameLower")) {
+          throw new HttpError(409, "Username already exists");
+        }
+        throw new HttpError(409, "Account already exists");
+      }
+      throw error;
+    }
+
     if (hasExplicitUsername) {
       await db.collection("username_reservations").deleteOne({
         usernameLower,
@@ -227,11 +243,17 @@ export default async function authService(app) {
       });
     }
 
-    const session = await createSession(db, user, {
-      deviceId: body.deviceId,
-      deviceName: body.deviceName,
-      platform: body.platform,
-    });
+    let session;
+    try {
+      session = await createSession(db, user, {
+        deviceId: body.deviceId,
+        deviceName: body.deviceName,
+        platform: body.platform,
+      });
+    } catch (error) {
+      request.log.error({ err: error, emailLower }, "failed to create signup session");
+      throw new HttpError(503, "Account created. Please sign in.");
+    }
 
     return {
       user: buildUserView(user),
