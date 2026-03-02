@@ -135,7 +135,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
 
       PravaToast.show(
         context,
-        message: 'Password set successfully',
+        message: 'Account created successfully',
         type: PravaToastType.success,
       );
 
@@ -157,7 +157,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
           setState(() => _loading = false);
           PravaToast.show(
             context,
-            message: 'Password set successfully',
+            message: 'Account created successfully',
             type: PravaToastType.success,
           );
           PravaNavigator.pushReplacement(

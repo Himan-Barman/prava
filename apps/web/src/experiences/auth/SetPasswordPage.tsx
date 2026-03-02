@@ -103,7 +103,7 @@ export default function SetPasswordPage() {
         smartToast.info('Check your email to verify the account');
       }
 
-      smartToast.success('Password set successfully');
+      smartToast.success('Account created successfully');
       navigate('/set-details', { replace: true });
     } catch (err) {
       if (
@@ -113,7 +113,7 @@ export default function SetPasswordPage() {
       ) {
         try {
           await login(email, password);
-          smartToast.success('Password set successfully');
+          smartToast.success('Account created successfully');
           navigate('/set-details', { replace: true });
           return;
         } catch {
