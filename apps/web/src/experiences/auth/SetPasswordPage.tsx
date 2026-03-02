@@ -57,7 +57,7 @@ function RuleItem({ label, satisfied }: { label: string; satisfied: boolean }) {
 export default function SetPasswordPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { register } = useAuth();
+  const { register, login } = useAuth();
   const state = location.state as LocationState | null;
 
   const [password, setPassword] = useState('');
@@ -106,6 +106,21 @@ export default function SetPasswordPage() {
       smartToast.success('Password set successfully');
       navigate('/set-details', { replace: true });
     } catch (err) {
+      if (
+        err instanceof ApiException
+        && err.statusCode === 503
+        && /account created/i.test(err.message)
+      ) {
+        try {
+          await login(email, password);
+          smartToast.success('Password set successfully');
+          navigate('/set-details', { replace: true });
+          return;
+        } catch {
+          // Fall through to default error handling.
+        }
+      }
+
       const message = err instanceof ApiException
         ? err.message
         : 'Failed to set password';

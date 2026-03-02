@@ -144,6 +144,32 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
         const SetDetailsScreen(),
       );
     } catch (err) {
+      if (err is ApiException &&
+          err.statusCode == 503 &&
+          err.message.toLowerCase().contains('account created')) {
+        try {
+          await _auth.login(
+            email: widget.email,
+            password: _passwordController.text,
+          );
+          if (!mounted) return;
+
+          setState(() => _loading = false);
+          PravaToast.show(
+            context,
+            message: 'Password set successfully',
+            type: PravaToastType.success,
+          );
+          PravaNavigator.pushReplacement(
+            context,
+            const SetDetailsScreen(),
+          );
+          return;
+        } catch (_) {
+          // Fall through to default error rendering.
+        }
+      }
+
       if (!mounted) return;
 
       setState(() => _loading = false);
