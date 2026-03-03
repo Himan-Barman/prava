@@ -66,13 +66,14 @@ export default function SetPasswordPage() {
   const location = useLocation();
   const { register, login } = useAuth();
   const state = location.state as LocationState | null;
+  const searchParams = new URLSearchParams(location.search);
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const email = state?.email?.trim() || '';
-  const username = state?.username?.trim();
+  const email = (state?.email || searchParams.get('email') || '').trim();
+  const username = (state?.username || searchParams.get('username') || '').trim() || undefined;
 
   useEffect(() => {
     if (!email) {
@@ -113,7 +114,10 @@ export default function SetPasswordPage() {
       smartToast.success('Account created successfully');
       navigate('/set-details', { replace: true });
     } catch (err) {
-      if (err instanceof ApiException && shouldAutoLoginAfterRegisterError(err)) {
+      if (
+        err instanceof ApiException
+        && (shouldAutoLoginAfterRegisterError(err) || err.statusCode === 409)
+      ) {
         try {
           await login(email, password);
           smartToast.success('Account created successfully');

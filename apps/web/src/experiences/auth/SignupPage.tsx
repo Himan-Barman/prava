@@ -129,10 +129,18 @@ export default function SignupPage() {
         username.toLowerCase()
       );
       toast.success('Verification code sent');
-      navigate('/verify-email', {
+      const emailLower = email.toLowerCase();
+      const usernameLower = username.toLowerCase();
+      const params = new URLSearchParams({
+        email: emailLower,
+        username: usernameLower,
+        flow: 'signup',
+      });
+
+      navigate(`/verify-email?${params.toString()}`, {
         state: {
-          email: email.toLowerCase(),
-          username: username.toLowerCase(),
+          email: emailLower,
+          username: usernameLower,
           flow: 'signup'
         }
       });

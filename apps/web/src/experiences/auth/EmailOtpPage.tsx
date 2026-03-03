@@ -22,15 +22,17 @@ export default function EmailOtpPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const state = location.state as LocationState | null;
+  const searchParams = new URLSearchParams(location.search);
 
   const [otpValues, setOtpValues] = useState<string[]>(Array(6).fill(''));
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(60);
 
-  const email = state?.email || '';
-  const username = state?.username;
-  const flow = state?.flow || 'signup';
+  const email = state?.email || searchParams.get('email') || '';
+  const username = state?.username || searchParams.get('username') || undefined;
+  const flowParam = state?.flow || searchParams.get('flow');
+  const flow: 'signup' | 'verify' = flowParam === 'verify' ? 'verify' : 'signup';
 
   // Redirect if no email
   useEffect(() => {
@@ -64,7 +66,11 @@ export default function EmailOtpPage() {
       toast.success('Email verified');
 
       if (flow === 'signup') {
-        navigate('/set-password', { state: { email, username } });
+        const params = new URLSearchParams({ email });
+        if (username) {
+          params.set('username', username);
+        }
+        navigate(`/set-password?${params.toString()}`, { state: { email, username } });
       } else {
         navigate('/feed');
       }
