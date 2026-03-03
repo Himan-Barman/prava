@@ -17,11 +17,44 @@ interface LocationState {
   username?: string;
 }
 
-function shouldAutoLoginAfterRegisterError(error: ApiException): boolean {
-  if (typeof error.statusCode === 'number' && error.statusCode >= 500) {
+function getErrorMessage(error: unknown): string {
+  if (error instanceof ApiException) {
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error ?? '');
+}
+
+function shouldAutoLoginAfterRegisterError(error: unknown): boolean {
+  if (error instanceof ApiException && typeof error.statusCode === 'number' && error.statusCode >= 500) {
     return true;
   }
-  return /account created|email already exists/i.test(error.message);
+  const message = getErrorMessage(error);
+  return /account created|email already exists|please sign in/i.test(message);
+}
+
+async function loginWithRetry(
+  loginFn: (email: string, password: string) => Promise<unknown>,
+  email: string,
+  password: string,
+): Promise<boolean> {
+  const attempts = 3;
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      await loginFn(email, password);
+      return true;
+    } catch {
+      if (index < attempts - 1) {
+        await new Promise((resolve) => {
+          setTimeout(resolve, 400);
+        });
+      }
+    }
+  }
+
+  return false;
 }
 
 function getPasswordScore(password: string): number {
@@ -114,23 +147,16 @@ export default function SetPasswordPage() {
       smartToast.success('Account created successfully');
       navigate('/set-details', { replace: true });
     } catch (err) {
-      if (
-        err instanceof ApiException
-        && (shouldAutoLoginAfterRegisterError(err) || err.statusCode === 409)
-      ) {
-        try {
-          await login(email, password);
+      if (shouldAutoLoginAfterRegisterError(err)) {
+        const loggedIn = await loginWithRetry(login, email, password);
+        if (loggedIn) {
           smartToast.success('Account created successfully');
           navigate('/set-details', { replace: true });
           return;
-        } catch {
-          // Fall through to default error handling.
         }
       }
 
-      const message = err instanceof ApiException
-        ? err.message
-        : 'Failed to set password';
+      const message = getErrorMessage(err) || 'Failed to set password';
       smartToast.error(message);
     } finally {
       setLoading(false);
