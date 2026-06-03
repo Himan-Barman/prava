@@ -252,7 +252,17 @@ async function bootstrap(): Promise<void> {
   registerHooks();
   registerRoutes();
 
+  await app.listen({
+    port: env.PORT,
+    host: env.HOST,
+  });
+
+  app.log.info({ port: env.PORT, host: env.HOST, env: env.NODE_ENV }, "backend listening");
+  app.log.info("initializing backend dependencies");
+
   await connectPg();
+  app.log.info("postgresql connected and migrations complete");
+
   configureCloudinary();
 
   try {
@@ -262,12 +272,7 @@ async function bootstrap(): Promise<void> {
   }
   ready = true;
 
-  await app.listen({
-    port: env.PORT,
-    host: env.HOST,
-  });
-
-  app.log.info({ port: env.PORT, host: env.HOST, env: env.NODE_ENV }, "backend started");
+  app.log.info({ env: env.NODE_ENV }, "backend ready");
 }
 
 async function shutdown(signal: string): Promise<void> {

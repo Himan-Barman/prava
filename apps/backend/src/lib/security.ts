@@ -17,12 +17,57 @@ export interface UserIdentity {
   isVerified?: boolean;
 }
 
-function getJwtSecret(): string {
+function normalizeJwtKey(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.replace(/\\n/g, "\n") : undefined;
+}
+
+function getJwtSigningKey(): { key: string; algorithm: "HS256" | "RS256" } {
+  const privateKey = normalizeJwtKey(env.JWT_PRIVATE_KEY);
+  if (privateKey) {
+    return {
+      key: privateKey,
+      algorithm: "RS256",
+    };
+  }
+
   const secret = env.JWT_SECRET || env.JWT_PRIVATE_KEY;
   if (!secret || !secret.trim()) {
     throw new Error("JWT secret is required");
   }
-  return secret.trim();
+
+  return {
+    key: secret.trim(),
+    algorithm: "HS256",
+  };
+}
+
+function getJwtVerificationKey(): { key: string; algorithms: Array<"HS256" | "RS256"> } {
+  const publicKey = normalizeJwtKey(env.JWT_PUBLIC_KEY);
+  if (publicKey) {
+    return {
+      key: publicKey,
+      algorithms: ["RS256"],
+    };
+  }
+
+  const privateKey = normalizeJwtKey(env.JWT_PRIVATE_KEY);
+  if (privateKey) {
+    return {
+      key: privateKey,
+      algorithms: ["RS256"],
+    };
+  }
+
+  const secret = env.JWT_SECRET;
+  if (!secret || !secret.trim()) {
+    throw new Error("JWT secret is required");
+  }
+
+  return {
+    key: secret.trim(),
+    algorithms: ["HS256"],
+  };
 }
 
 export function now(): Date {
@@ -113,15 +158,16 @@ export function generateRefreshToken(): { raw: string; hash: string } {
 }
 
 export function issueAccessToken(user: UserIdentity): string {
-  const secret = getJwtSecret();
+  const signing = getJwtSigningKey();
   return jwt.sign(
     {
       sub: user.userId,
       email: user.email,
       username: user.username,
     },
-    secret,
+    signing.key,
     {
+      algorithm: signing.algorithm,
       expiresIn: env.ACCESS_TOKEN_TTL_SECONDS,
       issuer: "prava",
       audience: "prava-clients",
@@ -130,8 +176,9 @@ export function issueAccessToken(user: UserIdentity): string {
 }
 
 export function verifyAccessToken(token: string): JwtUserPayload {
-  const secret = getJwtSecret();
-  const decoded = jwt.verify(token, secret, {
+  const verification = getJwtVerificationKey();
+  const decoded = jwt.verify(token, verification.key, {
+    algorithms: verification.algorithms,
     issuer: "prava",
     audience: "prava-clients",
   });
