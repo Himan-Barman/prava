@@ -14,6 +14,7 @@ import '../../ui-system/components/prava_button.dart';
 import '../../ui-system/components/prava_input.dart';
 import '../../ui-system/feedback/prava_toast.dart';
 import '../../ui-system/feedback/toast_type.dart';
+import 'auth_step_progress.dart';
 import 'email_otp_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -337,14 +338,15 @@ class _SignupScreenState extends State<SignupScreen> {
                                         ),
                                       ),
                                       const SizedBox(width: 12),
-                                      _StepBadge(
+                                      AuthStepBadge(
+                                        currentStep: 1,
                                         isDark: isDark,
                                         textColor: secondaryText,
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 16),
-                                  const _StepIndicator(),
+                                  const AuthStepIndicator(currentStep: 1),
                                   const SizedBox(height: 20),
                                   _buildFormCard(
                                     isDark: isDark,
@@ -552,83 +554,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Widget _buildBackground(bool isDark) {
     return PravaBackground(isDark: isDark);
-  }
-}
-
-class _StepBadge extends StatelessWidget {
-  const _StepBadge({
-    required this.isDark,
-    required this.textColor,
-  });
-
-  final bool isDark;
-  final Color textColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final border = isDark
-        ? Colors.white.withValues(alpha: 0.16)
-        : Colors.black.withValues(alpha: 0.08);
-    final background = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.black.withValues(alpha: 0.04);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: Text(
-        "Step 1 of 3",
-        style: PravaTypography.caption.copyWith(
-          color: textColor,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-class _StepIndicator extends StatelessWidget {
-  const _StepIndicator();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Row(
-      children: [
-        _StepPill(active: true),
-        SizedBox(width: 6),
-        _StepPill(active: false),
-        SizedBox(width: 6),
-        _StepPill(active: false),
-      ],
-    );
-  }
-}
-
-class _StepPill extends StatelessWidget {
-  const _StepPill({required this.active});
-
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final inactive = isDark
-        ? Colors.white.withValues(alpha: 0.16)
-        : Colors.black.withValues(alpha: 0.12);
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      width: active ? 36 : 18,
-      height: 6,
-      decoration: BoxDecoration(
-        color: active ? PravaColors.accentPrimary : inactive,
-        borderRadius: BorderRadius.circular(999),
-      ),
-    );
   }
 }
 

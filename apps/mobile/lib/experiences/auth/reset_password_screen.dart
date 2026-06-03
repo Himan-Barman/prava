@@ -31,13 +31,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _confirmController = TextEditingController();
 
   bool _loading = false;
-  double _strength = 0.0;
   final AuthService _auth = AuthService();
 
   @override
   void initState() {
     super.initState();
-    _passwordController.addListener(_checkStrength);
+    _passwordController.addListener(_syncState);
     _tokenController.addListener(_syncState);
     _confirmController.addListener(_syncState);
     if (widget.initialToken != null &&
@@ -48,7 +47,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   void dispose() {
-    _passwordController.removeListener(_checkStrength);
+    _passwordController.removeListener(_syncState);
     _tokenController.removeListener(_syncState);
     _confirmController.removeListener(_syncState);
     _tokenController.dispose();
@@ -57,38 +56,22 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     super.dispose();
   }
 
-  void _checkStrength() {
-    final value = _passwordController.text;
-
-    double score = 0;
-    if (value.length >= 12) score += 0.25;
-    if (RegExp(r'[A-Z]').hasMatch(value)) score += 0.15;
-    if (RegExp(r'[a-z]').hasMatch(value)) score += 0.15;
-    if (RegExp(r'\d').hasMatch(value)) score += 0.2;
-    if (RegExp(r'[!@#\$&*~%^()\-_+=]').hasMatch(value)) {
-      score += 0.25;
-    }
-
-    setState(() {
-      _strength = score.clamp(0, 1);
-    });
-  }
-
   void _syncState() {
     setState(() {});
   }
 
-  Color get _strengthColor {
-    if (_strength < 0.4) return PravaColors.error;
-    if (_strength < 0.7) return Colors.orange;
-    return PravaColors.success;
+  bool get _passwordMeetsRules {
+    final value = _passwordController.text;
+    return value.length >= 12 &&
+        RegExp(r'[A-Z]').hasMatch(value) &&
+        RegExp(r'\d').hasMatch(value) &&
+        RegExp(r'[^A-Za-z0-9]').hasMatch(value);
   }
 
   bool get _valid {
     final token = _tokenController.text.trim();
     return RegExp(r'^\d{6}$').hasMatch(token) &&
-        _strength >= 0.7 &&
-        _passwordController.text.isNotEmpty &&
+        _passwordMeetsRules &&
         _passwordController.text == _confirmController.text;
   }
 
@@ -191,15 +174,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         autofillHints: const [AutofillHints.newPassword],
                       ),
                       const SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: _strength,
-                          minHeight: 6,
-                          backgroundColor:
-                              isDark ? Colors.white12 : Colors.black12,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(_strengthColor),
+                      Text(
+                        'Use 12+ characters with a capital letter, number, and special character.',
+                        style: PravaTypography.caption.copyWith(
+                          color: _passwordMeetsRules
+                              ? PravaColors.success
+                              : secondaryText,
                         ),
                       ),
                       const SizedBox(height: 18),

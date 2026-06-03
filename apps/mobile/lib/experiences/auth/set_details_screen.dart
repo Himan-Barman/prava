@@ -14,6 +14,7 @@ import '../../ui-system/feedback/prava_toast.dart';
 import '../../ui-system/feedback/toast_type.dart';
 import '../../ui-system/typography.dart';
 import '../home/home_shell.dart';
+import 'auth_step_progress.dart';
 
 class SetDetailsScreen extends StatefulWidget {
   const SetDetailsScreen({super.key});
@@ -32,6 +33,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
   final _phoneFocus = FocusNode();
 
   bool _loading = false;
+  int _step = 0;
 
   Country? _selectedCountry;
 
@@ -41,6 +43,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
   void initState() {
     super.initState();
 
+    _selectedCountry = Country.parse('IN');
     _firstNameController.addListener(_onChanged);
     _lastNameController.addListener(_onChanged);
     _phoneController.addListener(_onChanged);
@@ -100,20 +103,37 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
     return _countryCodeDigits.length + _phoneDigits.length <= 15;
   }
 
-  bool get _canContinue =>
-      !_loading &&
-      _firstNameValid &&
-      _lastNameValid &&
-      _countryValid &&
-      _phoneValid;
+  bool get _identityValid => _firstNameValid && _lastNameValid;
+  bool get _contactValid => _countryValid && _phoneValid;
+  bool get _canContinueIdentity => !_loading && _identityValid;
+  bool get _canSubmitDetails =>
+      !_loading && _identityValid && _contactValid;
 
   String get _phonePreview {
     if (!_countryValid || !_phoneValid) return '';
     return '+$_countryCodeDigits $_phoneDigits';
   }
 
+  void _goToContactStep() {
+    if (!_canContinueIdentity) return;
+
+    FocusScope.of(context).unfocus();
+    HapticFeedback.selectionClick();
+    setState(() => _step = 1);
+
+    Future.delayed(const Duration(milliseconds: 260), () {
+      if (mounted) _phoneFocus.requestFocus();
+    });
+  }
+
+  void _goToIdentityStep() {
+    FocusScope.of(context).unfocus();
+    HapticFeedback.selectionClick();
+    setState(() => _step = 0);
+  }
+
   Future<void> _submitDetails() async {
-    if (!_canContinue) return;
+    if (!_canSubmitDetails) return;
 
     FocusScope.of(context).unfocus();
     HapticFeedback.mediumImpact();
@@ -168,6 +188,11 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
     final tertiaryText =
         isDark ? PravaColors.darkTextTertiary : PravaColors.lightTextTertiary;
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+    final title =
+        _step == 0 ? 'Complete your profile' : 'Add your phone number';
+    final subtitle = _step == 0
+        ? 'Tell us your name before we secure your contact details.'
+        : 'India is selected by default. You can change it anytime.';
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -192,20 +217,41 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Complete your profile',
-                            style: PravaTypography.h1.copyWith(
-                              letterSpacing: -0.6,
-                              color: primaryText,
-                            ),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      title,
+                                      style: PravaTypography.h1.copyWith(
+                                        letterSpacing: -0.6,
+                                        color: primaryText,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      subtitle,
+                                      style: PravaTypography.body.copyWith(
+                                        color: secondaryText,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              AuthStepBadge(
+                                currentStep: 4,
+                                isDark: isDark,
+                                textColor: secondaryText,
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Add trusted details to protect your account.',
-                            style: PravaTypography.body.copyWith(
-                              color: secondaryText,
-                            ),
-                          ),
+                          const SizedBox(height: 16),
+                          const AuthStepIndicator(currentStep: 4),
                           const SizedBox(height: 24),
                           _buildDetailsCard(
                             isDark: isDark,
@@ -215,9 +261,13 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Your phone stays private and is used for account recovery.',
+                            _step == 0
+                                ? 'Details 1 of 2'
+                                : 'Details 2 of 2. Your phone stays private and is used for account recovery.',
                             style: PravaTypography.caption.copyWith(
                               color: tertiaryText,
+                              fontWeight:
+                                  _step == 0 ? FontWeight.w600 : null,
                             ),
                           ),
                         ],
@@ -272,135 +322,60 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(
-                    Icons.person_outline,
+                  Icon(
+                    _step == 0
+                        ? Icons.person_outline
+                        : Icons.phone_iphone_outlined,
                     size: 18,
                     color: PravaColors.accentPrimary,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'Identity details',
-                    style: PravaTypography.body.copyWith(
-                      color: primaryText,
-                      fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: Text(
+                      _step == 0 ? 'Identity details' : 'Phone details',
+                      style: PravaTypography.body.copyWith(
+                        color: primaryText,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
+                  ),
+                  _DetailsStepPills(
+                    step: _step,
+                    isDark: isDark,
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _LuxeInput(
-                      controller: _firstNameController,
-                      focusNode: _firstNameFocus,
-                      hint: 'First name',
-                      textCapitalization: TextCapitalization.words,
-                      textInputAction: TextInputAction.next,
-                      keyboardType: TextInputType.name,
-                      autofillHints: const [AutofillHints.givenName],
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r"[A-Za-z '\\-]"),
-                        ),
-                        LengthLimitingTextInputFormatter(64),
-                      ],
-                      suffixIcon: _statusIcon(
-                        _firstName,
-                        _firstNameValid,
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 260),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  final offset = _step == 0 ? -0.04 : 0.04;
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: Offset(offset, 0),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  );
+                },
+                child: _step == 0
+                    ? _buildIdentityStep()
+                    : _buildPhoneStep(
+                        isDark: isDark,
+                        primaryText: primaryText,
+                        tertiaryText: tertiaryText,
                       ),
-                      onSubmitted: (_) =>
-                          _lastNameFocus.requestFocus(),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _LuxeInput(
-                      controller: _lastNameController,
-                      focusNode: _lastNameFocus,
-                      hint: 'Last name',
-                      textCapitalization: TextCapitalization.words,
-                      textInputAction: TextInputAction.next,
-                      keyboardType: TextInputType.name,
-                      autofillHints: const [AutofillHints.familyName],
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r"[A-Za-z '\\-]"),
-                        ),
-                        LengthLimitingTextInputFormatter(64),
-                      ],
-                      suffixIcon: _statusIcon(
-                        _lastName,
-                        _lastNameValid,
-                      ),
-                      onSubmitted: (_) =>
-                          _phoneFocus.requestFocus(),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  SizedBox(
-                    width: 170,
-                    child: _buildCountryPickerField(
-                      isDark: isDark,
-                      primaryText: primaryText,
-                      tertiaryText: tertiaryText,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _LuxeInput(
-                      controller: _phoneController,
-                      focusNode: _phoneFocus,
-                      hint: 'Phone number',
-                      textInputAction: TextInputAction.done,
-                      keyboardType: TextInputType.phone,
-                      autofillHints: const [
-                        AutofillHints.telephoneNumber
-                      ],
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(14),
-                      ],
-                      suffixIcon: _statusIcon(
-                        _phoneDigits,
-                        _phoneValid,
-                      ),
-                      onSubmitted: (_) => _submitDetails(),
-                    ),
-                  ),
-                ],
-              ),
-              if (_phonePreview.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Saved as $_phonePreview',
-                  style: PravaTypography.caption.copyWith(
-                    color: tertiaryText,
-                  ),
-                ),
-              ] else if (_phoneDigits.isNotEmpty ||
-                  _countryValid) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Enter your full number with country code.',
-                  style: PravaTypography.caption.copyWith(
-                    color: tertiaryText,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 22),
-              PravaButton(
-                label: 'Continue',
-                loading: _loading,
-                onPressed: _canContinue ? _submitDetails : null,
               ),
               const SizedBox(height: 12),
               Text(
-                'Protected with encrypted storage and device-bound sessions.',
+                _step == 0
+                    ? 'Your name helps friends recognize the right account.'
+                    : 'Protected with encrypted storage and device-bound sessions.',
                 style: PravaTypography.caption.copyWith(
                   color: secondaryText,
                 ),
@@ -409,6 +384,140 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildIdentityStep() {
+    return Column(
+      key: const ValueKey('identity-step'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _LuxeInput(
+          controller: _firstNameController,
+          focusNode: _firstNameFocus,
+          hint: 'First name',
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          keyboardType: TextInputType.name,
+          autofillHints: const [AutofillHints.givenName],
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(
+              RegExp(r"[A-Za-z '\\-]"),
+            ),
+            LengthLimitingTextInputFormatter(64),
+          ],
+          suffixIcon: _statusIcon(
+            _firstName,
+            _firstNameValid,
+          ),
+          onSubmitted: (_) => _lastNameFocus.requestFocus(),
+        ),
+        const SizedBox(height: 14),
+        _LuxeInput(
+          controller: _lastNameController,
+          focusNode: _lastNameFocus,
+          hint: 'Last name',
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.done,
+          keyboardType: TextInputType.name,
+          autofillHints: const [AutofillHints.familyName],
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(
+              RegExp(r"[A-Za-z '\\-]"),
+            ),
+            LengthLimitingTextInputFormatter(64),
+          ],
+          suffixIcon: _statusIcon(
+            _lastName,
+            _lastNameValid,
+          ),
+          onSubmitted: (_) => _goToContactStep(),
+        ),
+        const SizedBox(height: 22),
+        PravaButton(
+          label: 'Continue',
+          onPressed: _canContinueIdentity ? _goToContactStep : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPhoneStep({
+    required bool isDark,
+    required Color primaryText,
+    required Color tertiaryText,
+  }) {
+    return Column(
+      key: const ValueKey('phone-step'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildCountryPickerField(
+          isDark: isDark,
+          primaryText: primaryText,
+          tertiaryText: tertiaryText,
+        ),
+        const SizedBox(height: 14),
+        _LuxeInput(
+          controller: _phoneController,
+          focusNode: _phoneFocus,
+          hint: 'Phone number',
+          textInputAction: TextInputAction.done,
+          keyboardType: TextInputType.phone,
+          autofillHints: const [AutofillHints.telephoneNumber],
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(14),
+          ],
+          suffixIcon: _statusIcon(
+            _phoneDigits,
+            _phoneValid,
+          ),
+          onSubmitted: (_) => _submitDetails(),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          _phonePreview.isNotEmpty
+              ? 'Saved as $_phonePreview'
+              : 'Enter your full number without the country code.',
+          style: PravaTypography.caption.copyWith(
+            color: tertiaryText,
+          ),
+        ),
+        const SizedBox(height: 22),
+        Row(
+          children: [
+            GestureDetector(
+              onTap: _loading ? null : _goToIdentityStep,
+              child: Container(
+                height: 54,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  'Back',
+                  style: PravaTypography.button.copyWith(
+                    color: primaryText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: PravaButton(
+                label: 'Finish',
+                loading: _loading,
+                onPressed: _canSubmitDetails ? _submitDetails : null,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -530,6 +639,55 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
 
   Widget _buildBackground(bool isDark) {
     return PravaBackground(isDark: isDark);
+  }
+}
+
+class _DetailsStepPills extends StatelessWidget {
+  const _DetailsStepPills({
+    required this.step,
+    required this.isDark,
+  });
+
+  final int step;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final inactive = isDark
+        ? Colors.white.withValues(alpha: 0.16)
+        : Colors.black.withValues(alpha: 0.12);
+
+    return Row(
+      children: [
+        _DetailsStepPill(active: step == 0, inactive: inactive),
+        const SizedBox(width: 6),
+        _DetailsStepPill(active: step == 1, inactive: inactive),
+      ],
+    );
+  }
+}
+
+class _DetailsStepPill extends StatelessWidget {
+  const _DetailsStepPill({
+    required this.active,
+    required this.inactive,
+  });
+
+  final bool active;
+  final Color inactive;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      width: active ? 28 : 14,
+      height: 6,
+      decoration: BoxDecoration(
+        color: active ? PravaColors.accentPrimary : inactive,
+        borderRadius: BorderRadius.circular(999),
+      ),
+    );
   }
 }
 

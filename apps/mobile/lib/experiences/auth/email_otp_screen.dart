@@ -14,6 +14,7 @@ import '../../ui-system/feedback/prava_toast.dart';
 import '../../ui-system/feedback/toast_type.dart';
 import '../../ui-system/typography.dart';
 import '../home/home_shell.dart';
+import 'auth_step_progress.dart';
 import 'set_password_screen.dart';
 
 enum EmailOtpFlow {
@@ -255,60 +256,97 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
           children: [
             _buildBackground(isDark),
             SafeArea(
-              child: AnimatedPadding(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                padding: EdgeInsets.only(bottom: keyboardInset),
-                child: SingleChildScrollView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 440),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Verify your email',
-                            style: PravaTypography.h1.copyWith(
-                              letterSpacing: -0.6,
-                              color: primaryText,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Enter the 6-digit code sent to ${widget.email}.',
-                            style: PravaTypography.body.copyWith(
-                              color: secondaryText,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          _buildOtpCard(
-                            isDark: isDark,
-                            primaryText: primaryText,
-                            secondaryText: secondaryText,
-                            tertiaryText: tertiaryText,
-                          ),
-                          const SizedBox(height: 20),
-                          Center(
-                            child: GestureDetector(
-                              onTap: () => Navigator.pop(context),
-                              child: Text(
-                                'Change email',
-                                style: PravaTypography.body.copyWith(
-                                  color: PravaColors.accentPrimary,
-                                  fontWeight: FontWeight.w600,
-                                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return AnimatedPadding(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    padding: EdgeInsets.only(bottom: keyboardInset),
+                    child: SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      physics: const BouncingScrollPhysics(),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight,
+                        ),
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 440),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Verify your email',
+                                              style:
+                                                  PravaTypography.h1.copyWith(
+                                                letterSpacing: -0.6,
+                                                color: primaryText,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'Enter the 6-digit code sent to ${widget.email}.',
+                                              style:
+                                                  PravaTypography.body.copyWith(
+                                                color: secondaryText,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      AuthStepBadge(
+                                        currentStep: 2,
+                                        isDark: isDark,
+                                        textColor: secondaryText,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const AuthStepIndicator(currentStep: 2),
+                                  const SizedBox(height: 24),
+                                  _buildOtpCard(
+                                    isDark: isDark,
+                                    primaryText: primaryText,
+                                    secondaryText: secondaryText,
+                                    tertiaryText: tertiaryText,
+                                  ),
+                                  const SizedBox(height: 20),
+                                  Center(
+                                    child: GestureDetector(
+                                      onTap: () => Navigator.pop(context),
+                                      child: Text(
+                                        'Change email',
+                                        style:
+                                            PravaTypography.bodySmall.copyWith(
+                                          color: PravaColors.accentPrimary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
             ),
           ],
@@ -372,16 +410,31 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(6, (index) {
-                  return _OtpBox(
-                    controller: _controllers[index],
-                    focusNode: _nodes[index],
-                    isDark: isDark,
-                    onChanged: (value) => _onChanged(value, index),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  const gap = 8.0;
+                  final boxWidth = ((constraints.maxWidth - (gap * 5)) / 6)
+                      .clamp(30.0, 46.0)
+                      .toDouble();
+
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(6, (index) {
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          right: index == 5 ? 0 : gap,
+                        ),
+                        child: _OtpBox(
+                          width: boxWidth,
+                          controller: _controllers[index],
+                          focusNode: _nodes[index],
+                          isDark: isDark,
+                          onChanged: (value) => _onChanged(value, index),
+                        ),
+                      );
+                    }),
                   );
-                }),
+                },
               ),
               const SizedBox(height: 16),
               Row(
@@ -489,12 +542,14 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
 
 class _OtpBox extends StatelessWidget {
   const _OtpBox({
+    required this.width,
     required this.controller,
     required this.focusNode,
     required this.isDark,
     required this.onChanged,
   });
 
+  final double width;
   final TextEditingController controller;
   final FocusNode focusNode;
   final bool isDark;
@@ -507,15 +562,18 @@ class _OtpBox extends StatelessWidget {
         ? Colors.white.withValues(alpha: 0.12)
         : Colors.black.withValues(alpha: 0.08);
 
+    final textColor =
+        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
+
     return SizedBox(
-      width: 46,
+      width: width,
       child: TextField(
         controller: controller,
         focusNode: focusNode,
         keyboardType: TextInputType.number,
         textAlign: TextAlign.center,
         maxLength: 1,
-        style: PravaTypography.h2,
+        style: PravaTypography.h2.copyWith(color: textColor),
         inputFormatters: [
           FilteringTextInputFormatter.digitsOnly,
           LengthLimitingTextInputFormatter(1),

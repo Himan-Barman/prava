@@ -13,6 +13,7 @@ import '../../ui-system/components/prava_password_input.dart';
 import '../../ui-system/feedback/prava_toast.dart';
 import '../../ui-system/feedback/toast_type.dart';
 import '../../ui-system/typography.dart';
+import 'auth_step_progress.dart';
 import 'set_details_screen.dart';
 
 class SetPasswordScreen extends StatefulWidget {
@@ -34,11 +35,9 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
   final _confirmController = TextEditingController();
 
   bool _loading = false;
-  double _strength = 0.0;
 
   bool _hasLength = false;
   bool _hasUpper = false;
-  bool _hasLower = false;
   bool _hasNumber = false;
   bool _hasSymbol = false;
   bool _matches = false;
@@ -70,38 +69,21 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
 
     final hasLength = value.length >= 12;
     final hasUpper = RegExp(r'[A-Z]').hasMatch(value);
-    final hasLower = RegExp(r'[a-z]').hasMatch(value);
     final hasNumber = RegExp(r'\d').hasMatch(value);
-    final hasSymbol = RegExp(r'[!@#\$&*~%^()\-_+=]').hasMatch(value);
-
-    double score = 0;
-    if (hasLength) score += 0.25;
-    if (hasUpper) score += 0.15;
-    if (hasLower) score += 0.15;
-    if (hasNumber) score += 0.2;
-    if (hasSymbol) score += 0.25;
+    final hasSymbol = RegExp(r'[^A-Za-z0-9]').hasMatch(value);
 
     setState(() {
       _hasLength = hasLength;
       _hasUpper = hasUpper;
-      _hasLower = hasLower;
       _hasNumber = hasNumber;
       _hasSymbol = hasSymbol;
       _matches = confirm.isNotEmpty && value == confirm;
-      _strength = score.clamp(0, 1);
     });
-  }
-
-  Color get _strengthColor {
-    if (_strength < 0.4) return PravaColors.error;
-    if (_strength < 0.7) return Colors.orange;
-    return PravaColors.success;
   }
 
   bool get _valid =>
       _hasLength &&
       _hasUpper &&
-      _hasLower &&
       _hasNumber &&
       _hasSymbol &&
       _matches;
@@ -228,20 +210,41 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Secure your account',
-                            style: PravaTypography.h1.copyWith(
-                              letterSpacing: -0.6,
-                              color: primaryText,
-                            ),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Secure your account',
+                                      style: PravaTypography.h1.copyWith(
+                                        letterSpacing: -0.6,
+                                        color: primaryText,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Create a strong password to unlock your private workspace.',
+                                      style: PravaTypography.body.copyWith(
+                                        color: secondaryText,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              AuthStepBadge(
+                                currentStep: 3,
+                                isDark: isDark,
+                                textColor: secondaryText,
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Create a strong password to unlock your private workspace.',
-                            style: PravaTypography.body.copyWith(
-                              color: secondaryText,
-                            ),
-                          ),
+                          const SizedBox(height: 16),
+                          const AuthStepIndicator(currentStep: 3),
                           const SizedBox(height: 24),
                           _buildPasswordCard(
                             isDark: isDark,
@@ -343,19 +346,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                 controller: _passwordController,
                 autofillHints: const [AutofillHints.newPassword],
               ),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: _strength,
-                  minHeight: 6,
-                  backgroundColor:
-                      isDark ? Colors.white12 : Colors.black12,
-                  valueColor:
-                      AlwaysStoppedAnimation<Color>(_strengthColor),
-                ),
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               _RuleItem(
                 label: '12+ characters',
                 satisfied: _hasLength,
@@ -363,14 +354,8 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                 inactiveColor: tertiaryText,
               ),
               _RuleItem(
-                label: 'Uppercase letter',
+                label: 'Capital letter',
                 satisfied: _hasUpper,
-                activeColor: PravaColors.success,
-                inactiveColor: tertiaryText,
-              ),
-              _RuleItem(
-                label: 'Lowercase letter',
-                satisfied: _hasLower,
                 activeColor: PravaColors.success,
                 inactiveColor: tertiaryText,
               ),
@@ -381,7 +366,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                 inactiveColor: tertiaryText,
               ),
               _RuleItem(
-                label: 'Symbol',
+                label: 'Special character',
                 satisfied: _hasSymbol,
                 activeColor: PravaColors.success,
                 inactiveColor: tertiaryText,
