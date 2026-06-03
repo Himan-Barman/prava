@@ -9,13 +9,15 @@ import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 
 import { env } from "./config/env.js";
-import { closeMongo, connectMongo } from "./lib/mongo.js";
+import { configureCloudinary } from "./lib/cloudinary.js";
+import { closePg, connectPg } from "./lib/pg.js";
 import { closeRedis, connectRedis } from "./lib/redis.js";
 import { HttpError } from "./lib/security.js";
 import authService from "./services/auth/index.js";
 import chatService from "./services/chat/index.js";
 import cryptoService from "./services/crypto/index.js";
 import feedService from "./services/feed/index.js";
+import mediaService from "./services/media/index.js";
 import notificationService from "./services/notification/index.js";
 import { closeRealtimeHub, initRealtimeHub } from "./services/realtime/hub.js";
 import realtimeService from "./services/realtime/index.js";
@@ -178,13 +180,14 @@ function registerRoutes(): void {
   app.register(notificationService, { prefix: "/api/notifications" });
   app.register(supportService, { prefix: "/api/support" });
   app.register(cryptoService, { prefix: "/api/crypto" });
+  app.register(mediaService, { prefix: "/api/media" });
 
   app.get("/health", { config: { rateLimit: false } }, async () => ({
     status: ready ? "ok" : "starting",
     ready,
     uptimeSec: Math.floor(process.uptime()),
     env: env.NODE_ENV,
-    db: "mongodb",
+    db: "postgresql",
   }));
 
   app.get("/api/health", { config: { rateLimit: false } }, async () => ({
@@ -192,7 +195,7 @@ function registerRoutes(): void {
     ready,
     uptimeSec: Math.floor(process.uptime()),
     env: env.NODE_ENV,
-    db: "mongodb",
+    db: "postgresql",
   }));
 
   app.get("/api/ready", { config: { rateLimit: false } }, async (_, reply) => {
@@ -249,7 +252,9 @@ async function bootstrap(): Promise<void> {
   registerHooks();
   registerRoutes();
 
-  await connectMongo();
+  await connectPg();
+  configureCloudinary();
+
   try {
     await initRealtimeHub();
   } catch (error) {
@@ -281,9 +286,9 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   try {
-    await closeMongo();
+    await closePg();
   } catch (error) {
-    app.log.error({ err: error }, "failed to close mongo cleanly");
+    app.log.error({ err: error }, "failed to close pg cleanly");
   }
 
   try {

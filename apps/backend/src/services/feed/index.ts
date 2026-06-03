@@ -1,4 +1,4 @@
-import { getDb } from "../../lib/mongo.js";
+import { query, queryMany, queryOne } from "../../lib/pg.js";
 import { requireAuth } from "../../lib/auth.js";
 import {
   HttpError,
@@ -31,102 +31,98 @@ function extractMatches(body, symbol) {
 
 function mapFeedPost(post, author, liked, followed) {
   return {
-    id: post.postId,
+    id: post.post_id,
     body: post.body,
-    createdAt: toIso(post.createdAt),
-    likeCount: Number(post.likeCount || 0),
-    commentCount: Number(post.commentCount || 0),
-    shareCount: Number(post.shareCount || 0),
+    createdAt: toIso(post.created_at),
+    likeCount: Number(post.like_count || 0),
+    commentCount: Number(post.comment_count || 0),
+    shareCount: Number(post.share_count || 0),
     liked,
     followed,
     mentions: Array.isArray(post.mentions) ? post.mentions : [],
     hashtags: Array.isArray(post.hashtags) ? post.hashtags : [],
     relationship: followed ? "following" : "other",
     author: {
-      id: author?.userId || post.authorId,
+      id: author?.user_id || post.author_id,
       username: author?.username || "unknown",
-      displayName: author?.displayName || author?.username || "Unknown",
+      displayName: author?.display_name || author?.username || "Unknown",
     },
   };
 }
 
 export default async function feedService(app) {
-  const db = getDb();
-
   app.get("/", { preHandler: requireAuth }, async (request) => {
-    const query = request.query || {};
-    const limit = parseLimit(query.limit, 20, 1, 50);
-    const mode = String(query.mode || "for-you");
+    const q = request.query || {};
+    const limit = parseLimit(q.limit, 20, 1, 50);
+    const mode = String(q.mode || "for-you");
 
-    const filter: {
-      createdAt?: { $lt: Date };
-      authorId?: { $in: string[] };
-    } = {};
-    const before = String(query.before || "").trim();
+    const params: unknown[] = [request.user.userId];
+    const conditions: string[] = [];
+    let paramIdx = 2;
+
+    const before = String(q.before || "").trim();
     if (before) {
       const beforeDate = new Date(before);
       if (!Number.isNaN(beforeDate.getTime())) {
-        filter.createdAt = { $lt: beforeDate };
+        conditions.push(`p.created_at < $${paramIdx}`);
+        params.push(beforeDate);
+        paramIdx++;
       }
     }
 
+    let fromClause = "FROM posts p";
     if (mode === "following") {
-      const follows = await db.collection("follows").find(
-        { followerId: request.user.userId },
-        { projection: { followingId: 1 } }
-      ).toArray();
-      const followingIds = follows.map((item) => item.followingId);
-      followingIds.push(request.user.userId);
-      filter.authorId = { $in: [...new Set(followingIds)] };
+      fromClause = `FROM posts p
+        WHERE p.author_id IN (
+          SELECT following_id FROM follows WHERE follower_id = $1
+          UNION ALL SELECT $1
+        )`;
+      if (conditions.length > 0) {
+        fromClause += ` AND ${conditions.join(" AND ")}`;
+      }
+    } else {
+      if (conditions.length > 0) {
+        fromClause += ` WHERE ${conditions.join(" AND ")}`;
+      }
     }
 
-    const posts = await db.collection("posts").find(filter, {
-      sort: { createdAt: -1 },
-      limit,
-    }).toArray();
+    const posts = await queryMany(
+      `SELECT p.* ${fromClause} ORDER BY p.created_at DESC LIMIT $${paramIdx}`,
+      [...params, limit]
+    );
 
     if (posts.length === 0) {
       return [];
     }
 
-    const postIds = posts.map((post) => post.postId);
-    const authorIds = [...new Set(posts.map((post) => post.authorId))];
+    const postIds = posts.map((post) => post.post_id);
+    const authorIds = [...new Set(posts.map((post) => post.author_id))];
 
     const [authors, likes, follows] = await Promise.all([
-      db.collection("users").find(
-        { userId: { $in: authorIds } },
-        { projection: { userId: 1, username: 1, displayName: 1 } }
-      ).toArray(),
-      db.collection("post_likes").find(
-        {
-          userId: request.user.userId,
-          postId: { $in: postIds },
-        },
-        {
-          projection: { postId: 1 },
-        }
-      ).toArray(),
-      db.collection("follows").find(
-        {
-          followerId: request.user.userId,
-          followingId: { $in: authorIds },
-        },
-        {
-          projection: { followingId: 1 },
-        }
-      ).toArray(),
+      queryMany(
+        `SELECT user_id, username, display_name FROM users WHERE user_id = ANY($1)`,
+        [authorIds]
+      ),
+      queryMany(
+        `SELECT post_id FROM post_likes WHERE user_id = $1 AND post_id = ANY($2)`,
+        [request.user.userId, postIds]
+      ),
+      queryMany(
+        `SELECT following_id FROM follows WHERE follower_id = $1 AND following_id = ANY($2)`,
+        [request.user.userId, authorIds]
+      ),
     ]);
 
-    const authorMap = new Map(authors.map((author) => [author.userId, author]));
-    const likedSet = new Set(likes.map((like) => like.postId));
-    const followedSet = new Set(follows.map((follow) => follow.followingId));
+    const authorMap = new Map(authors.map((a) => [a.user_id, a]));
+    const likedSet = new Set(likes.map((l) => l.post_id));
+    const followedSet = new Set(follows.map((f) => f.following_id));
 
     return posts.map((post) =>
       mapFeedPost(
         post,
-        authorMap.get(post.authorId),
-        likedSet.has(post.postId),
-        followedSet.has(post.authorId)
+        authorMap.get(post.author_id),
+        likedSet.has(post.post_id),
+        followedSet.has(post.author_id)
       )
     );
   });
@@ -136,76 +132,62 @@ export default async function feedService(app) {
     ensure(body.length > 0 && body.length <= 10000, 400, "Invalid body");
 
     const createdAt = now();
-    const post = {
-      postId: generateId(),
-      authorId: request.user.userId,
-      body,
-      mentions: extractMatches(body, "@"),
-      hashtags: extractMatches(body, "#"),
-      likeCount: 0,
-      commentCount: 0,
-      shareCount: 0,
-      createdAt,
-      updatedAt: createdAt,
-      shareOfPostId: null,
-    };
+    const postId = generateId();
+    const mentions = extractMatches(body, "@");
+    const hashtags = extractMatches(body, "#");
 
-    await db.collection("posts").insertOne(post);
-
-    const author = await db.collection("users").findOne(
-      { userId: request.user.userId },
-      { projection: { userId: 1, username: 1, displayName: 1 } }
+    await query(
+      `INSERT INTO posts (post_id, author_id, body, media_urls, mentions, hashtags, like_count, comment_count, share_count, share_of_post_id, created_at, updated_at)
+       VALUES ($1, $2, $3, '[]', $4, $5, 0, 0, 0, NULL, $6, $7)`,
+      [postId, request.user.userId, body, JSON.stringify(mentions), JSON.stringify(hashtags), createdAt, createdAt]
     );
 
-    return mapFeedPost(post, author, false, false);
+    const author = await queryOne(
+      `SELECT user_id, username, display_name FROM users WHERE user_id = $1`,
+      [request.user.userId]
+    );
+
+    return mapFeedPost(
+      { post_id: postId, body, created_at: createdAt, like_count: 0, comment_count: 0, share_count: 0, mentions, hashtags, author_id: request.user.userId },
+      author,
+      false,
+      false
+    );
   });
 
   app.post("/:postId/like", { preHandler: requireAuth }, async (request) => {
     const postId = String(request.params.postId || "").trim();
     ensure(postId.length >= 8, 400, "Invalid post");
 
-    const post = await db.collection("posts").findOne(
-      { postId },
-      { projection: { _id: 1, likeCount: 1 } }
-    );
+    const post = await queryOne(`SELECT post_id, like_count FROM posts WHERE post_id = $1`, [postId]);
     if (!post) {
       throw new HttpError(404, "Post not found");
     }
 
-    const existing = await db.collection("post_likes").findOne({
-      postId,
-      userId: request.user.userId,
-    });
+    const existing = await queryOne(
+      `SELECT post_id FROM post_likes WHERE post_id = $1 AND user_id = $2`,
+      [postId, request.user.userId]
+    );
 
     let liked;
     if (existing) {
-      await db.collection("post_likes").deleteOne({ _id: existing._id });
-      await db.collection("posts").updateOne(
-        { postId },
-        { $inc: { likeCount: -1 }, $set: { updatedAt: now() } }
-      );
+      await query(`DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`, [postId, request.user.userId]);
+      await query(`UPDATE posts SET like_count = GREATEST(like_count - 1, 0), updated_at = $2 WHERE post_id = $1`, [postId, now()]);
       liked = false;
     } else {
-      await db.collection("post_likes").insertOne({
-        postId,
-        userId: request.user.userId,
-        createdAt: now(),
-      });
-      await db.collection("posts").updateOne(
-        { postId },
-        { $inc: { likeCount: 1 }, $set: { updatedAt: now() } }
+      await query(
+        `INSERT INTO post_likes (post_id, user_id, created_at) VALUES ($1, $2, $3)`,
+        [postId, request.user.userId, now()]
       );
+      await query(`UPDATE posts SET like_count = like_count + 1, updated_at = $2 WHERE post_id = $1`, [postId, now()]);
       liked = true;
     }
 
-    const updated = await db.collection("posts").findOne(
-      { postId },
-      { projection: { likeCount: 1 } }
-    );
+    const updated = await queryOne(`SELECT like_count FROM posts WHERE post_id = $1`, [postId]);
 
     return {
       liked,
-      likeCount: Math.max(0, Number(updated?.likeCount || 0)),
+      likeCount: Math.max(0, Number(updated?.like_count || 0)),
     };
   });
 
@@ -214,35 +196,32 @@ export default async function feedService(app) {
     ensure(postId.length >= 8, 400, "Invalid post");
 
     const limit = parseLimit(request.query?.limit, 30, 1, 100);
-    const comments = await db.collection("comments").find(
-      { postId },
-      {
-        sort: { createdAt: -1 },
-        limit,
-      }
-    ).toArray();
+    const comments = await queryMany(
+      `SELECT * FROM comments WHERE post_id = $1 ORDER BY created_at DESC LIMIT $2`,
+      [postId, limit]
+    );
 
     if (comments.length === 0) {
       return [];
     }
 
-    const authorIds = [...new Set(comments.map((item) => item.authorId))];
-    const authors = await db.collection("users").find(
-      { userId: { $in: authorIds } },
-      { projection: { userId: 1, username: 1, displayName: 1 } }
-    ).toArray();
-    const authorMap = new Map(authors.map((author) => [author.userId, author]));
+    const authorIds = [...new Set(comments.map((item) => item.author_id))];
+    const authors = await queryMany(
+      `SELECT user_id, username, display_name FROM users WHERE user_id = ANY($1)`,
+      [authorIds]
+    );
+    const authorMap = new Map(authors.map((a) => [a.user_id, a]));
 
     return comments.map((comment) => {
-      const author = authorMap.get(comment.authorId);
+      const author = authorMap.get(comment.author_id);
       return {
-        id: comment.commentId,
+        id: comment.comment_id,
         body: comment.body,
-        createdAt: toIso(comment.createdAt),
+        createdAt: toIso(comment.created_at),
         author: {
-          id: author?.userId || comment.authorId,
+          id: author?.user_id || comment.author_id,
           username: author?.username || "unknown",
-          displayName: author?.displayName || author?.username || "Unknown",
+          displayName: author?.display_name || author?.username || "Unknown",
         },
       };
     });
@@ -255,52 +234,38 @@ export default async function feedService(app) {
     const body = String(request.body?.body || "").trim();
     ensure(body.length > 0 && body.length <= 5000, 400, "Invalid body");
 
-    const post = await db.collection("posts").findOne(
-      { postId },
-      { projection: { postId: 1 } }
-    );
+    const post = await queryOne(`SELECT post_id FROM posts WHERE post_id = $1`, [postId]);
     if (!post) {
       throw new HttpError(404, "Post not found");
     }
 
     const createdAt = now();
-    const comment = {
-      commentId: generateId(),
-      postId,
-      authorId: request.user.userId,
-      body,
-      createdAt,
-    };
+    const commentId = generateId();
 
-    await db.collection("comments").insertOne(comment);
-    await db.collection("posts").updateOne(
-      { postId },
-      { $inc: { commentCount: 1 }, $set: { updatedAt: createdAt } }
+    await query(
+      `INSERT INTO comments (comment_id, post_id, author_id, body, created_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [commentId, postId, request.user.userId, body, createdAt]
     );
+    await query(`UPDATE posts SET comment_count = comment_count + 1, updated_at = $2 WHERE post_id = $1`, [postId, createdAt]);
 
     const [author, postStats] = await Promise.all([
-      db.collection("users").findOne(
-        { userId: request.user.userId },
-        { projection: { userId: 1, username: 1, displayName: 1 } }
-      ),
-      db.collection("posts").findOne(
-        { postId },
-        { projection: { commentCount: 1 } }
-      ),
+      queryOne(`SELECT user_id, username, display_name FROM users WHERE user_id = $1`, [request.user.userId]),
+      queryOne(`SELECT comment_count FROM posts WHERE post_id = $1`, [postId]),
     ]);
 
     return {
       comment: {
-        id: comment.commentId,
-        body: comment.body,
-        createdAt: toIso(comment.createdAt),
+        id: commentId,
+        body,
+        createdAt: toIso(createdAt),
         author: {
-          id: author?.userId || request.user.userId,
+          id: author?.user_id || request.user.userId,
           username: author?.username || "unknown",
-          displayName: author?.displayName || author?.username || "Unknown",
+          displayName: author?.display_name || author?.username || "Unknown",
         },
       },
-      commentCount: Number(postStats?.commentCount || 0),
+      commentCount: Number(postStats?.comment_count || 0),
     };
   });
 
@@ -308,55 +273,50 @@ export default async function feedService(app) {
     const postId = String(request.params.postId || "").trim();
     ensure(postId.length >= 8, 400, "Invalid post");
 
-    const original = await db.collection("posts").findOne({ postId });
+    const original = await queryOne(`SELECT * FROM posts WHERE post_id = $1`, [postId]);
     if (!original) {
       throw new HttpError(404, "Post not found");
     }
 
-    const existing = await db.collection("posts").findOne({
-      authorId: request.user.userId,
-      shareOfPostId: postId,
-    });
+    const existing = await queryOne(
+      `SELECT post_id FROM posts WHERE author_id = $1 AND share_of_post_id = $2`,
+      [request.user.userId, postId]
+    );
 
     if (existing) {
       return {
         shared: true,
-        shareCount: Number(original.shareCount || 0),
+        shareCount: Number(original.share_count || 0),
         created: false,
       };
     }
 
     const ts = now();
-    await db.collection("posts").insertOne({
-      postId: generateId(),
-      authorId: request.user.userId,
-      body: original.body,
-      mentions: Array.isArray(original.mentions) ? original.mentions : [],
-      hashtags: Array.isArray(original.hashtags) ? original.hashtags : [],
-      likeCount: 0,
-      commentCount: 0,
-      shareCount: 0,
-      createdAt: ts,
-      updatedAt: ts,
-      shareOfPostId: postId,
-    });
-
-    await db.collection("posts").updateOne(
-      { postId },
-      {
-        $inc: { shareCount: 1 },
-        $set: { updatedAt: ts },
-      }
+    await query(
+      `INSERT INTO posts (post_id, author_id, body, media_urls, mentions, hashtags, like_count, comment_count, share_count, created_at, updated_at, share_of_post_id)
+       VALUES ($1, $2, $3, '[]', $4, $5, 0, 0, 0, $6, $7, $8)`,
+      [
+        generateId(),
+        request.user.userId,
+        original.body,
+        JSON.stringify(Array.isArray(original.mentions) ? original.mentions : []),
+        JSON.stringify(Array.isArray(original.hashtags) ? original.hashtags : []),
+        ts,
+        ts,
+        postId,
+      ]
     );
 
-    const updated = await db.collection("posts").findOne(
-      { postId },
-      { projection: { shareCount: 1 } }
+    await query(
+      `UPDATE posts SET share_count = share_count + 1, updated_at = $2 WHERE post_id = $1`,
+      [postId, ts]
     );
+
+    const updated = await queryOne(`SELECT share_count FROM posts WHERE post_id = $1`, [postId]);
 
     return {
       shared: true,
-      shareCount: Number(updated?.shareCount || 0),
+      shareCount: Number(updated?.share_count || 0),
       created: true,
     };
   });

@@ -1,4 +1,4 @@
-import { getDb } from "../../lib/mongo.js";
+import { query, queryMany, queryOne } from "../../lib/pg.js";
 import { requireAuth } from "../../lib/auth.js";
 import { ensure, now } from "../../lib/security.js";
 
@@ -16,8 +16,6 @@ function parsePreKeys(input) {
 }
 
 export default async function cryptoService(app) {
-  const db = getDb();
-
   app.post("/devices/register", { preHandler: requireAuth }, async (request) => {
     const body = request.body || {};
     const deviceId = String(body.deviceId || "").trim();
@@ -30,57 +28,37 @@ export default async function cryptoService(app) {
     ensure(String(signedPreKey.signature || "").trim().length > 0, 400, "Invalid signed pre-key");
 
     const ts = now();
-    await db.collection("crypto_devices").updateOne(
-      {
-        userId: request.user.userId,
+    await query(
+      `INSERT INTO crypto_devices (user_id, device_id, platform, identity_key, registration_id, signed_pre_key, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (user_id, device_id)
+       DO UPDATE SET platform = $3, identity_key = $4, registration_id = $5, signed_pre_key = $6, updated_at = $8`,
+      [
+        request.user.userId,
         deviceId,
-      },
-      {
-        $set: {
-          userId: request.user.userId,
-          deviceId,
-          platform: String(body.platform || "unknown").trim().slice(0, 40),
-          identityKey: String(body.identityKey || "").trim(),
-          registrationId: Number.parseInt(String(body.registrationId || "0"), 10) || 0,
-          signedPreKey: {
-            keyId: Number.parseInt(String(signedPreKey.keyId || "0"), 10) || 0,
-            publicKey: String(signedPreKey.publicKey || "").trim(),
-            signature: String(signedPreKey.signature || "").trim(),
-          },
-          updatedAt: ts,
-        },
-        $setOnInsert: {
-          createdAt: ts,
-        },
-      },
-      {
-        upsert: true,
-      }
+        String(body.platform || "unknown").trim().slice(0, 40),
+        String(body.identityKey || "").trim(),
+        Number.parseInt(String(body.registrationId || "0"), 10) || 0,
+        JSON.stringify({
+          keyId: Number.parseInt(String(signedPreKey.keyId || "0"), 10) || 0,
+          publicKey: String(signedPreKey.publicKey || "").trim(),
+          signature: String(signedPreKey.signature || "").trim(),
+        }),
+        ts,
+        ts,
+      ]
     );
 
     const keys = parsePreKeys(body.oneTimePreKeys);
     if (keys.length > 0) {
-      const ops = keys.map((key) => ({
-        updateOne: {
-          filter: {
-            userId: request.user.userId,
-            deviceId,
-            keyId: key.keyId,
-          },
-          update: {
-            $setOnInsert: {
-              userId: request.user.userId,
-              deviceId,
-              keyId: key.keyId,
-              publicKey: key.publicKey,
-              isUsed: false,
-              createdAt: ts,
-            },
-          },
-          upsert: true,
-        },
-      }));
-      await db.collection("crypto_prekeys").bulkWrite(ops, { ordered: false });
+      for (const key of keys) {
+        await query(
+          `INSERT INTO crypto_prekeys (user_id, device_id, key_id, public_key, is_used, created_at)
+           VALUES ($1, $2, $3, $4, FALSE, $5)
+           ON CONFLICT (user_id, device_id, key_id) DO NOTHING`,
+          [request.user.userId, deviceId, key.keyId, key.publicKey, ts]
+        );
+      }
     }
 
     return { success: true };
@@ -97,31 +75,20 @@ export default async function cryptoService(app) {
     }
 
     const ts = now();
-    const ops = keys.map((key) => ({
-      updateOne: {
-        filter: {
-          userId: request.user.userId,
-          deviceId,
-          keyId: key.keyId,
-        },
-        update: {
-          $setOnInsert: {
-            userId: request.user.userId,
-            deviceId,
-            keyId: key.keyId,
-            publicKey: key.publicKey,
-            isUsed: false,
-            createdAt: ts,
-          },
-        },
-        upsert: true,
-      },
-    }));
-    const result = await db.collection("crypto_prekeys").bulkWrite(ops, { ordered: false });
+    let added = 0;
+    for (const key of keys) {
+      const result = await query(
+        `INSERT INTO crypto_prekeys (user_id, device_id, key_id, public_key, is_used, created_at)
+         VALUES ($1, $2, $3, $4, FALSE, $5)
+         ON CONFLICT (user_id, device_id, key_id) DO NOTHING`,
+        [request.user.userId, deviceId, key.keyId, key.publicKey, ts]
+      );
+      if (result.rowCount && result.rowCount > 0) {
+        added++;
+      }
+    }
 
-    return {
-      added: Number(result.upsertedCount || 0),
-    };
+    return { added };
   });
 
   app.get("/bundle/:userId/:deviceId", { preHandler: requireAuth }, async (request) => {
@@ -130,45 +97,38 @@ export default async function cryptoService(app) {
     ensure(userId.length >= 8, 400, "Invalid userId");
     ensure(deviceId.length >= 3, 400, "Invalid deviceId");
 
-    const device = await db.collection("crypto_devices").findOne({
-      userId,
-      deviceId,
-    });
+    const device = await queryOne(
+      `SELECT * FROM crypto_devices WHERE user_id = $1 AND device_id = $2`,
+      [userId, deviceId]
+    );
     if (!device) {
       return {};
     }
 
-    const preKey = await db.collection("crypto_prekeys").findOneAndUpdate(
-      {
-        userId,
-        deviceId,
-        isUsed: false,
-      },
-      {
-        $set: {
-          isUsed: true,
-          usedAt: now(),
-        },
-      },
-      {
-        sort: { keyId: 1 },
-        returnDocument: "after",
-      }
+    // Claim one pre-key atomically
+    const preKey = await queryOne(
+      `UPDATE crypto_prekeys
+       SET is_used = TRUE, used_at = $3
+       WHERE id = (
+         SELECT id FROM crypto_prekeys
+         WHERE user_id = $1 AND device_id = $2 AND is_used = FALSE
+         ORDER BY key_id ASC LIMIT 1
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING *`,
+      [userId, deviceId, now()]
     );
-    const preKeyDoc = preKey && typeof preKey === "object" && "value" in preKey
-      ? preKey.value
-      : preKey;
 
     return {
-      deviceId: device.deviceId,
-      identityKey: device.identityKey || "",
-      registrationId: Number(device.registrationId || 0),
-      signedPreKey: device.signedPreKey || null,
-      oneTimePreKey: preKeyDoc
+      deviceId: device.device_id,
+      identityKey: device.identity_key || "",
+      registrationId: Number(device.registration_id || 0),
+      signedPreKey: device.signed_pre_key || null,
+      oneTimePreKey: preKey
         ? {
-            keyId: Number(preKeyDoc.keyId || 0),
-            publicKey: preKeyDoc.publicKey || "",
-          }
+          keyId: Number(preKey.key_id || 0),
+          publicKey: preKey.public_key || "",
+        }
         : null,
     };
   });
@@ -177,42 +137,23 @@ export default async function cryptoService(app) {
     const userId = String(request.params.userId || "").trim();
     ensure(userId.length >= 8, 400, "Invalid userId");
 
-    const devices = await db.collection("crypto_devices").find(
-      { userId },
-      {
-        projection: {
-          deviceId: 1,
-          platform: 1,
-          identityKey: 1,
-          registrationId: 1,
-          signedPreKey: 1,
-        },
-      }
-    ).toArray();
+    const devices = await queryMany(
+      `SELECT device_id, platform, identity_key, registration_id, signed_pre_key
+       FROM crypto_devices WHERE user_id = $1`,
+      [userId]
+    );
 
     if (devices.length === 0) {
       return [];
     }
 
-    const output: Array<{
-      deviceId: string;
-      platform: string;
-      identityKey: string;
-      registrationId: number;
-      signedPreKey: unknown;
-      oneTimePreKey: null;
-    }> = [];
-    for (const device of devices) {
-      output.push({
-        deviceId: device.deviceId,
-        platform: device.platform || "unknown",
-        identityKey: device.identityKey || "",
-        registrationId: Number(device.registrationId || 0),
-        signedPreKey: device.signedPreKey || null,
-        oneTimePreKey: null,
-      });
-    }
-
-    return output;
+    return devices.map((device) => ({
+      deviceId: device.device_id,
+      platform: device.platform || "unknown",
+      identityKey: device.identity_key || "",
+      registrationId: Number(device.registration_id || 0),
+      signedPreKey: device.signed_pre_key || null,
+      oneTimePreKey: null,
+    }));
   });
 }

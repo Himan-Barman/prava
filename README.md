@@ -1,6 +1,6 @@
 # PRAVA Monorepo
 
-This repository now runs the API from `apps/backend` (Node.js + TypeScript) with **MongoDB** as the primary database.
+This repository runs the API from `apps/backend` (Node.js + TypeScript) with **PostgreSQL** as the primary database. Supabase is supported through `DATABASE_URL`.
 
 ## Local run
 
@@ -10,14 +10,13 @@ docker compose up --build
 
 Services:
 - API: `http://localhost:3000` and `http://localhost:3100` (health: `GET /api/health`)
-- MongoDB: `mongodb://localhost:27017/prava_chat`
+- PostgreSQL: `postgresql://postgres:postgres@localhost:5432/prava`
 - Redis: `localhost:6379`
 
 ## Environment
 
 Set at least:
-- `MONGODB_URI`
-- `MONGODB_DB_NAME`
+- `DATABASE_URL`
 - `JWT_SECRET`
 
 Optional:
@@ -27,5 +26,5 @@ Optional:
 
 ## Notes
 
-- `apps/backend/` is the active Node.js + TypeScript backend runtime and uses MongoDB.
+- `apps/backend/` is the active Node.js + TypeScript backend runtime and uses PostgreSQL.
 - The old C++ backend was removed.

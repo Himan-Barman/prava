@@ -6,7 +6,7 @@ import test, { after, before } from "node:test";
 import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 import jwt from "jsonwebtoken";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { newDb } from "pg-mem";
 import WebSocket from "ws";
 
 type SocketEvent = {
@@ -88,11 +88,10 @@ async function httpJson<T = unknown>(
   return { status: response.status, data };
 }
 
-let mongoServer: MongoMemoryServer | null = null;
 let app: ReturnType<typeof Fastify>;
 let baseUrl = "";
 let wsBaseUrl = "";
-let closeMongo: (() => Promise<void>) | null = null;
+let closePg: (() => Promise<void>) | null = null;
 let userAToken = "";
 let userBToken = "";
 let userAId = "";
@@ -104,47 +103,27 @@ before(async () => {
 
   process.env.NODE_ENV = "test";
   process.env.JWT_SECRET = process.env.JWT_SECRET || "test_jwt_secret_key";
-  process.env.MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || "prava_chat_test";
+  process.env.DATABASE_URL = process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/prava_test";
 
-  if (!process.env.MONGODB_URI) {
-    mongoServer = await MongoMemoryServer.create();
-    process.env.MONGODB_URI = mongoServer.getUri();
-  }
-
-  const mongoLib = await import("../src/lib/mongo.js");
-  await mongoLib.connectMongo();
-  closeMongo = mongoLib.closeMongo;
-  const db = mongoLib.getDb();
+  const pgLib = await import("../src/lib/pg.js");
+  const memoryDb = newDb({ autoCreateForeignKeyIndices: true });
+  const adapter = memoryDb.adapters.createPg();
+  const pool = new adapter.Pool();
+  pgLib.setPgPoolForTest(pool as any);
+  await pgLib.runMigrations(pool as any);
+  closePg = pgLib.closePg;
 
   const now = new Date();
-  await db.collection("users").insertMany([
-    {
-      userId: userAId,
-      email: "usera@example.com",
-      emailLower: "usera@example.com",
-      username: "usera_test",
-      usernameLower: "usera_test",
-      displayName: "User A",
-      displayNameLower: "user a",
-      passwordHash: "scrypt$dummy$dummy",
-      isVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      userId: userBId,
-      email: "userb@example.com",
-      emailLower: "userb@example.com",
-      username: "userb_test",
-      usernameLower: "userb_test",
-      displayName: "User B",
-      displayNameLower: "user b",
-      passwordHash: "scrypt$dummy$dummy",
-      isVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    },
-  ]);
+  await pgLib.query(
+    `INSERT INTO users (
+       user_id, email, email_lower, username, username_lower, display_name,
+       display_name_lower, password_hash, is_verified, created_at, updated_at
+     )
+     VALUES
+       ($1, 'usera@example.com', 'usera@example.com', 'usera_test', 'usera_test', 'User A', 'user a', 'scrypt$dummy$dummy', TRUE, $3, $3),
+       ($2, 'userb@example.com', 'userb@example.com', 'userb_test', 'userb_test', 'User B', 'user b', 'scrypt$dummy$dummy', TRUE, $3, $3)`,
+    [userAId, userBId, now]
+  );
 
   userAToken = signAccessToken(userAId);
   userBToken = signAccessToken(userBId);
@@ -179,16 +158,8 @@ after(async () => {
   }
 
   try {
-    if (closeMongo) {
-      await closeMongo();
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
-    if (mongoServer) {
-      await mongoServer.stop();
+    if (closePg) {
+      await closePg();
     }
   } catch {
     // ignore
@@ -418,11 +389,10 @@ test("register allows signup after reservation expiry when username is still fre
   assert.equal(otpVerify.status, 200);
   assert.equal(otpVerify.data.verified, true);
 
-  const mongoLib = await import("../src/lib/mongo.js");
-  const db = mongoLib.getDb();
-  await db.collection("username_reservations").updateOne(
-    { usernameLower: username },
-    { $set: { expiresAt: new Date(Date.now() - 60_000) } }
+  const pgLib = await import("../src/lib/pg.js");
+  await pgLib.query(
+    `UPDATE username_reservations SET expires_at = $2 WHERE username_lower = $1`,
+    [username, new Date(Date.now() - 60_000)]
   );
 
   const register = await httpJson<{ user: { username: string } }>(

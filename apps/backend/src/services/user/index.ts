@@ -1,8 +1,9 @@
-import { getDb } from "../../lib/mongo.js";
 import { requireAuth } from "../../lib/auth.js";
+import { query, queryMany, queryOne, withTransaction } from "../../lib/pg.js";
 import {
   HttpError,
   ensure,
+  generateId,
   isValidEmail,
   isValidUsername,
   normalizeEmail,
@@ -35,7 +36,7 @@ const DEFAULT_SETTINGS = {
   languageLabel: "English",
 };
 
-function parseLimit(raw, fallback, min, max) {
+function parseLimit(raw: unknown, fallback: number, min: number, max: number): number {
   const parsed = Number.parseInt(String(raw || ""), 10);
   if (Number.isNaN(parsed)) {
     return fallback;
@@ -43,150 +44,142 @@ function parseLimit(raw, fallback, min, max) {
   return Math.max(min, Math.min(max, parsed));
 }
 
-async function ensureUserExists(db, userId) {
-  const user = await db.collection("users").findOne(
-    { userId },
-    {
-      projection: {
-        userId: 1,
-      },
-    }
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+async function ensureUserExists(userId: string): Promise<void> {
+  const user = await queryOne(
+    `SELECT user_id FROM users WHERE user_id = $1 AND deleted_at IS NULL`,
+    [userId]
   );
   if (!user) {
     throw new HttpError(404, "User not found");
   }
 }
 
-async function ensureNotBlocked(db, a, b) {
-  const block = await db.collection("user_blocks").findOne({
-    $or: [
-      { blockerId: a, blockedId: b },
-      { blockerId: b, blockedId: a },
-    ],
-  });
+async function ensureNotBlocked(a: string, b: string): Promise<void> {
+  const block = await queryOne(
+    `SELECT 1
+     FROM user_blocks
+     WHERE (blocker_id = $1 AND blocked_id = $2)
+        OR (blocker_id = $2 AND blocked_id = $1)
+     LIMIT 1`,
+    [a, b]
+  );
   if (block) {
     throw new HttpError(403, "User interaction is blocked");
   }
 }
 
-function mapProfilePost(post) {
+function mapProfilePost(post: any) {
   return {
-    id: post.postId,
+    id: post.post_id,
     body: post.body,
-    createdAt: toIso(post.createdAt),
-    likeCount: Number(post.likeCount || 0),
-    commentCount: Number(post.commentCount || 0),
-    shareCount: Number(post.shareCount || 0),
+    createdAt: toIso(post.created_at),
+    likeCount: Number(post.like_count || 0),
+    commentCount: Number(post.comment_count || 0),
+    shareCount: Number(post.share_count || 0),
     mentions: Array.isArray(post.mentions) ? post.mentions : [],
     hashtags: Array.isArray(post.hashtags) ? post.hashtags : [],
   };
 }
 
-function mapConnectionItem(user, rel) {
+function mapConnectionItem(user: any, rel: any) {
   return {
-    id: user.userId,
+    id: user.user_id,
     username: user.username,
-    displayName: user.displayName || user.username,
+    displayName: user.display_name || user.username,
     bio: user.bio || "",
     location: user.location || "",
-    isVerified: user.isVerified === true,
+    isVerified: user.is_verified === true,
     isOnline: false,
-    createdAt: toIso(user.createdAt),
+    createdAt: toIso(user.created_at),
     since: rel?.since ? toIso(rel.since) : null,
     isFollowing: rel?.isFollowing === true,
     isFollowedBy: rel?.isFollowedBy === true,
   };
 }
 
-async function loadUsersByIds(db, ids) {
+async function loadUsersByIds(ids: string[]): Promise<any[]> {
   if (!ids || ids.length === 0) {
     return [];
   }
-  return db.collection("users").find(
-    { userId: { $in: ids } },
-    {
-      projection: {
-        userId: 1,
-        username: 1,
-        displayName: 1,
-        bio: 1,
-        location: 1,
-        isVerified: 1,
-        createdAt: 1,
-      },
-    }
-  ).toArray();
+
+  return queryMany(
+    `SELECT user_id, username, display_name, bio, location, is_verified, created_at
+     FROM users
+     WHERE user_id = ANY($1::text[]) AND deleted_at IS NULL`,
+    [ids]
+  );
 }
 
-async function buildStats(db, userId) {
-  const [postsCount, followersCount, followingCount, authoredPosts] = await Promise.all([
-    db.collection("posts").countDocuments({ authorId: userId }),
-    db.collection("follows").countDocuments({ followingId: userId }),
-    db.collection("follows").countDocuments({ followerId: userId }),
-    db.collection("posts").find(
-      { authorId: userId },
-      { projection: { likeCount: 1 } }
-    ).toArray(),
-  ]);
-
-  const likes = authoredPosts.reduce((sum, post) => sum + Number(post.likeCount || 0), 0);
+async function buildStats(userId: string) {
+  const stats = await queryOne(
+    `SELECT
+       (SELECT COUNT(*)::int FROM posts WHERE author_id = $1) AS posts,
+       (SELECT COUNT(*)::int FROM follows WHERE following_id = $1) AS followers,
+       (SELECT COUNT(*)::int FROM follows WHERE follower_id = $1) AS following,
+       (SELECT COALESCE(SUM(like_count), 0)::int FROM posts WHERE author_id = $1) AS likes`,
+    [userId]
+  );
 
   return {
-    posts: postsCount,
-    followers: followersCount,
-    following: followingCount,
-    likes,
+    posts: Number(stats?.posts || 0),
+    followers: Number(stats?.followers || 0),
+    following: Number(stats?.following || 0),
+    likes: Number(stats?.likes || 0),
   };
 }
 
-async function buildProfileSummary(db, viewerUserId, targetUserId, limit) {
-  const user = await db.collection("users").findOne({ userId: targetUserId });
+async function buildProfileSummary(viewerUserId: string, targetUserId: string, limit: number) {
+  const user = await queryOne(
+    `SELECT *
+     FROM users
+     WHERE user_id = $1 AND deleted_at IS NULL`,
+    [targetUserId]
+  );
   if (!user) {
     throw new HttpError(404, "User not found");
   }
 
   const [stats, posts] = await Promise.all([
-    buildStats(db, targetUserId),
-    db.collection("posts").find(
-      { authorId: targetUserId },
-      {
-        sort: { createdAt: -1 },
-        limit,
-      }
-    ).toArray(),
+    buildStats(targetUserId),
+    queryMany(
+      `SELECT *
+       FROM posts
+       WHERE author_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [targetUserId, limit]
+    ),
   ]);
 
   const summary = {
     user: {
-      id: user.userId,
+      id: user.user_id,
       username: user.username,
-      displayName: user.displayName || user.username,
+      displayName: user.display_name || user.username,
       bio: user.bio || "",
       location: user.location || "",
       website: user.website || "",
-      isVerified: user.isVerified === true,
-      createdAt: toIso(user.createdAt),
+      isVerified: user.is_verified === true,
+      createdAt: toIso(user.created_at),
     },
     stats,
     posts: posts.map(mapProfilePost),
   };
 
   if (viewerUserId === targetUserId) {
-    const likedRows = await db.collection("post_likes").find(
-      { userId: targetUserId },
-      {
-        sort: { createdAt: -1 },
-        limit,
-      }
-    ).toArray();
-
-    const likedPostIds = likedRows.map((row) => row.postId);
-    const likedPosts = likedPostIds.length
-      ? await db.collection("posts").find(
-          { postId: { $in: likedPostIds } },
-          { sort: { createdAt: -1 } }
-        ).toArray()
-      : [];
+    const likedPosts = await queryMany(
+      `SELECT p.*
+       FROM post_likes pl
+       JOIN posts p ON p.post_id = pl.post_id
+       WHERE pl.user_id = $1
+       ORDER BY pl.created_at DESC
+       LIMIT $2`,
+      [targetUserId, limit]
+    );
 
     return {
       ...summary,
@@ -195,14 +188,14 @@ async function buildProfileSummary(db, viewerUserId, targetUserId, limit) {
   }
 
   const [isFollowing, isFollowedBy] = await Promise.all([
-    db.collection("follows").findOne({
-      followerId: viewerUserId,
-      followingId: targetUserId,
-    }),
-    db.collection("follows").findOne({
-      followerId: targetUserId,
-      followingId: viewerUserId,
-    }),
+    queryOne(
+      `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
+      [viewerUserId, targetUserId]
+    ),
+    queryOne(
+      `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
+      [targetUserId, viewerUserId]
+    ),
   ]);
 
   return {
@@ -214,10 +207,29 @@ async function buildProfileSummary(db, viewerUserId, targetUserId, limit) {
   };
 }
 
-export default async function userService(app) {
-  const db = getDb();
+function accountPayload(user: any) {
+  const details = user.details || {};
+  return {
+    id: user.user_id,
+    email: user.email,
+    username: user.username,
+    displayName: user.display_name || user.username,
+    firstName: details.firstName || "",
+    lastName: details.lastName || "",
+    phoneCountryCode: details.phoneCountryCode || "",
+    phoneNumber: details.phoneNumber || "",
+    bio: user.bio || "",
+    location: user.location || "",
+    website: user.website || "",
+    isVerified: user.is_verified === true,
+    emailVerifiedAt: toIso(user.email_verified_at),
+    createdAt: toIso(user.created_at),
+    updatedAt: toIso(user.updated_at),
+  };
+}
 
-  app.get("/me", { preHandler: requireAuth }, async (request) => {
+export default async function userService(app: any) {
+  app.get("/me", { preHandler: requireAuth }, async (request: any) => {
     return { userId: request.user.userId };
   });
 
@@ -232,7 +244,7 @@ export default async function userService(app) {
         },
       },
     },
-  }, async (request) => {
+  }, async (request: any) => {
     try {
       const username = normalizeUsername(request.query?.username);
       ensure(isValidUsername(username), 400, "Invalid username");
@@ -240,27 +252,26 @@ export default async function userService(app) {
       const hasEmail = isValidEmail(emailLower);
       const ts = now();
 
-      const existing = await db.collection("users").findOne(
-        { usernameLower: username },
-        { projection: { userId: 1 } }
+      const existing = await queryOne(
+        `SELECT user_id FROM users WHERE username_lower = $1`,
+        [username]
       );
       if (existing) {
         return { available: false };
       }
 
-      const reservation = await db.collection("username_reservations").findOne(
-        {
-          usernameLower: username,
-          expiresAt: { $gt: ts },
-        },
-        { projection: { emailLower: 1, expiresAt: 1 } }
+      const reservation = await queryOne(
+        `SELECT email_lower, expires_at
+         FROM username_reservations
+         WHERE username_lower = $1 AND expires_at > $2`,
+        [username, ts]
       );
 
       if (!reservation) {
         return { available: true };
       }
 
-      if (hasEmail && reservation.emailLower === emailLower) {
+      if (hasEmail && reservation.email_lower === emailLower) {
         return {
           available: true,
           reservedByRequester: true,
@@ -277,7 +288,7 @@ export default async function userService(app) {
     }
   });
 
-  app.put("/me/details", { preHandler: requireAuth }, async (request) => {
+  app.put("/me/details", { preHandler: requireAuth }, async (request: any) => {
     const body = request.body || {};
     const firstName = String(body.firstName || "").trim();
     const lastName = String(body.lastName || "").trim();
@@ -290,79 +301,69 @@ export default async function userService(app) {
     const ts = now();
     const displayName = `${firstName} ${lastName}`.trim();
 
-    await db.collection("users").updateOne(
-      { userId: request.user.userId },
-      {
-        $set: {
-          details: {
-            firstName,
-            lastName,
-            phoneCountryCode,
-            phoneNumber,
-          },
-          displayName,
-          displayNameLower: displayName.toLowerCase(),
-          updatedAt: ts,
-        },
-      }
+    await query(
+      `UPDATE users
+       SET details = $2,
+           display_name = $3,
+           display_name_lower = $4,
+           updated_at = $5
+       WHERE user_id = $1`,
+      [
+        request.user.userId,
+        JSON.stringify({
+          firstName,
+          lastName,
+          phoneCountryCode,
+          phoneNumber,
+        }),
+        displayName,
+        displayName.toLowerCase(),
+        ts,
+      ]
     );
 
     return { success: true };
   });
 
-  app.get("/me/account", { preHandler: requireAuth }, async (request) => {
-    const user = await db.collection("users").findOne({ userId: request.user.userId });
+  app.get("/me/account", { preHandler: requireAuth }, async (request: any) => {
+    const user = await queryOne(`SELECT * FROM users WHERE user_id = $1`, [request.user.userId]);
     if (!user) {
       throw new HttpError(404, "User not found");
     }
 
-    const details = user.details || {};
-    return {
-      account: {
-        id: user.userId,
-        email: user.email,
-        username: user.username,
-        displayName: user.displayName || user.username,
-        firstName: details.firstName || "",
-        lastName: details.lastName || "",
-        phoneCountryCode: details.phoneCountryCode || "",
-        phoneNumber: details.phoneNumber || "",
-        bio: user.bio || "",
-        location: user.location || "",
-        website: user.website || "",
-        isVerified: user.isVerified === true,
-        emailVerifiedAt: toIso(user.emailVerifiedAt),
-        createdAt: toIso(user.createdAt),
-        updatedAt: toIso(user.updatedAt),
-      },
-    };
+    return { account: accountPayload(user) };
   });
 
-  app.put("/me/email", { preHandler: requireAuth }, async (request) => {
+  app.put("/me/email", { preHandler: requireAuth }, async (request: any) => {
     const emailLower = normalizeEmail(request.body?.email);
     ensure(isValidEmail(emailLower), 400, "Invalid email");
 
-    const duplicate = await db.collection("users").findOne({
-      emailLower,
-      userId: { $ne: request.user.userId },
-    });
+    const duplicate = await queryOne(
+      `SELECT user_id FROM users WHERE email_lower = $1 AND user_id <> $2`,
+      [emailLower, request.user.userId]
+    );
     if (duplicate) {
       throw new HttpError(409, "Email already exists");
     }
 
     const ts = now();
-    await db.collection("users").updateOne(
-      { userId: request.user.userId },
-      {
-        $set: {
-          email: emailLower,
-          emailLower,
-          isVerified: false,
-          emailVerifiedAt: null,
-          updatedAt: ts,
-        },
+    try {
+      await query(
+        `UPDATE users
+         SET email = $2,
+             email_lower = $2,
+             is_verified = FALSE,
+             email_verified_at = NULL,
+             updated_at = $3
+         WHERE user_id = $1`,
+        [request.user.userId, emailLower, ts]
+      );
+    } catch (error: any) {
+      if (error.code === "23505") {
+        throw new HttpError(409, "Email already exists");
       }
-    );
+      throw error;
+    }
 
     return {
       email: emailLower,
@@ -371,195 +372,164 @@ export default async function userService(app) {
     };
   });
 
-  app.put("/me/handle", { preHandler: requireAuth }, async (request) => {
+  app.put("/me/handle", { preHandler: requireAuth }, async (request: any) => {
     const body = request.body || {};
-    const update: {
-      username?: string;
-      usernameLower?: string;
-      displayName?: string;
-      displayNameLower?: string;
-      bio?: string;
-      location?: string;
-      website?: string;
-      updatedAt?: Date;
-    } = {};
+    const fields: string[] = [];
+    const params: unknown[] = [request.user.userId];
+
+    const setField = (column: string, value: unknown) => {
+      params.push(value);
+      fields.push(`${column} = $${params.length}`);
+    };
 
     if (body.username !== undefined) {
       const usernameLower = normalizeUsername(body.username);
       ensure(isValidUsername(usernameLower), 400, "Invalid username");
 
-      const duplicate = await db.collection("users").findOne({
-        usernameLower,
-        userId: { $ne: request.user.userId },
-      });
+      const duplicate = await queryOne(
+        `SELECT user_id FROM users WHERE username_lower = $1 AND user_id <> $2`,
+        [usernameLower, request.user.userId]
+      );
       if (duplicate) {
         throw new HttpError(409, "Username already exists");
       }
 
-      update.username = usernameLower;
-      update.usernameLower = usernameLower;
+      setField("username", usernameLower);
+      setField("username_lower", usernameLower);
     }
 
     if (body.displayName !== undefined) {
       const displayName = String(body.displayName || "").trim();
       ensure(displayName.length > 0 && displayName.length <= 120, 400, "Invalid display name");
-      update.displayName = displayName;
-      update.displayNameLower = displayName.toLowerCase();
+      setField("display_name", displayName);
+      setField("display_name_lower", displayName.toLowerCase());
     }
 
     if (body.bio !== undefined) {
-      update.bio = String(body.bio || "").trim().slice(0, 2000);
+      setField("bio", String(body.bio || "").trim().slice(0, 2000));
     }
 
     if (body.location !== undefined) {
-      update.location = String(body.location || "").trim().slice(0, 120);
+      setField("location", String(body.location || "").trim().slice(0, 120));
     }
 
     if (body.website !== undefined) {
-      update.website = String(body.website || "").trim().slice(0, 240);
+      setField("website", String(body.website || "").trim().slice(0, 240));
     }
 
-    update.updatedAt = now();
+    setField("updated_at", now());
 
-    await db.collection("users").updateOne(
-      { userId: request.user.userId },
-      { $set: update }
-    );
+    try {
+      await query(
+        `UPDATE users SET ${fields.join(", ")} WHERE user_id = $1`,
+        params
+      );
+    } catch (error: any) {
+      if (error.code === "23505") {
+        throw new HttpError(409, "Username already exists");
+      }
+      throw error;
+    }
 
-    const user = await db.collection("users").findOne({ userId: request.user.userId });
+    const user = await queryOne(`SELECT * FROM users WHERE user_id = $1`, [request.user.userId]);
     if (!user) {
       throw new HttpError(404, "User not found");
     }
-    return {
-      profile: {
-        id: user.userId,
-        email: user.email,
-        username: user.username,
-        displayName: user.displayName || user.username,
-        firstName: user.details?.firstName || "",
-        lastName: user.details?.lastName || "",
-        phoneCountryCode: user.details?.phoneCountryCode || "",
-        phoneNumber: user.details?.phoneNumber || "",
-        bio: user.bio || "",
-        location: user.location || "",
-        website: user.website || "",
-        isVerified: user.isVerified === true,
-        emailVerifiedAt: toIso(user.emailVerifiedAt),
-        createdAt: toIso(user.createdAt),
-        updatedAt: toIso(user.updatedAt),
-      },
-    };
+    return { profile: accountPayload(user) };
   });
 
-  app.delete("/me", { preHandler: requireAuth }, async (request) => {
+  app.delete("/me", { preHandler: requireAuth }, async (request: any) => {
     const ts = now();
     const userId = request.user.userId;
 
     await Promise.all([
-      db.collection("users").updateOne(
-        { userId },
-        {
-          $set: {
-            deletedAt: ts,
-            updatedAt: ts,
-          },
-        }
+      query(
+        `UPDATE users SET deleted_at = $2, updated_at = $2 WHERE user_id = $1`,
+        [userId, ts]
       ),
-      db.collection("refresh_tokens").updateMany(
-        { userId, revokedAt: null },
-        { $set: { revokedAt: ts } }
+      query(
+        `UPDATE refresh_tokens SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userId, ts]
       ),
     ]);
 
     return { success: true };
   });
 
-  app.get("/search", { preHandler: requireAuth }, async (request) => {
-    const query = String(request.query?.query || "").trim().toLowerCase().replace(/^@+/, "");
-    if (query.length < 2 || !/^[a-z0-9_.]+$/.test(query)) {
+  app.get("/search", { preHandler: requireAuth }, async (request: any) => {
+    const search = String(request.query?.query || "").trim().toLowerCase().replace(/^@+/, "");
+    if (search.length < 2 || !/^[a-z0-9_.]+$/.test(search)) {
       return { results: [] };
     }
 
     const limit = parseLimit(request.query?.limit, 20, 1, 25);
-    const regex = new RegExp(`^${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
-
-    const rows = await db.collection("users").find(
-      {
-        userId: { $ne: request.user.userId },
-        $or: [
-          { usernameLower: { $regex: regex } },
-          { displayNameLower: { $regex: regex } },
-        ],
-      },
-      {
-        projection: {
-          userId: 1,
-          username: 1,
-          displayName: 1,
-          isVerified: 1,
-        },
-        sort: { usernameLower: 1 },
-        limit,
-      }
-    ).toArray();
+    const prefix = `${escapeLike(search)}%`;
+    const rows = await queryMany(
+      `SELECT user_id, username, display_name, is_verified
+       FROM users
+       WHERE user_id <> $1
+         AND deleted_at IS NULL
+         AND (username_lower LIKE $2 ESCAPE '\\' OR display_name_lower LIKE $2 ESCAPE '\\')
+       ORDER BY username_lower ASC
+       LIMIT $3`,
+      [request.user.userId, prefix, limit]
+    );
 
     if (rows.length === 0) {
       return { results: [] };
     }
 
-    const ids = rows.map((row) => row.userId);
+    const ids = rows.map((row) => row.user_id);
     const [following, followedBy] = await Promise.all([
-      db.collection("follows").find(
-        {
-          followerId: request.user.userId,
-          followingId: { $in: ids },
-        },
-        {
-          projection: { followingId: 1 },
-        }
-      ).toArray(),
-      db.collection("follows").find(
-        {
-          followerId: { $in: ids },
-          followingId: request.user.userId,
-        },
-        {
-          projection: { followerId: 1 },
-        }
-      ).toArray(),
+      queryMany(
+        `SELECT following_id
+         FROM follows
+         WHERE follower_id = $1 AND following_id = ANY($2::text[])`,
+        [request.user.userId, ids]
+      ),
+      queryMany(
+        `SELECT follower_id
+         FROM follows
+         WHERE follower_id = ANY($1::text[]) AND following_id = $2`,
+        [ids, request.user.userId]
+      ),
     ]);
 
-    const followingSet = new Set(following.map((item) => item.followingId));
-    const followedBySet = new Set(followedBy.map((item) => item.followerId));
+    const followingSet = new Set(following.map((item) => item.following_id));
+    const followedBySet = new Set(followedBy.map((item) => item.follower_id));
 
     return {
       results: rows.map((row) => ({
-        id: row.userId,
+        id: row.user_id,
         username: row.username,
-        displayName: row.displayName || row.username,
-        isVerified: row.isVerified === true,
-        isFollowing: followingSet.has(row.userId),
-        isFollowedBy: followedBySet.has(row.userId),
+        displayName: row.display_name || row.username,
+        isVerified: row.is_verified === true,
+        isFollowing: followingSet.has(row.user_id),
+        isFollowedBy: followedBySet.has(row.user_id),
       })),
     };
   });
 
-  app.get("/me/connections", { preHandler: requireAuth }, async (request) => {
+  app.get("/me/connections", { preHandler: requireAuth }, async (request: any) => {
     const limit = parseLimit(request.query?.limit, 20, 1, 100);
 
     const [followersRows, followingRows] = await Promise.all([
-      db.collection("follows").find(
-        { followingId: request.user.userId },
-        { projection: { followerId: 1, createdAt: 1 } }
-      ).toArray(),
-      db.collection("follows").find(
-        { followerId: request.user.userId },
-        { projection: { followingId: 1, createdAt: 1 } }
-      ).toArray(),
+      queryMany(
+        `SELECT follower_id, created_at
+         FROM follows
+         WHERE following_id = $1`,
+        [request.user.userId]
+      ),
+      queryMany(
+        `SELECT following_id, created_at
+         FROM follows
+         WHERE follower_id = $1`,
+        [request.user.userId]
+      ),
     ]);
 
-    const followerMap = new Map(followersRows.map((row) => [row.followerId, row]));
-    const followingMap = new Map(followingRows.map((row) => [row.followingId, row]));
+    const followerMap = new Map(followersRows.map((row) => [row.follower_id, row]));
+    const followingMap = new Map(followingRows.map((row) => [row.following_id, row]));
 
     const followerIds = [...followerMap.keys()];
     const followingIds = [...followingMap.keys()];
@@ -569,8 +539,8 @@ export default async function userService(app) {
     const friendsIds = followingIds.filter((id) => followerMap.has(id)).slice(0, limit);
 
     const userIds = [...new Set([...requestsIds, ...sentIds, ...friendsIds])];
-    const users = await loadUsersByIds(db, userIds);
-    const userMap = new Map(users.map((user) => [user.userId, user]));
+    const users = await loadUsersByIds(userIds);
+    const userMap = new Map(users.map((user) => [user.user_id, user]));
 
     const requests = requestsIds
       .map((id) => {
@@ -579,7 +549,7 @@ export default async function userService(app) {
         return mapConnectionItem(user, {
           isFollowing: false,
           isFollowedBy: true,
-          since: followerMap.get(id)?.createdAt,
+          since: followerMap.get(id)?.created_at,
         });
       })
       .filter(Boolean);
@@ -591,7 +561,7 @@ export default async function userService(app) {
         return mapConnectionItem(user, {
           isFollowing: true,
           isFollowedBy: false,
-          since: followingMap.get(id)?.createdAt,
+          since: followingMap.get(id)?.created_at,
         });
       })
       .filter(Boolean);
@@ -600,8 +570,8 @@ export default async function userService(app) {
       .map((id) => {
         const user = userMap.get(id);
         if (!user) return null;
-        const sinceA = followerMap.get(id)?.createdAt;
-        const sinceB = followingMap.get(id)?.createdAt;
+        const sinceA = followerMap.get(id)?.created_at;
+        const sinceB = followingMap.get(id)?.created_at;
         const since = sinceA && sinceB
           ? (sinceA > sinceB ? sinceA : sinceB)
           : (sinceA || sinceB || null);
@@ -621,22 +591,25 @@ export default async function userService(app) {
     };
   });
 
-  app.get("/me/profile", { preHandler: requireAuth }, async (request) => {
+  app.get("/me/profile", { preHandler: requireAuth }, async (request: any) => {
     const limit = parseLimit(request.query?.limit, 12, 1, 50);
-    return buildProfileSummary(db, request.user.userId, request.user.userId, limit);
+    return buildProfileSummary(request.user.userId, request.user.userId, limit);
   });
 
-  app.get("/:userId/profile", { preHandler: requireAuth }, async (request) => {
+  app.get("/:userId/profile", { preHandler: requireAuth }, async (request: any) => {
     const targetUserId = String(request.params.userId || "").trim();
     ensure(targetUserId.length >= 8, 400, "Invalid user");
     const limit = parseLimit(request.query?.limit, 12, 1, 50);
 
-    await ensureNotBlocked(db, request.user.userId, targetUserId);
-    return buildProfileSummary(db, request.user.userId, targetUserId, limit);
+    await ensureNotBlocked(request.user.userId, targetUserId);
+    return buildProfileSummary(request.user.userId, targetUserId, limit);
   });
 
-  app.get("/me/settings", { preHandler: requireAuth }, async (request) => {
-    const settingsDoc = await db.collection("user_settings").findOne({ userId: request.user.userId });
+  app.get("/me/settings", { preHandler: requireAuth }, async (request: any) => {
+    const settingsDoc = await queryOne(
+      `SELECT settings FROM user_settings WHERE user_id = $1`,
+      [request.user.userId]
+    );
     return {
       settings: {
         ...DEFAULT_SETTINGS,
@@ -645,9 +618,12 @@ export default async function userService(app) {
     };
   });
 
-  app.put("/me/settings", { preHandler: requireAuth }, async (request) => {
+  app.put("/me/settings", { preHandler: requireAuth }, async (request: any) => {
     const incoming = request.body || {};
-    const existing = await db.collection("user_settings").findOne({ userId: request.user.userId });
+    const existing = await queryOne(
+      `SELECT settings FROM user_settings WHERE user_id = $1`,
+      [request.user.userId]
+    );
 
     const settings = {
       ...DEFAULT_SETTINGS,
@@ -655,177 +631,169 @@ export default async function userService(app) {
       ...(incoming || {}),
     };
 
-    await db.collection("user_settings").updateOne(
-      { userId: request.user.userId },
-      {
-        $set: {
-          userId: request.user.userId,
-          settings,
-          updatedAt: now(),
-        },
-      },
-      {
-        upsert: true,
-      }
+    await query(
+      `INSERT INTO user_settings (user_id, settings, updated_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id)
+       DO UPDATE SET settings = EXCLUDED.settings, updated_at = EXCLUDED.updated_at`,
+      [request.user.userId, JSON.stringify(settings), now()]
     );
 
     return { settings };
   });
 
-  app.get("/me/blocks", { preHandler: requireAuth }, async (request) => {
+  app.get("/me/blocks", { preHandler: requireAuth }, async (request: any) => {
     const limit = parseLimit(request.query?.limit, 30, 1, 100);
-    const blocks = await db.collection("user_blocks").find(
-      { blockerId: request.user.userId },
-      {
-        sort: { createdAt: -1 },
-        limit,
-      }
-    ).toArray();
+    const blocks = await queryMany(
+      `SELECT blocked_id, created_at
+       FROM user_blocks
+       WHERE blocker_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [request.user.userId, limit]
+    );
 
     if (blocks.length === 0) {
       return { items: [] };
     }
 
-    const blockedIds = blocks.map((item) => item.blockedId);
-    const users = await loadUsersByIds(db, blockedIds);
-    const userMap = new Map<string, any>(users.map((user) => [String(user.userId), user]));
+    const blockedIds = blocks.map((item) => item.blocked_id);
+    const users = await loadUsersByIds(blockedIds);
+    const userMap = new Map<string, any>(users.map((user) => [String(user.user_id), user]));
 
     return {
       items: blocks
         .map((block) => {
-          const user = userMap.get(block.blockedId);
+          const user = userMap.get(block.blocked_id);
           if (!user) return null;
           return {
-            id: user.userId,
+            id: user.user_id,
             username: user.username,
-            displayName: user.displayName || user.username,
-            isVerified: user.isVerified === true,
-            blockedAt: toIso(block.createdAt),
+            displayName: user.display_name || user.username,
+            isVerified: user.is_verified === true,
+            blockedAt: toIso(block.created_at),
           };
         })
         .filter(Boolean),
     };
   });
 
-  app.post("/:targetUserId/block", { preHandler: requireAuth }, async (request) => {
+  app.post("/:targetUserId/block", { preHandler: requireAuth }, async (request: any) => {
     const targetUserId = String(request.params.targetUserId || "").trim();
     ensure(targetUserId.length >= 8, 400, "Invalid user");
     ensure(targetUserId !== request.user.userId, 400, "Cannot block self");
-    await ensureUserExists(db, targetUserId);
+    await ensureUserExists(targetUserId);
 
-    await db.collection("user_blocks").updateOne(
-      {
-        blockerId: request.user.userId,
-        blockedId: targetUserId,
-      },
-      {
-        $setOnInsert: {
-          blockerId: request.user.userId,
-          blockedId: targetUserId,
-          createdAt: now(),
-        },
-      },
-      {
-        upsert: true,
-      }
-    );
+    await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO user_blocks (blocker_id, blocked_id, created_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (blocker_id, blocked_id) DO NOTHING`,
+        [request.user.userId, targetUserId, now()]
+      );
 
-    await db.collection("follows").deleteMany({
-      $or: [
-        { followerId: request.user.userId, followingId: targetUserId },
-        { followerId: targetUserId, followingId: request.user.userId },
-      ],
+      await client.query(
+        `DELETE FROM follows
+         WHERE (follower_id = $1 AND following_id = $2)
+            OR (follower_id = $2 AND following_id = $1)`,
+        [request.user.userId, targetUserId]
+      );
     });
 
     return { blocked: true };
   });
 
-  app.delete("/:targetUserId/block", { preHandler: requireAuth }, async (request) => {
+  app.delete("/:targetUserId/block", { preHandler: requireAuth }, async (request: any) => {
     const targetUserId = String(request.params.targetUserId || "").trim();
     ensure(targetUserId.length >= 8, 400, "Invalid user");
 
-    await db.collection("user_blocks").deleteOne({
-      blockerId: request.user.userId,
-      blockedId: targetUserId,
-    });
+    await query(
+      `DELETE FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`,
+      [request.user.userId, targetUserId]
+    );
 
     return { blocked: false };
   });
 
-  app.get("/me/muted-words", { preHandler: requireAuth }, async (request) => {
+  app.get("/me/muted-words", { preHandler: requireAuth }, async (request: any) => {
     const limit = parseLimit(request.query?.limit, 50, 1, 200);
-    const rows = await db.collection("user_muted_words").find(
-      { userId: request.user.userId },
-      {
-        sort: { createdAt: -1 },
-        limit,
-      }
-    ).toArray();
+    const rows = await queryMany(
+      `SELECT muted_word_id, phrase, created_at
+       FROM user_muted_words
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [request.user.userId, limit]
+    );
 
     return {
       items: rows.map((row) => ({
-        id: row.mutedWordId,
+        id: row.muted_word_id,
         phrase: row.phrase,
-        createdAt: toIso(row.createdAt),
+        createdAt: toIso(row.created_at),
       })),
     };
   });
 
-  app.post("/me/muted-words", { preHandler: requireAuth }, async (request) => {
+  app.post("/me/muted-words", { preHandler: requireAuth }, async (request: any) => {
     const phrase = String(request.body?.phrase || "").trim();
     ensure(phrase.length >= 2 && phrase.length <= 80, 400, "Invalid phrase");
 
     const phraseLower = phrase.toLowerCase();
-    const existing = await db.collection("user_muted_words").findOne({
-      userId: request.user.userId,
-      phraseLower,
-    });
+    const existing = await queryOne(
+      `SELECT muted_word_id, phrase, created_at
+       FROM user_muted_words
+       WHERE user_id = $1 AND phrase_lower = $2`,
+      [request.user.userId, phraseLower]
+    );
 
     if (existing) {
       return {
         item: {
-          id: existing.mutedWordId,
+          id: existing.muted_word_id,
           phrase: existing.phrase,
-          createdAt: toIso(existing.createdAt),
+          createdAt: toIso(existing.created_at),
         },
       };
     }
 
-    const item = {
-      mutedWordId: `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-      userId: request.user.userId,
-      phrase,
-      phraseLower,
-      createdAt: now(),
-    };
-
-    await db.collection("user_muted_words").insertOne(item);
+    const mutedWordId = generateId();
+    const createdAt = now();
+    await query(
+      `INSERT INTO user_muted_words (muted_word_id, user_id, phrase, phrase_lower, created_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [mutedWordId, request.user.userId, phrase, phraseLower, createdAt]
+    );
 
     return {
       item: {
-        id: item.mutedWordId,
-        phrase: item.phrase,
-        createdAt: toIso(item.createdAt),
+        id: mutedWordId,
+        phrase,
+        createdAt: toIso(createdAt),
       },
     };
   });
 
-  app.delete("/me/muted-words/:id", { preHandler: requireAuth }, async (request) => {
+  app.delete("/me/muted-words/:id", { preHandler: requireAuth }, async (request: any) => {
     const id = String(request.params.id || "").trim();
     ensure(id.length >= 3, 400, "Invalid id");
 
-    const result = await db.collection("user_muted_words").deleteOne({
-      userId: request.user.userId,
-      mutedWordId: id,
-    });
+    const result = await query(
+      `DELETE FROM user_muted_words WHERE user_id = $1 AND muted_word_id = $2`,
+      [request.user.userId, id]
+    );
 
-    return { removed: result.deletedCount > 0 };
+    return { removed: (result.rowCount || 0) > 0 };
   });
 
-  app.get("/me/data-export", { preHandler: requireAuth }, async (request) => {
-    const latest = await db.collection("data_exports").findOne(
-      { userId: request.user.userId },
-      { sort: { createdAt: -1 } }
+  app.get("/me/data-export", { preHandler: requireAuth }, async (request: any) => {
+    const latest = await queryOne(
+      `SELECT export_id, status, format, payload, created_at, completed_at
+       FROM data_exports
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [request.user.userId]
     );
 
     if (!latest) {
@@ -834,41 +802,50 @@ export default async function userService(app) {
 
     return {
       export: {
-        id: latest.exportId,
+        id: latest.export_id,
         status: latest.status,
         format: latest.format,
         payload: latest.payload || {},
-        createdAt: toIso(latest.createdAt),
-        completedAt: toIso(latest.completedAt),
+        createdAt: toIso(latest.created_at),
+        completedAt: toIso(latest.completed_at),
       },
     };
   });
 
-  app.post("/me/data-export", { preHandler: requireAuth }, async (request) => {
-    const user = await db.collection("users").findOne({ userId: request.user.userId });
+  app.post("/me/data-export", { preHandler: requireAuth }, async (request: any) => {
+    const user = await queryOne(`SELECT * FROM users WHERE user_id = $1`, [request.user.userId]);
     if (!user) {
       throw new HttpError(404, "User not found");
     }
 
     const ts = now();
     const exportDoc = {
-      exportId: `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-      userId: request.user.userId,
+      exportId: generateId(),
       status: "completed",
       format: "json",
       payload: {
         user: {
-          id: user.userId,
+          id: user.user_id,
           email: user.email,
           username: user.username,
-          displayName: user.displayName || user.username,
+          displayName: user.display_name || user.username,
         },
       },
-      createdAt: ts,
-      completedAt: ts,
     };
 
-    await db.collection("data_exports").insertOne(exportDoc);
+    await query(
+      `INSERT INTO data_exports (export_id, user_id, status, format, payload, created_at, completed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        exportDoc.exportId,
+        request.user.userId,
+        exportDoc.status,
+        exportDoc.format,
+        JSON.stringify(exportDoc.payload),
+        ts,
+        ts,
+      ]
+    );
 
     return {
       export: {
@@ -876,116 +853,114 @@ export default async function userService(app) {
         status: exportDoc.status,
         format: exportDoc.format,
         payload: exportDoc.payload,
-        createdAt: toIso(exportDoc.createdAt),
-        completedAt: toIso(exportDoc.completedAt),
+        createdAt: toIso(ts),
+        completedAt: toIso(ts),
       },
     };
   });
 
-  app.post("/:targetUserId/follow", { preHandler: requireAuth }, async (request) => {
+  app.post("/:targetUserId/follow", { preHandler: requireAuth }, async (request: any) => {
     const targetUserId = String(request.params.targetUserId || "").trim();
     ensure(targetUserId.length >= 8, 400, "Invalid user");
     ensure(targetUserId !== request.user.userId, 400, "Cannot follow self");
-    await ensureUserExists(db, targetUserId);
-    await ensureNotBlocked(db, request.user.userId, targetUserId);
+    await ensureUserExists(targetUserId);
+    await ensureNotBlocked(request.user.userId, targetUserId);
 
-    const existing = await db.collection("follows").findOne({
-      followerId: request.user.userId,
-      followingId: targetUserId,
-    });
+    const existing = await queryOne(
+      `SELECT follower_id FROM follows WHERE follower_id = $1 AND following_id = $2`,
+      [request.user.userId, targetUserId]
+    );
 
     if (existing) {
-      await db.collection("follows").deleteOne({ _id: existing._id });
+      await query(
+        `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
+        [request.user.userId, targetUserId]
+      );
       return { following: false };
     }
 
     const ts = now();
-    await db.collection("follows").insertOne({
-      followerId: request.user.userId,
-      followingId: targetUserId,
-      createdAt: ts,
-    });
+    await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO follows (follower_id, following_id, created_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (follower_id, following_id) DO NOTHING`,
+        [request.user.userId, targetUserId, ts]
+      );
 
-    await db.collection("notifications").insertOne({
-      notificationId: `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-      userId: targetUserId,
-      actorUserId: request.user.userId,
-      type: "follow",
-      title: "New follower",
-      body: "Someone started following you",
-      data: {
-        followerId: request.user.userId,
-      },
-      createdAt: ts,
-      readAt: null,
+      await client.query(
+        `INSERT INTO notifications (
+           notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
+         )
+         VALUES ($1, $2, $3, 'follow', 'New follower', 'Someone started following you', $4, $5, NULL)`,
+        [
+          generateId(),
+          targetUserId,
+          request.user.userId,
+          JSON.stringify({ followerId: request.user.userId }),
+          ts,
+        ]
+      );
     });
 
     return { following: true };
   });
 
-  app.put("/:targetUserId/follow", { preHandler: requireAuth }, async (request) => {
+  app.put("/:targetUserId/follow", { preHandler: requireAuth }, async (request: any) => {
     const targetUserId = String(request.params.targetUserId || "").trim();
     const follow = request.body?.follow === true;
     ensure(targetUserId.length >= 8, 400, "Invalid user");
     ensure(targetUserId !== request.user.userId, 400, "Cannot follow self");
-    await ensureUserExists(db, targetUserId);
-    await ensureNotBlocked(db, request.user.userId, targetUserId);
+    await ensureUserExists(targetUserId);
+    await ensureNotBlocked(request.user.userId, targetUserId);
 
     if (follow) {
-      const result = await db.collection("follows").updateOne(
-        {
-          followerId: request.user.userId,
-          followingId: targetUserId,
-        },
-        {
-          $setOnInsert: {
-            followerId: request.user.userId,
-            followingId: targetUserId,
-            createdAt: now(),
-          },
-        },
-        { upsert: true }
+      const result = await query(
+        `INSERT INTO follows (follower_id, following_id, created_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (follower_id, following_id) DO NOTHING`,
+        [request.user.userId, targetUserId, now()]
       );
       return {
         following: true,
-        changed: result.upsertedCount > 0,
+        changed: (result.rowCount || 0) > 0,
       };
     }
 
-    const result = await db.collection("follows").deleteOne({
-      followerId: request.user.userId,
-      followingId: targetUserId,
-    });
+    const result = await query(
+      `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
+      [request.user.userId, targetUserId]
+    );
 
     return {
       following: false,
-      changed: result.deletedCount > 0,
+      changed: (result.rowCount || 0) > 0,
     };
   });
 
-  app.delete("/:targetUserId/follower", { preHandler: requireAuth }, async (request) => {
+  app.delete("/:targetUserId/follower", { preHandler: requireAuth }, async (request: any) => {
     const targetUserId = String(request.params.targetUserId || "").trim();
     ensure(targetUserId.length >= 8, 400, "Invalid user");
 
-    const result = await db.collection("follows").deleteOne({
-      followerId: targetUserId,
-      followingId: request.user.userId,
-    });
+    const result = await query(
+      `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
+      [targetUserId, request.user.userId]
+    );
 
-    return { removed: result.deletedCount > 0 };
+    return { removed: (result.rowCount || 0) > 0 };
   });
 
-  app.delete("/:targetUserId/connection", { preHandler: requireAuth }, async (request) => {
+  app.delete("/:targetUserId/connection", { preHandler: requireAuth }, async (request: any) => {
     const targetUserId = String(request.params.targetUserId || "").trim();
     ensure(targetUserId.length >= 8, 400, "Invalid user");
 
-    const result = await db.collection("follows").deleteMany({
-      $or: [
-        { followerId: request.user.userId, followingId: targetUserId },
-        { followerId: targetUserId, followingId: request.user.userId },
-      ],
-    });
+    const result = await query(
+      `DELETE FROM follows
+       WHERE (follower_id = $1 AND following_id = $2)
+          OR (follower_id = $2 AND following_id = $1)`,
+      [request.user.userId, targetUserId]
+    );
 
-    return { removed: result.deletedCount > 0 };
+    return { removed: (result.rowCount || 0) > 0 };
   });
 }

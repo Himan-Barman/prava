@@ -1,6 +1,6 @@
-# Backend (Node.js + MongoDB)
+# Backend (Node.js + PostgreSQL)
 
-This is the active TypeScript backend service for the project.
+This is the active TypeScript backend service for the project. Data is stored in PostgreSQL and can use Supabase by setting `DATABASE_URL`.
 
 ## Active API
 - Local: `http://localhost:3000/api`
@@ -12,28 +12,24 @@ This is the active TypeScript backend service for the project.
 - `npm run build` - compile TypeScript to `dist/`
 - `npm run start` - run compiled production server
 - `npm run typecheck` - run TypeScript type checks
-- `npm run test` - run backend integration tests (chat routes + websocket)
+- `npm run test` - run backend integration tests
 - `npm run load:chat` - run chat message load test with autocannon
 
-## Required env vars
-- `MONGODB_URI`
-- `MONGODB_DB_NAME`
+## Required Env Vars
+- `DATABASE_URL`
 - `JWT_SECRET`
 - `RESEND_API_KEY` (production email delivery)
 - `EMAIL_FROM` (verified sender in Resend)
 
-### MongoDB Atlas / Render example
-Use a full Atlas SRV URI and keep credentials in Render env vars:
+### Supabase Example
+Use the Postgres connection string from Supabase project settings:
 
-`MONGODB_URI=mongodb+srv://srhimanbarman:<db_password>@cluster0.zbmrn7v.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`
+`DATABASE_URL=postgresql://postgres:<db_password>@db.<project-ref>.supabase.co:5432/postgres`
 
-Also set:
-- `MONGODB_DB_NAME=prava_chat`
-
-Important:
-- Replace `<db_password>` with the real password.
+Notes:
+- Replace `<db_password>` and `<project-ref>` with your Supabase values.
 - If the password has special characters, URL-encode it.
-- In MongoDB Atlas Network Access, allow Render outbound IPs (or temporary `0.0.0.0/0`).
+- The backend creates required tables and indexes on startup.
 
 ### OTP Email Delivery (Resend)
 OTP for email verification and password reset is sent through Resend.
@@ -49,13 +45,11 @@ Recommended:
 - `OTP_EXPIRES_MINUTES` (default: `10`)
 - `USERNAME_RESERVATION_MINUTES` (default: `5`)
 
-Notes:
-- `EMAIL_FROM` must use a domain verified in Resend.
-- For production, server startup fails if `RESEND_API_KEY` or `EMAIL_FROM` is missing.
-- Signup usernames are temporarily reserved for `USERNAME_RESERVATION_MINUTES` after OTP request.
-- If signup is not completed in that window, reservation expires automatically and username becomes available again.
-
-## Optional env vars
+## Optional Env Vars
+- `PG_POOL_MAX`
+- `PG_POOL_IDLE_TIMEOUT_MS`
+- `PG_CONNECT_TIMEOUT_MS`
+- `PG_STATEMENT_TIMEOUT_MS`
 - `CORS_ORIGIN` (comma-separated origins, defaults to `*`)
 - `RATE_LIMIT_MAX`
 - `RATE_LIMIT_WINDOW_MS`
@@ -72,6 +66,15 @@ Notes:
 - `PRESSURE_MAX_HEAP_USED_BYTES`
 - `PRESSURE_MAX_RSS_BYTES`
 - `PRESSURE_RETRY_AFTER_SECONDS`
+
+## Local Docker
+From the repository root:
+
+```bash
+docker compose up --build
+```
+
+The compose file starts the API, PostgreSQL, and Redis. It overrides `DATABASE_URL` for the API container.
 
 ## Chat Load Test
 Set these env vars, then run `npm run load:chat`:

@@ -1,5 +1,7 @@
-import { getDb } from "../../lib/mongo.js";
 import { env } from "../../config/env.js";
+import { requireAuth } from "../../lib/auth.js";
+import { sendOtpEmail } from "../../lib/email.js";
+import { query, queryMany, queryOne, withTransaction } from "../../lib/pg.js";
 import {
   HttpError,
   buildUserView,
@@ -19,44 +21,38 @@ import {
   sha256,
   verifyPassword,
 } from "../../lib/security.js";
-import { requireAuth } from "../../lib/auth.js";
-import { sendOtpEmail } from "../../lib/email.js";
 
-function addSeconds(date, seconds) {
+function addSeconds(date: Date, seconds: number): Date {
   return new Date(date.getTime() + seconds * 1000);
 }
 
-function addMinutes(date, minutes) {
+function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60 * 1000);
 }
 
-function sanitizeDevice(value) {
+function sanitizeDevice(value: unknown): string {
   return String(value || "").trim().slice(0, 128);
 }
 
-async function ensureRecentEmailOtp(db, emailLower) {
-  const token = await db.collection("email_otp_tokens").findOne(
-    {
-      emailLower,
-      usedAt: { $ne: null },
-    },
-    {
-      sort: { usedAt: -1 },
-      projection: { usedAt: 1 },
-    }
+async function ensureRecentEmailOtp(emailLower: string): Promise<void> {
+  const token = await queryOne(
+    `SELECT used_at FROM email_otp_tokens
+     WHERE email_lower = $1 AND used_at IS NOT NULL
+     ORDER BY used_at DESC LIMIT 1`,
+    [emailLower]
   );
 
-  if (!token || !token.usedAt) {
+  if (!token || !token.used_at) {
     throw new HttpError(401, "Email verification required");
   }
 
   const minAccepted = addMinutes(now(), -15);
-  if (new Date(token.usedAt).getTime() < minAccepted.getTime()) {
+  if (new Date(token.used_at).getTime() < minAccepted.getTime()) {
     throw new HttpError(401, "Email verification required");
   }
 }
 
-async function createSession(db, user, context) {
+async function createSession(user: any, context: { deviceId?: string; deviceName?: string; platform?: string }) {
   const issuedAt = now();
   const refreshToken = generateRefreshToken();
   const expiresAt = addSeconds(issuedAt, getRefreshTtlSeconds());
@@ -64,22 +60,24 @@ async function createSession(db, user, context) {
   let nextRefreshToken = "";
 
   try {
-    await db.collection("refresh_tokens").insertOne({
-      refreshTokenId: generateId(),
-      userId: user.userId,
-      deviceId: sanitizeDevice(context.deviceId),
-      deviceName: sanitizeDevice(context.deviceName),
-      platform: sanitizeDevice(context.platform),
-      tokenHash: refreshToken.hash,
-      createdAt: issuedAt,
-      lastSeenAt: issuedAt,
-      expiresAt,
-      revokedAt: null,
-    });
+    await query(
+      `INSERT INTO refresh_tokens (refresh_token_id, user_id, device_id, device_name, platform, token_hash, created_at, last_seen_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        generateId(),
+        user.userId || user.user_id,
+        sanitizeDevice(context.deviceId),
+        sanitizeDevice(context.deviceName),
+        sanitizeDevice(context.platform),
+        refreshToken.hash,
+        issuedAt,
+        issuedAt,
+        expiresAt,
+      ]
+    );
     nextRefreshToken = refreshToken.raw;
   } catch {
-    // Best-effort session creation: keep user signed in with access token even
-    // if refresh token persistence fails.
+    // Best-effort session creation
   }
 
   return {
@@ -88,98 +86,19 @@ async function createSession(db, user, context) {
   };
 }
 
-async function loadUserForLogin(db, identifierLower) {
-  if (identifierLower.includes("@")) {
-    return db.collection("users").findOne({ emailLower: identifierLower });
-  }
-  return db.collection("users").findOne({ usernameLower: identifierLower });
+function mapUser(row: any) {
+  return {
+    userId: row.user_id,
+    email: row.email,
+    username: row.username,
+    displayName: row.display_name || row.username,
+    isVerified: row.is_verified,
+    passwordHash: row.password_hash,
+  };
 }
 
-function isDuplicateKeyError(error: unknown): boolean {
-  return (
-    typeof error === "object"
-    && error !== null
-    && "code" in error
-    && (error as { code?: number }).code === 11000
-  );
-}
-
-async function reserveSignupUsername(db, emailLower, usernameLower, ts) {
-  const existingUser = await db.collection("users").findOne(
-    { usernameLower },
-    { projection: { userId: 1 } }
-  );
-  if (existingUser) {
-    throw new HttpError(409, "Username already exists");
-  }
-
-  const expiresAt = addMinutes(ts, env.USERNAME_RESERVATION_MINUTES);
-
-  try {
-    await db.collection("username_reservations").updateOne(
-      {
-        usernameLower,
-        $or: [
-          { emailLower },
-          { expiresAt: { $lte: ts } },
-        ],
-      },
-      {
-        $set: {
-          usernameLower,
-          emailLower,
-          purpose: "signup",
-          updatedAt: ts,
-          expiresAt,
-        },
-        $setOnInsert: {
-          createdAt: ts,
-        },
-      },
-      { upsert: true }
-    );
-  } catch (error) {
-    if (isDuplicateKeyError(error)) {
-      throw new HttpError(409, "Username is temporarily reserved");
-    }
-    throw error;
-  }
-
-  return expiresAt;
-}
-
-async function ensureUsernameReservedForSignup(db, emailLower, usernameLower, ts) {
-  const existingUser = await db.collection("users").findOne(
-    { usernameLower },
-    { projection: { userId: 1 } }
-  );
-  if (existingUser) {
-    throw new HttpError(409, "Username already exists");
-  }
-
-  const reservation = await db.collection("username_reservations").findOne(
-    {
-      usernameLower,
-      expiresAt: { $gt: ts },
-    },
-    {
-      projection: {
-        emailLower: 1,
-      },
-    }
-  );
-
-  // Allow signup when no active reservation exists; only block if currently
-  // held by someone else.
-  if (reservation && reservation.emailLower !== emailLower) {
-    throw new HttpError(409, "Username is temporarily reserved");
-  }
-}
-
-export default async function authService(app) {
-  const db = getDb();
-
-  app.post("/register", async (request) => {
+export default async function authService(app: any) {
+  app.post("/register", async (request: any) => {
     const body = request.body || {};
     const emailLower = normalizeEmail(body.email);
     ensure(isValidEmail(emailLower), 400, "Invalid email");
@@ -194,48 +113,55 @@ export default async function authService(app) {
     }
     ensure(isValidUsername(usernameLower), 400, "Invalid username");
 
-    await ensureRecentEmailOtp(db, emailLower);
+    await ensureRecentEmailOtp(emailLower);
 
     const ts = now();
+
     if (hasExplicitUsername) {
-      await ensureUsernameReservedForSignup(db, emailLower, usernameLower, ts);
+      // Check if username is taken
+      const existing = await queryOne(
+        `SELECT user_id FROM users WHERE username_lower = $1`,
+        [usernameLower]
+      );
+      if (existing) {
+        throw new HttpError(409, "Username already exists");
+      }
+
+      // Check reservations
+      const reservation = await queryOne(
+        `SELECT email_lower FROM username_reservations WHERE username_lower = $1 AND expires_at > $2`,
+        [usernameLower, ts]
+      );
+      if (reservation && reservation.email_lower !== emailLower) {
+        throw new HttpError(409, "Username is temporarily reserved");
+      }
     }
 
-    const existing = await db.collection("users").findOne({
-      $or: [{ emailLower }, { usernameLower }],
-    });
-    if (existing) {
-      if (existing.emailLower === emailLower) {
+    // Check existing user
+    const existingUser = await queryOne(
+      `SELECT user_id, email_lower, username_lower FROM users WHERE email_lower = $1 OR username_lower = $2 LIMIT 1`,
+      [emailLower, usernameLower]
+    );
+    if (existingUser) {
+      if (existingUser.email_lower === emailLower) {
         throw new HttpError(409, "Email already exists");
       }
       throw new HttpError(409, "Username already exists");
     }
 
-    const user = {
-      userId: generateId(),
-      email: emailLower,
-      emailLower,
-      username: usernameLower,
-      usernameLower,
-      displayName: usernameLower,
-      displayNameLower: usernameLower,
-      passwordHash: hashPassword(body.password),
-      isVerified: true,
-      emailVerifiedAt: ts,
-      details: null,
-      createdAt: ts,
-      updatedAt: ts,
-    };
-
+    const userId = generateId();
     try {
-      await db.collection("users").insertOne(user);
-    } catch (error) {
-      if (isDuplicateKeyError(error)) {
-        const duplicateDetails = JSON.stringify(error);
-        if (duplicateDetails.includes("emailLower")) {
+      await query(
+        `INSERT INTO users (user_id, email, email_lower, username, username_lower, display_name, display_name_lower, password_hash, is_verified, email_verified_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [userId, emailLower, emailLower, usernameLower, usernameLower, usernameLower, usernameLower, hashPassword(body.password), true, ts, ts, ts]
+      );
+    } catch (error: any) {
+      if (error.code === "23505") {
+        if (error.constraint?.includes("email")) {
           throw new HttpError(409, "Email already exists");
         }
-        if (duplicateDetails.includes("usernameLower")) {
+        if (error.constraint?.includes("username")) {
           throw new HttpError(409, "Username already exists");
         }
         throw new HttpError(409, "Account already exists");
@@ -244,15 +170,17 @@ export default async function authService(app) {
     }
 
     if (hasExplicitUsername) {
-      await db.collection("username_reservations").deleteOne({
-        usernameLower,
-        emailLower,
-      });
+      await query(
+        `DELETE FROM username_reservations WHERE username_lower = $1 AND email_lower = $2`,
+        [usernameLower, emailLower]
+      );
     }
+
+    const user = { userId, email: emailLower, username: usernameLower, displayName: usernameLower, isVerified: true };
 
     let session;
     try {
-      session = await createSession(db, user, {
+      session = await createSession(user, {
         deviceId: body.deviceId,
         deviceName: body.deviceName,
         platform: body.platform,
@@ -269,18 +197,25 @@ export default async function authService(app) {
     };
   });
 
-  app.post("/login", async (request) => {
+  app.post("/login", async (request: any) => {
     const body = request.body || {};
     const identifier = normalizeEmail(body.email || body.username);
     ensure(identifier.length >= 3 && identifier.length <= 255, 400, "Invalid request");
     ensure(isValidPassword(body.password), 400, "Invalid request");
 
-    const user = await loadUserForLogin(db, identifier);
-    if (!user || !verifyPassword(body.password, user.passwordHash)) {
+    let row;
+    if (identifier.includes("@")) {
+      row = await queryOne(`SELECT * FROM users WHERE email_lower = $1`, [identifier]);
+    } else {
+      row = await queryOne(`SELECT * FROM users WHERE username_lower = $1`, [identifier]);
+    }
+
+    if (!row || !verifyPassword(body.password, row.password_hash)) {
       throw new HttpError(401, "Invalid credentials");
     }
 
-    const session = await createSession(db, user, {
+    const user = mapUser(row);
+    const session = await createSession(user, {
       deviceId: body.deviceId,
       deviceName: body.deviceName,
       platform: body.platform,
@@ -293,7 +228,7 @@ export default async function authService(app) {
     };
   });
 
-  app.post("/refresh", async (request) => {
+  app.post("/refresh", async (request: any) => {
     const body = request.body || {};
     const rawToken = String(body.refreshToken || "").trim();
     const deviceId = sanitizeDevice(body.deviceId);
@@ -302,30 +237,30 @@ export default async function authService(app) {
 
     const tokenHash = sha256(rawToken);
     const ts = now();
-    const tokenDoc = await db.collection("refresh_tokens").findOne({
-      tokenHash,
-      deviceId,
-      revokedAt: null,
-      expiresAt: { $gt: ts },
-    });
+
+    const tokenDoc = await queryOne(
+      `SELECT * FROM refresh_tokens WHERE token_hash = $1 AND device_id = $2 AND revoked_at IS NULL AND expires_at > $3`,
+      [tokenHash, deviceId, ts]
+    );
 
     if (!tokenDoc) {
       throw new HttpError(401, "Invalid refresh token");
     }
 
-    await db.collection("refresh_tokens").updateOne(
-      { _id: tokenDoc._id },
-      { $set: { revokedAt: ts } }
+    await query(
+      `UPDATE refresh_tokens SET revoked_at = $1 WHERE id = $2`,
+      [ts, tokenDoc.id]
     );
 
-    const user = await db.collection("users").findOne({ userId: tokenDoc.userId });
-    if (!user) {
+    const userRow = await queryOne(`SELECT * FROM users WHERE user_id = $1`, [tokenDoc.user_id]);
+    if (!userRow) {
       throw new HttpError(401, "Invalid refresh token");
     }
 
-    const session = await createSession(db, user, {
+    const user = mapUser(userRow);
+    const session = await createSession(user, {
       deviceId,
-      deviceName: tokenDoc.deviceName,
+      deviceName: tokenDoc.device_name,
       platform: tokenDoc.platform,
     });
 
@@ -335,98 +270,78 @@ export default async function authService(app) {
     };
   });
 
-  app.post("/logout", { preHandler: requireAuth }, async (request) => {
+  app.post("/logout", { preHandler: requireAuth }, async (request: any) => {
     const body = request.body || {};
     const deviceId = sanitizeDevice(body.deviceId);
-    const filter: { userId: string; revokedAt: null; deviceId?: string } = {
-      userId: request.user.userId,
-      revokedAt: null,
-    };
+
     if (deviceId) {
-      filter.deviceId = deviceId;
+      await query(
+        `UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL AND device_id = $3`,
+        [now(), request.user.userId, deviceId]
+      );
+    } else {
+      await query(
+        `UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL`,
+        [now(), request.user.userId]
+      );
     }
 
-    await db.collection("refresh_tokens").updateMany(filter, {
-      $set: { revokedAt: now() },
-    });
-
     return { success: true };
   });
 
-  app.post("/logout-all", { preHandler: requireAuth }, async (request) => {
-    await db.collection("refresh_tokens").updateMany(
-      {
-        userId: request.user.userId,
-        revokedAt: null,
-      },
-      {
-        $set: { revokedAt: now() },
-      }
+  app.post("/logout-all", { preHandler: requireAuth }, async (request: any) => {
+    await query(
+      `UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL`,
+      [now(), request.user.userId]
+    );
+    return { success: true };
+  });
+
+  app.post("/sessions", { preHandler: requireAuth }, async (request: any) => {
+    const sessions = await queryMany(
+      `SELECT refresh_token_id, device_id, device_name, platform, created_at, last_seen_at, expires_at
+       FROM refresh_tokens
+       WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > $2
+       ORDER BY created_at ASC`,
+      [request.user.userId, now()]
     );
 
-    return { success: true };
-  });
-
-  app.post("/sessions", { preHandler: requireAuth }, async (request) => {
-    const sessions = await db.collection("refresh_tokens").find(
-      {
-        userId: request.user.userId,
-        revokedAt: null,
-        expiresAt: { $gt: now() },
-      },
-      {
-        sort: { createdAt: 1 },
-      }
-    ).toArray();
-
-    return sessions.map((session) => ({
-      id: session.refreshTokenId,
-      deviceId: session.deviceId,
-      deviceName: session.deviceName || "",
-      platform: session.platform || "",
-      createdAt: session.createdAt?.toISOString?.() || null,
-      lastSeenAt: session.lastSeenAt?.toISOString?.() || null,
-      expiresAt: session.expiresAt?.toISOString?.() || null,
+    return sessions.map((s: any) => ({
+      id: s.refresh_token_id,
+      deviceId: s.device_id,
+      deviceName: s.device_name || "",
+      platform: s.platform || "",
+      createdAt: s.created_at?.toISOString() || null,
+      lastSeenAt: s.last_seen_at?.toISOString() || null,
+      expiresAt: s.expires_at?.toISOString() || null,
     }));
   });
 
-  app.post("/sessions/revoke", { preHandler: requireAuth }, async (request) => {
+  app.post("/sessions/revoke", { preHandler: requireAuth }, async (request: any) => {
     const deviceId = sanitizeDevice(request.body?.deviceId);
     ensure(deviceId.length >= 3, 400, "Invalid request");
 
-    await db.collection("refresh_tokens").updateMany(
-      {
-        userId: request.user.userId,
-        deviceId,
-        revokedAt: null,
-      },
-      {
-        $set: { revokedAt: now() },
-      }
+    await query(
+      `UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND device_id = $3 AND revoked_at IS NULL`,
+      [now(), request.user.userId, deviceId]
     );
 
     return { success: true };
   });
 
-  app.post("/sessions/revoke-others", { preHandler: requireAuth }, async (request) => {
+  app.post("/sessions/revoke-others", { preHandler: requireAuth }, async (request: any) => {
     const currentDeviceId = sanitizeDevice(request.body?.currentDeviceId);
     ensure(currentDeviceId.length >= 3, 400, "Invalid request");
 
-    await db.collection("refresh_tokens").updateMany(
-      {
-        userId: request.user.userId,
-        revokedAt: null,
-        deviceId: { $ne: currentDeviceId },
-      },
-      {
-        $set: { revokedAt: now() },
-      }
+    await query(
+      `UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL AND device_id != $3`,
+      [now(), request.user.userId, currentDeviceId]
     );
 
     return { success: true };
   });
 
-  app.post("/email-otp/request", async (request) => {
+  app.post("/email-otp/request", async (request: any) => {
     const body = request.body || {};
     const emailLower = normalizeEmail(body.email);
     ensure(isValidEmail(emailLower), 400, "Invalid email");
@@ -439,53 +354,76 @@ export default async function authService(app) {
     }
 
     if (hasUsername) {
-      await reserveSignupUsername(db, emailLower, usernameLower, ts);
+      // Reserve username
+      const existingUser = await queryOne(
+        `SELECT user_id FROM users WHERE username_lower = $1`,
+        [usernameLower]
+      );
+      if (existingUser) {
+        throw new HttpError(409, "Username already exists");
+      }
+
+      const activeReservation = await queryOne(
+        `SELECT email_lower
+         FROM username_reservations
+         WHERE username_lower = $1 AND expires_at > $2`,
+        [usernameLower, ts]
+      );
+      if (activeReservation && activeReservation.email_lower !== emailLower) {
+        throw new HttpError(409, "Username is temporarily reserved");
+      }
+
+      const expiresAt = addMinutes(ts, env.USERNAME_RESERVATION_MINUTES);
+      try {
+        const reservationResult = await query(
+          `INSERT INTO username_reservations (username_lower, email_lower, purpose, created_at, updated_at, expires_at)
+           VALUES ($1, $2, 'signup', $3, $4, $5)
+           ON CONFLICT (username_lower)
+           DO UPDATE SET email_lower = $2, updated_at = $4, expires_at = $5
+           WHERE username_reservations.email_lower = $2 OR username_reservations.expires_at <= $3`,
+          [usernameLower, emailLower, ts, ts, expiresAt]
+        );
+        if ((reservationResult.rowCount || 0) === 0) {
+          throw new HttpError(409, "Username is temporarily reserved");
+        }
+      } catch (error: any) {
+        if (error instanceof HttpError) {
+          throw error;
+        }
+        if (error.code === "23505") {
+          throw new HttpError(409, "Username is temporarily reserved");
+        }
+        throw error;
+      }
     }
 
-    await db.collection("email_otp_tokens").updateMany(
-      {
-        emailLower,
-        usedAt: null,
-        expiresAt: { $gt: ts },
-      },
-      {
-        $set: { usedAt: ts },
-      }
+    // Invalidate previous OTPs
+    await query(
+      `UPDATE email_otp_tokens SET used_at = $1 WHERE email_lower = $2 AND used_at IS NULL AND expires_at > $3`,
+      [ts, emailLower, ts]
     );
 
     const code = generateOtpCode();
-    await db.collection("email_otp_tokens").insertOne({
-      emailLower,
-      tokenHash: sha256(code),
-      attempts: 0,
-      createdAt: ts,
-      expiresAt: addMinutes(ts, env.OTP_EXPIRES_MINUTES),
-      usedAt: null,
-    });
+    await query(
+      `INSERT INTO email_otp_tokens (email_lower, token_hash, attempts, created_at, expires_at)
+       VALUES ($1, $2, 0, $3, $4)`,
+      [emailLower, sha256(code), ts, addMinutes(ts, env.OTP_EXPIRES_MINUTES)]
+    );
 
     try {
-      await sendOtpEmail({
-        to: emailLower,
-        code,
-        type: "verification",
-      });
+      await sendOtpEmail({ to: emailLower, code, type: "verification" });
     } catch (error) {
       if (hasUsername) {
-        await db.collection("username_reservations").deleteOne({
-          usernameLower,
-          emailLower,
-        });
+        await query(
+          `DELETE FROM username_reservations WHERE username_lower = $1 AND email_lower = $2`,
+          [usernameLower, emailLower]
+        );
       }
       request.log.error({ err: error, emailLower }, "failed to deliver email verification otp");
       throw new HttpError(503, "Unable to send verification code");
     }
 
-    const payload: {
-      success: boolean;
-      expiresIn: number;
-      reservationExpiresIn?: number;
-      devCode?: string;
-    } = {
+    const payload: any = {
       success: true,
       expiresIn: env.OTP_EXPIRES_MINUTES * 60,
       ...(hasUsername ? { reservationExpiresIn: env.USERNAME_RESERVATION_MINUTES * 60 } : {}),
@@ -496,7 +434,7 @@ export default async function authService(app) {
     return payload;
   });
 
-  app.post("/email-otp/verify", async (request) => {
+  app.post("/email-otp/verify", async (request: any) => {
     const body = request.body || {};
     const emailLower = normalizeEmail(body.email);
     const code = String(body.code || "").trim();
@@ -505,15 +443,11 @@ export default async function authService(app) {
     ensure(/^\d{6}$/.test(code), 400, "Invalid request");
 
     const ts = now();
-    const otp = await db.collection("email_otp_tokens").findOne(
-      {
-        emailLower,
-        usedAt: null,
-        expiresAt: { $gt: ts },
-      },
-      {
-        sort: { createdAt: -1 },
-      }
+    const otp = await queryOne(
+      `SELECT id, token_hash, attempts FROM email_otp_tokens
+       WHERE email_lower = $1 AND used_at IS NULL AND expires_at > $2
+       ORDER BY created_at DESC LIMIT 1`,
+      [emailLower, ts]
     );
 
     if (!otp) {
@@ -522,99 +456,68 @@ export default async function authService(app) {
 
     const currentAttempts = Number(otp.attempts || 0);
     if (currentAttempts >= 5) {
-      await db.collection("email_otp_tokens").updateOne(
-        { _id: otp._id },
-        { $set: { usedAt: ts } }
-      );
+      await query(`UPDATE email_otp_tokens SET used_at = $1 WHERE id = $2`, [ts, otp.id]);
       throw new HttpError(401, "Invalid or expired code");
     }
 
-    if (sha256(code) !== otp.tokenHash) {
+    if (sha256(code) !== otp.token_hash) {
       const nextAttempts = currentAttempts + 1;
-      await db.collection("email_otp_tokens").updateOne(
-        { _id: otp._id },
-        {
-          $set: {
-            attempts: nextAttempts,
-            usedAt: nextAttempts >= 5 ? ts : null,
-          },
-        }
+      await query(
+        `UPDATE email_otp_tokens SET attempts = $1, used_at = $2 WHERE id = $3`,
+        [nextAttempts, nextAttempts >= 5 ? ts : null, otp.id]
       );
       throw new HttpError(401, "Invalid or expired code");
     }
 
-    await db.collection("email_otp_tokens").updateOne(
-      { _id: otp._id },
-      { $set: { usedAt: ts } }
-    );
+    await query(`UPDATE email_otp_tokens SET used_at = $1 WHERE id = $2`, [ts, otp.id]);
 
-    await db.collection("users").updateOne(
-      {
-        emailLower,
-        isVerified: false,
-      },
-      {
-        $set: {
-          isVerified: true,
-          emailVerifiedAt: ts,
-          updatedAt: ts,
-        },
-      }
+    await query(
+      `UPDATE users SET is_verified = TRUE, email_verified_at = $1, updated_at = $2
+       WHERE email_lower = $3 AND is_verified = FALSE`,
+      [ts, ts, emailLower]
     );
 
     return { verified: true };
   });
 
-  app.post("/password-reset/request", async (request) => {
+  app.post("/password-reset/request", async (request: any) => {
     const body = request.body || {};
     const emailLower = normalizeEmail(body.email);
     ensure(isValidEmail(emailLower), 400, "Invalid email");
 
-    const user = await db.collection("users").findOne({ emailLower });
+    const user = await queryOne(`SELECT user_id FROM users WHERE email_lower = $1`, [emailLower]);
     if (!user) {
       return { success: true };
     }
 
     const ts = now();
-    await db.collection("password_reset_tokens").updateMany(
-      {
-        userId: user.userId,
-        usedAt: null,
-        expiresAt: { $gt: ts },
-      },
-      { $set: { usedAt: ts } }
+    await query(
+      `UPDATE password_reset_tokens SET used_at = $1 WHERE user_id = $2 AND used_at IS NULL AND expires_at > $3`,
+      [ts, user.user_id, ts]
     );
 
     const code = generateOtpCode();
-    await db.collection("password_reset_tokens").insertOne({
-      resetTokenId: generateId(),
-      userId: user.userId,
-      emailLower,
-      tokenHash: sha256(code),
-      createdAt: ts,
-      expiresAt: addMinutes(ts, env.OTP_EXPIRES_MINUTES),
-      usedAt: null,
-    });
+    await query(
+      `INSERT INTO password_reset_tokens (reset_token_id, user_id, email_lower, token_hash, created_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [generateId(), user.user_id, emailLower, sha256(code), ts, addMinutes(ts, env.OTP_EXPIRES_MINUTES)]
+    );
 
     try {
-      await sendOtpEmail({
-        to: emailLower,
-        code,
-        type: "password-reset",
-      });
+      await sendOtpEmail({ to: emailLower, code, type: "password-reset" });
     } catch (error) {
-      request.log.error({ err: error, userId: user.userId }, "failed to deliver password reset otp");
+      request.log.error({ err: error, userId: user.user_id }, "failed to deliver password reset otp");
       throw new HttpError(503, "Unable to send reset code");
     }
 
-    const payload: { success: boolean; devToken?: string } = { success: true };
+    const payload: any = { success: true };
     if ((process.env.NODE_ENV || "development") !== "production") {
       payload.devToken = code;
     }
     return payload;
   });
 
-  app.post("/password-reset/confirm", async (request) => {
+  app.post("/password-reset/confirm", async (request: any) => {
     const body = request.body || {};
     const token = String(body.token || "").trim();
     const newPassword = String(body.newPassword || "");
@@ -623,39 +526,24 @@ export default async function authService(app) {
 
     const tokenHash = sha256(token);
     const ts = now();
-    const resetToken = await db.collection("password_reset_tokens").findOne({
-      tokenHash,
-      usedAt: null,
-      expiresAt: { $gt: ts },
-    });
+
+    const resetToken = await queryOne(
+      `SELECT id, user_id FROM password_reset_tokens WHERE token_hash = $1 AND used_at IS NULL AND expires_at > $2`,
+      [tokenHash, ts]
+    );
 
     if (!resetToken) {
       throw new HttpError(401, "Invalid or expired code");
     }
 
-    await db.collection("password_reset_tokens").updateOne(
-      { _id: resetToken._id },
-      { $set: { usedAt: ts } }
+    await query(`UPDATE password_reset_tokens SET used_at = $1 WHERE id = $2`, [ts, resetToken.id]);
+    await query(
+      `UPDATE users SET password_hash = $1, updated_at = $2 WHERE user_id = $3`,
+      [hashPassword(newPassword), ts, resetToken.user_id]
     );
-
-    await db.collection("users").updateOne(
-      { userId: resetToken.userId },
-      {
-        $set: {
-          passwordHash: hashPassword(newPassword),
-          updatedAt: ts,
-        },
-      }
-    );
-
-    await db.collection("refresh_tokens").updateMany(
-      {
-        userId: resetToken.userId,
-        revokedAt: null,
-      },
-      {
-        $set: { revokedAt: ts },
-      }
+    await query(
+      `UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL`,
+      [ts, resetToken.user_id]
     );
 
     return { success: true };
