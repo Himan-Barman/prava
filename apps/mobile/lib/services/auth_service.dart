@@ -31,12 +31,15 @@ class AuthSession {
 }
 
 class AuthService {
-  factory AuthService({SecureStore? store}) {
+  factory AuthService({
+    SecureStore? store,
+    Future<void> Function()? onForceLogout,
+  }) {
     final resolved = store ?? SecureStore();
     return AuthService._(
       resolved,
       DeviceIdStore(resolved),
-      ApiClient(resolved),
+      ApiClient(resolved, onForceLogout: onForceLogout),
     );
   }
 
@@ -173,6 +176,38 @@ class AuthService {
       },
       auth: true,
     );
+  }
+
+  /// Try to silently refresh the session on app launch.
+  /// Returns true if we have a valid session (tokens exist + refresh succeeds).
+  Future<bool> tryRestoreSession() async {
+    try {
+      final accessToken = await _store.getAccessToken();
+      final refreshToken = await _store.getRefreshToken();
+      final userId = await _store.getUserId();
+
+      if (accessToken == null ||
+          accessToken.isEmpty ||
+          userId == null ||
+          userId.isEmpty) {
+        return false;
+      }
+
+      // Try a lightweight authenticated request to validate the token
+      try {
+        await _client.get('/users/me', auth: true);
+        return true;
+      } catch (_) {
+        // If we have a refresh token, the ApiClient will auto-refresh on 401.
+        // If that also fails, the session is truly expired.
+        if (refreshToken == null || refreshToken.isEmpty) {
+          return false;
+        }
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> logout() async {
