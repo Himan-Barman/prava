@@ -60,6 +60,9 @@ class _SignupScreenState extends State<SignupScreen> {
 
     _emailController.addListener(() {
       setState(() {});
+      if (_usernameValid) {
+        _checkUsername(_usernameValue);
+      }
     });
   }
 

@@ -15,6 +15,10 @@ services:
         value: "10000"
       - key: PG_STATEMENT_TIMEOUT_MS
         value: "30000"
+      - key: JWT_PRIVATE_KEY
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
       - key: JWT_SECRET
         sync: false
       - key: RESEND_API_KEY

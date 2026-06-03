@@ -17,7 +17,7 @@ Services:
 
 Set at least:
 - `DATABASE_URL`
-- `JWT_SECRET`
+- `JWT_SECRET` or `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`
 
 Optional:
 - `ACCESS_TOKEN_TTL_SECONDS`

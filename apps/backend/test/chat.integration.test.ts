@@ -343,7 +343,7 @@ test("username reservation: holds for signup flow and blocks others", async () =
   assert.equal(otpVerify.status, 200);
   assert.equal(otpVerify.data.verified, true);
 
-  const register = await httpJson<{ user: { username: string } }>(
+  const register = await httpJson<{ user: { username: string }; accessToken: string }>(
     baseUrl,
     "/api/auth/register",
     {
@@ -360,6 +360,24 @@ test("username reservation: holds for signup flow and blocks others", async () =
   );
   assert.equal(register.status, 200);
   assert.equal(register.data.user.username, username);
+  assert.ok(register.data.accessToken);
+
+  const details = await httpJson<{ success: boolean }>(
+    baseUrl,
+    "/api/users/me/details",
+    {
+      method: "PUT",
+      token: register.data.accessToken,
+      body: {
+        firstName: "Reserve",
+        lastName: "Case",
+        phoneCountryCode: "+91",
+        phoneNumber: "9876543210",
+      },
+    }
+  );
+  assert.equal(details.status, 200);
+  assert.equal(details.data.success, true);
 });
 
 test("register allows signup after reservation expiry when username is still free", async () => {

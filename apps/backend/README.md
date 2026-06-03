@@ -17,7 +17,7 @@ This is the active TypeScript backend service for the project. Data is stored in
 
 ## Required Env Vars
 - `DATABASE_URL`
-- `JWT_SECRET`
+- `JWT_SECRET` or `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY`
 - `RESEND_API_KEY` (production email delivery)
 - `EMAIL_FROM` (verified sender in Resend)
 
@@ -46,6 +46,8 @@ Recommended:
 - `USERNAME_RESERVATION_MINUTES` (default: `5`)
 
 ## Optional Env Vars
+- `JWT_PRIVATE_KEY`
+- `JWT_PUBLIC_KEY`
 - `PG_POOL_MAX`
 - `PG_POOL_IDLE_TIMEOUT_MS`
 - `PG_CONNECT_TIMEOUT_MS`
