@@ -12,8 +12,24 @@ import {
   toIso,
 } from "../../lib/security.js";
 
+const PROFILE_VISIBILITY_VALUES = ["everyone", "followers", "friends", "onlyMe"] as const;
+type ProfileVisibility = (typeof PROFILE_VISIBILITY_VALUES)[number];
+type ProfileVisibilityMap = Record<string, ProfileVisibility>;
+
+const DEFAULT_PROFILE_VISIBILITY: ProfileVisibilityMap = {
+  bio: "everyone",
+  location: "friends",
+  website: "everyone",
+  joined: "everyone",
+  posts: "everyone",
+  followers: "everyone",
+  following: "everyone",
+  likes: "onlyMe",
+};
+
 const DEFAULT_SETTINGS = {
   privateAccount: false,
+  profileVisibility: DEFAULT_PROFILE_VISIBILITY,
   activityStatus: true,
   readReceipts: true,
   messagePreview: true,
@@ -35,6 +51,98 @@ const DEFAULT_SETTINGS = {
   textScale: 1,
   languageLabel: "English",
 };
+
+function normalizeVisibilityValue(
+  value: unknown,
+  fallback: ProfileVisibility
+): ProfileVisibility {
+  if (
+    typeof value === "string" &&
+    PROFILE_VISIBILITY_VALUES.includes(value as ProfileVisibility)
+  ) {
+    return value as ProfileVisibility;
+  }
+  return fallback;
+}
+
+function normalizeProfileVisibility(value: unknown): ProfileVisibilityMap {
+  const incoming =
+    value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return Object.fromEntries(
+    Object.entries(DEFAULT_PROFILE_VISIBILITY).map(([key, fallback]) => [
+      key,
+      normalizeVisibilityValue(incoming[key], fallback),
+    ])
+  ) as ProfileVisibilityMap;
+}
+
+function mergeSettings(value: any = {}) {
+  const profileVisibility = normalizeProfileVisibility(value?.profileVisibility);
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(value || {}),
+    profileVisibility,
+  };
+}
+
+type ProfileRelationship = {
+  isSelf: boolean;
+  isFollowing: boolean;
+  isFollowedBy: boolean;
+  isFriend: boolean;
+};
+
+function minVisibility(
+  current: ProfileVisibility,
+  minimum: ProfileVisibility
+): ProfileVisibility {
+  const rank: Record<ProfileVisibility, number> = {
+    everyone: 0,
+    followers: 1,
+    friends: 2,
+    onlyMe: 3,
+  };
+  return rank[current] < rank[minimum] ? minimum : current;
+}
+
+function canViewByVisibility(
+  visibility: ProfileVisibility,
+  relationship: ProfileRelationship
+): boolean {
+  if (relationship.isSelf) return true;
+  if (visibility === "everyone") return true;
+  if (visibility === "followers") return relationship.isFollowing;
+  if (visibility === "friends") return relationship.isFriend;
+  return false;
+}
+
+function buildProfileVisibility(
+  settings: any,
+  relationship: ProfileRelationship
+) {
+  const profileVisibility = normalizeProfileVisibility(settings?.profileVisibility);
+  const effectiveVisibility = settings?.privateAccount && !relationship.isSelf
+    ? {
+        ...profileVisibility,
+        posts: minVisibility(profileVisibility.posts, "followers"),
+        followers: minVisibility(profileVisibility.followers, "followers"),
+        following: minVisibility(profileVisibility.following, "followers"),
+      }
+    : profileVisibility;
+
+  const visible = Object.fromEntries(
+    Object.entries(effectiveVisibility).map(([key, value]) => [
+      key,
+      canViewByVisibility(value, relationship),
+    ])
+  );
+
+  return {
+    fields: effectiveVisibility,
+    visible,
+    privateAccount: settings?.privateAccount === true,
+  };
+}
 
 function parseLimit(raw: unknown, fallback: number, min: number, max: number): number {
   const parsed = Number.parseInt(String(raw || ""), 10);
@@ -143,16 +251,47 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
     throw new HttpError(404, "User not found");
   }
 
+  const isSelf = viewerUserId === targetUserId;
+  const [settingsDoc, isFollowing, isFollowedBy] = await Promise.all([
+    queryOne(
+      `SELECT settings FROM user_settings WHERE user_id = $1`,
+      [targetUserId]
+    ),
+    isSelf
+      ? Promise.resolve(null)
+      : queryOne(
+          `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
+          [viewerUserId, targetUserId]
+        ),
+    isSelf
+      ? Promise.resolve(null)
+      : queryOne(
+          `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
+          [targetUserId, viewerUserId]
+        ),
+  ]);
+  const relationship: ProfileRelationship = {
+    isSelf,
+    isFollowing: !!isFollowing,
+    isFollowedBy: !!isFollowedBy,
+    isFriend: !!isFollowing && !!isFollowedBy,
+  };
+  const settings = mergeSettings(settingsDoc?.settings || {});
+  const visibility = buildProfileVisibility(settings, relationship);
+  const visible = visibility.visible as Record<string, boolean>;
+
   const [stats, posts] = await Promise.all([
     buildStats(targetUserId),
-    queryMany(
-      `SELECT *
-       FROM posts
-       WHERE author_id = $1
-       ORDER BY created_at DESC
-       LIMIT $2`,
-      [targetUserId, limit]
-    ),
+    visible.posts
+      ? queryMany(
+          `SELECT *
+           FROM posts
+           WHERE author_id = $1
+           ORDER BY created_at DESC
+           LIMIT $2`,
+          [targetUserId, limit]
+        )
+      : Promise.resolve([]),
   ]);
 
   const summary = {
@@ -160,17 +299,24 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
       id: user.user_id,
       username: user.username,
       displayName: user.display_name || user.username,
-      bio: user.bio || "",
-      location: user.location || "",
-      website: user.website || "",
+      bio: visible.bio ? (user.bio || "") : "",
+      location: visible.location ? (user.location || "") : "",
+      website: visible.website ? (user.website || "") : "",
       isVerified: user.is_verified === true,
-      createdAt: toIso(user.created_at),
+      createdAt: visible.joined ? toIso(user.created_at) : null,
     },
-    stats,
+    stats: {
+      posts: visible.posts ? stats.posts : 0,
+      followers: visible.followers ? stats.followers : 0,
+      following: visible.following ? stats.following : 0,
+      likes: visible.likes ? stats.likes : 0,
+    },
     posts: posts.map(mapProfilePost),
+    visibility,
+    relationship,
   };
 
-  if (viewerUserId === targetUserId) {
+  if (isSelf) {
     const likedPosts = await queryMany(
       `SELECT p.*
        FROM post_likes pl
@@ -187,23 +333,8 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
     };
   }
 
-  const [isFollowing, isFollowedBy] = await Promise.all([
-    queryOne(
-      `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
-      [viewerUserId, targetUserId]
-    ),
-    queryOne(
-      `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
-      [targetUserId, viewerUserId]
-    ),
-  ]);
-
   return {
     ...summary,
-    relationship: {
-      isFollowing: !!isFollowing,
-      isFollowedBy: !!isFollowedBy,
-    },
   };
 }
 
@@ -611,10 +742,7 @@ export default async function userService(app: any) {
       [request.user.userId]
     );
     return {
-      settings: {
-        ...DEFAULT_SETTINGS,
-        ...(settingsDoc?.settings || {}),
-      },
+      settings: mergeSettings(settingsDoc?.settings || {}),
     };
   });
 
@@ -625,11 +753,15 @@ export default async function userService(app: any) {
       [request.user.userId]
     );
 
-    const settings = {
-      ...DEFAULT_SETTINGS,
-      ...(existing?.settings || {}),
+    const existingSettings = existing?.settings || {};
+    const settings = mergeSettings({
+      ...existingSettings,
       ...(incoming || {}),
-    };
+      profileVisibility: {
+        ...(existingSettings?.profileVisibility || {}),
+        ...(incoming?.profileVisibility || {}),
+      },
+    });
 
     await query(
       `INSERT INTO user_settings (user_id, settings, updated_at)

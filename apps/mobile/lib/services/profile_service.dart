@@ -1,5 +1,6 @@
 import '../core/network/api_client.dart';
 import '../core/storage/secure_store.dart';
+import 'profile_visibility.dart';
 
 class ProfileUser {
   ProfileUser({
@@ -120,12 +121,14 @@ class ProfileSummary {
     required this.stats,
     required this.posts,
     required this.liked,
+    required this.visibility,
   });
 
   final ProfileUser user;
   final ProfileStats stats;
   final List<ProfileFeedPost> posts;
   final List<ProfileFeedPost> liked;
+  final ProfileVisibility visibility;
 
   factory ProfileSummary.fromJson(Map<String, dynamic> json) {
     final posts = (json['posts'] as List<dynamic>? ?? [])
@@ -146,6 +149,9 @@ class ProfileSummary {
       ),
       posts: posts,
       liked: liked,
+      visibility: ProfileVisibility.fromSummaryJson(
+        json['visibility'] as Map<String, dynamic>?,
+      ),
     );
   }
 }
@@ -167,5 +173,29 @@ class ProfileService {
         ? data
         : <String, dynamic>{};
     return ProfileSummary.fromJson(payload);
+  }
+
+  Future<ProfileVisibility> fetchProfileVisibility() async {
+    final data = await _client.get('/users/me/settings', auth: true);
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    final settings = payload['settings'];
+    return ProfileVisibility.fromSettingsJson(
+      settings is Map<String, dynamic> ? settings : payload,
+    );
+  }
+
+  Future<ProfileVisibility> saveProfileVisibility(
+    ProfileVisibility visibility,
+  ) async {
+    final data = await _client.put(
+      '/users/me/settings',
+      auth: true,
+      body: visibility.toSettingsJson(),
+    );
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    final settings = payload['settings'];
+    return ProfileVisibility.fromSettingsJson(
+      settings is Map<String, dynamic> ? settings : payload,
+    );
   }
 }

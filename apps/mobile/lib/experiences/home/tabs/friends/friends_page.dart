@@ -116,14 +116,14 @@ class _FriendsPageState extends State<FriendsPage> {
 
   SentRequest _mapSent(FriendConnectionItem item) {
     final time = _formatRelativeTime(item.since);
-    final label = time.isEmpty ? 'Sent recently' : 'Sent $time';
+    final label = time.isEmpty ? 'Following recently' : 'Followed $time';
     return SentRequest(
       user: _mapUser(item.user),
       status: SentRequestStatus.pending,
       timeLabel: label,
       note: item.user.bio.isNotEmpty
           ? item.user.bio
-          : 'Awaiting response.',
+          : 'You follow this profile.',
     );
   }
 
@@ -147,9 +147,9 @@ class _FriendsPageState extends State<FriendsPage> {
   String _requestMessage(FriendConnectionUser user) {
     if (user.bio.isNotEmpty) return user.bio;
     if (user.location.isNotEmpty) {
-      return 'Based in ${user.location}. Wants to connect.';
+      return 'Based in ${user.location}. Follows you.';
     }
-    return 'Wants to connect on Prava.';
+    return 'Follows you on Prava.';
   }
 
   String _priorityLabel(DateTime? since) {
@@ -226,7 +226,7 @@ class _FriendsPageState extends State<FriendsPage> {
     HapticFeedback.selectionClick();
     final ok = await _runAction(
       request.user.id,
-      'Unable to accept request',
+      'Unable to follow back',
       () => _connectionsService.setFollow(request.user.id, true),
     );
     if (!ok || !mounted) return;
@@ -251,7 +251,7 @@ class _FriendsPageState extends State<FriendsPage> {
     });
     PravaToast.show(
       context,
-      message: 'Friend request accepted',
+      message: 'Followed back',
       type: PravaToastType.success,
     );
   }
@@ -260,7 +260,7 @@ class _FriendsPageState extends State<FriendsPage> {
     HapticFeedback.selectionClick();
     final ok = await _runAction(
       request.user.id,
-      'Unable to decline request',
+      'Unable to remove follower',
       () => _connectionsService.removeFollower(request.user.id),
     );
     if (!ok || !mounted) return;
@@ -270,7 +270,7 @@ class _FriendsPageState extends State<FriendsPage> {
     });
     PravaToast.show(
       context,
-      message: 'Request declined',
+      message: 'Follower removed',
       type: PravaToastType.info,
     );
   }
@@ -279,7 +279,7 @@ class _FriendsPageState extends State<FriendsPage> {
     HapticFeedback.selectionClick();
     final ok = await _runAction(
       request.user.id,
-      'Unable to cancel request',
+      'Unable to unfollow',
       () => _connectionsService.setFollow(request.user.id, false),
     );
     if (!ok || !mounted) return;
@@ -289,24 +289,8 @@ class _FriendsPageState extends State<FriendsPage> {
     });
     PravaToast.show(
       context,
-      message: 'Request canceled',
+      message: 'Unfollowed',
       type: PravaToastType.warning,
-    );
-  }
-
-  void _nudgeSent(SentRequest request) {
-    HapticFeedback.selectionClick();
-    _updateSentRequest(
-      request.user.id,
-      (item) => item.copyWith(
-        status: SentRequestStatus.pending,
-        timeLabel: 'Nudged just now',
-      ),
-    );
-    PravaToast.show(
-      context,
-      message: 'Nudge sent to @${request.user.username}',
-      type: PravaToastType.success,
     );
   }
 
@@ -412,101 +396,28 @@ class _FriendsPageState extends State<FriendsPage> {
     });
   }
 
-  void _updateSentRequest(
-    String userId,
-    SentRequest Function(SentRequest) update,
-  ) {
-    final index = _sent.indexWhere((item) => item.user.id == userId);
-    if (index == -1) return;
-    setState(() {
-      final updated = update(_sent[index]);
-      _sent = List<SentRequest>.from(_sent);
-      _sent[index] = updated;
-    });
-  }
-
   void _openProfile(
     FriendUser user, {
     required bool isFollowing,
     required bool isFollowedBy,
   }) {
     HapticFeedback.selectionClick();
-    final profile = _buildPublicProfile(
-      user,
-      isFollowing: isFollowing,
-      isFollowedBy: isFollowedBy,
-    );
     PravaNavigator.push(
       context,
       PublicProfilePage(
         userId: user.id,
-        initialProfile: profile,
         initialIsFollowing: isFollowing,
         initialIsFollowedBy: isFollowedBy,
       ),
     );
   }
 
-  PublicProfile _buildPublicProfile(
-    FriendUser user, {
-    required bool isFollowing,
-    required bool isFollowedBy,
-  }) {
-    String statusLine = 'Active on Prava';
-    if (isFollowing && isFollowedBy) {
-      statusLine = 'Connected on Prava';
-    } else if (isFollowedBy) {
-      statusLine = 'Requested you on Prava';
-    } else if (isFollowing) {
-      statusLine = 'You requested on Prava';
-    }
-
-    final tags = user.tags.isEmpty
-        ? const ['#prava']
-        : user.tags
-            .take(3)
-            .map(
-              (tag) => '#${tag.toLowerCase().replaceAll(' ', '')}',
-            )
-            .toList();
-
-    return PublicProfile(
-      displayName: user.displayName,
-      username: user.username,
-      bio: user.bio,
-      location: user.location,
-      website: 'prava.app/@${user.username}',
-      joined: user.joined,
-      verified: user.isVerified,
-      online: user.isOnline,
-      statusLine: statusLine,
-      coverCaption: user.highlight,
-      stats: [
-        PublicStat(label: 'Posts', value: user.stats.posts),
-        PublicStat(label: 'Followers', value: user.stats.followers),
-        PublicStat(label: 'Following', value: user.stats.following),
-      ],
-      interests: user.tags,
-      posts: [
-        PublicPost(
-          body: user.highlight,
-          timestamp: 'now',
-          likes: _formatCount(user.stats.followers ~/ 3),
-          comments: _formatCount(user.stats.followers ~/ 18),
-          shares: _formatCount(user.stats.followers ~/ 40),
-          badge: isFollowing && isFollowedBy ? 'Friend' : 'Update',
-          tags: tags,
-        ),
-      ],
-    );
-  }
-
   String _sectionLabel(FriendsSection section) {
     switch (section) {
       case FriendsSection.requests:
-        return 'Friend requests';
+        return 'Followers';
       case FriendsSection.sent:
-        return 'Sent requests';
+        return 'Following';
       case FriendsSection.friends:
         return 'Friends';
     }
@@ -519,20 +430,6 @@ class _FriendsPageState extends State<FriendsPage> {
       case SentRequestStatus.seen:
         return PravaColors.accentPrimary;
     }
-  }
-
-  static String _formatCount(int value) {
-    if (value >= 1000000) {
-      final short =
-          (value / 1000000).toStringAsFixed(value % 1000000 == 0 ? 0 : 1);
-      return '${short}M';
-    }
-    if (value >= 1000) {
-      final short =
-          (value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1);
-      return '${short}K';
-    }
-    return value.toString();
   }
 
   Widget _buildSectionBody({
@@ -555,8 +452,8 @@ class _FriendsPageState extends State<FriendsPage> {
           return _EmptyState(
             key: const ValueKey('requests-empty'),
             icon: CupertinoIcons.person_crop_circle_badge_exclam,
-            title: 'No requests yet',
-            subtitle: 'New friend requests will appear here.',
+            title: 'No followers yet',
+            subtitle: 'People who follow you will appear here.',
             primary: primary,
             secondary: secondary,
           );
@@ -571,7 +468,7 @@ class _FriendsPageState extends State<FriendsPage> {
             _SectionHeader(
               title: _sectionLabel(FriendsSection.requests),
               subtitle:
-                  '${_requests.length} pending | ${_friends.length} total friends',
+                  '${_requests.length} followers | ${_friends.length} friends',
               primary: primary,
               secondary: secondary,
             ),
@@ -606,8 +503,8 @@ class _FriendsPageState extends State<FriendsPage> {
           return _EmptyState(
             key: const ValueKey('sent-empty'),
             icon: CupertinoIcons.paperplane,
-            title: 'No sent requests',
-            subtitle: 'Send new requests to grow your circle.',
+            title: 'Not following anyone',
+            subtitle: 'People you follow will appear here.',
             primary: primary,
             secondary: secondary,
           );
@@ -622,7 +519,7 @@ class _FriendsPageState extends State<FriendsPage> {
             _SectionHeader(
               title: _sectionLabel(FriendsSection.sent),
               subtitle:
-                  '${_sent.length} waiting | Track responses in realtime',
+                  '${_sent.length} following | Follow back creates friendship',
               primary: primary,
               secondary: secondary,
             ),
@@ -641,7 +538,11 @@ class _FriendsPageState extends State<FriendsPage> {
                   onCancel: () {
                     _cancelSent(request);
                   },
-                  onNudge: () => _nudgeSent(request),
+                  onView: () => _openProfile(
+                    request.user,
+                    isFollowing: true,
+                    isFollowedBy: false,
+                  ),
                   onProfile: () => _openProfile(
                     request.user,
                     isFollowing: true,
@@ -657,7 +558,7 @@ class _FriendsPageState extends State<FriendsPage> {
             key: const ValueKey('friends-empty'),
             icon: CupertinoIcons.person_2,
             title: 'No friends yet',
-            subtitle: 'Accept requests to start building your network.',
+            subtitle: 'Follow someone back to become friends.',
             primary: primary,
             secondary: secondary,
           );
@@ -871,9 +772,9 @@ class _SectionMenu extends StatelessWidget {
   String _label(FriendsSection section) {
     switch (section) {
       case FriendsSection.requests:
-        return 'Requests';
+        return 'Followers';
       case FriendsSection.sent:
-        return 'Sent';
+        return 'Following';
       case FriendsSection.friends:
         return 'Friends';
     }
@@ -882,7 +783,7 @@ class _SectionMenu extends StatelessWidget {
   IconData _icon(FriendsSection section) {
     switch (section) {
       case FriendsSection.requests:
-        return CupertinoIcons.person_crop_circle_badge_plus;
+        return CupertinoIcons.person_crop_circle;
       case FriendsSection.sent:
         return CupertinoIcons.paperplane_fill;
       case FriendsSection.friends:
@@ -992,7 +893,7 @@ class _SummaryStrip extends StatelessWidget {
       children: [
         Expanded(
           child: _SummaryTile(
-            label: 'Requests',
+            label: 'Followers',
             count: requests,
             selected: selected == FriendsSection.requests,
             primary: primary,
@@ -1006,7 +907,7 @@ class _SummaryStrip extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: _SummaryTile(
-            label: 'Sent',
+            label: 'Following',
             count: sent,
             selected: selected == FriendsSection.sent,
             primary: primary,
@@ -1289,7 +1190,7 @@ class _FriendRequestCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _ActionButton(
-                  label: 'Accept',
+                  label: 'Follow back',
                   onTap: onAccept,
                   filled: true,
                   icon: CupertinoIcons.check_mark,
@@ -1298,7 +1199,7 @@ class _FriendRequestCard extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _ActionButton(
-                  label: 'Decline',
+                  label: 'Remove',
                   onTap: onDecline,
                   filled: false,
                   icon: CupertinoIcons.xmark,
@@ -1323,7 +1224,7 @@ class _SentRequestCard extends StatelessWidget {
     required this.surface,
     required this.statusColor,
     required this.onCancel,
-    required this.onNudge,
+    required this.onView,
     required this.onProfile,
   });
 
@@ -1335,7 +1236,7 @@ class _SentRequestCard extends StatelessWidget {
   final Color surface;
   final Color statusColor;
   final VoidCallback onCancel;
-  final VoidCallback onNudge;
+  final VoidCallback onView;
   final VoidCallback onProfile;
 
   @override
@@ -1439,16 +1340,16 @@ class _SentRequestCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _ActionButton(
-                  label: 'Nudge',
-                  onTap: onNudge,
+                  label: 'View',
+                  onTap: onView,
                   filled: true,
-                  icon: CupertinoIcons.bell_solid,
+                  icon: CupertinoIcons.person_crop_circle,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _ActionButton(
-                  label: 'Cancel',
+                  label: 'Unfollow',
                   onTap: onCancel,
                   filled: false,
                   icon: CupertinoIcons.xmark_circle,
@@ -2296,9 +2197,9 @@ class SentRequest {
   String get statusLabel {
     switch (status) {
       case SentRequestStatus.pending:
-        return 'Pending';
+        return 'Following';
       case SentRequestStatus.seen:
-        return 'Seen';
+        return 'Following';
     }
   }
 

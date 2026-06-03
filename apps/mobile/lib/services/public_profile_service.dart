@@ -1,5 +1,6 @@
 import '../core/network/api_client.dart';
 import '../core/storage/secure_store.dart';
+import 'profile_visibility.dart';
 
 class PublicProfileUser {
   PublicProfileUser({
@@ -137,12 +138,14 @@ class PublicProfileSummary {
     required this.stats,
     required this.posts,
     required this.relationship,
+    required this.visibility,
   });
 
   final PublicProfileUser user;
   final PublicProfileStats stats;
   final List<PublicProfilePost> posts;
   final PublicProfileRelationship relationship;
+  final ProfileVisibility visibility;
 
   factory PublicProfileSummary.fromJson(Map<String, dynamic> json) {
     final posts = (json['posts'] as List<dynamic>? ?? [])
@@ -160,6 +163,9 @@ class PublicProfileSummary {
       posts: posts,
       relationship: PublicProfileRelationship.fromJson(
         json['relationship'] as Map<String, dynamic>? ?? {},
+      ),
+      visibility: ProfileVisibility.fromSummaryJson(
+        json['visibility'] as Map<String, dynamic>?,
       ),
     );
   }
@@ -185,5 +191,17 @@ class PublicProfileService {
         ? data
         : <String, dynamic>{};
     return PublicProfileSummary.fromJson(payload);
+  }
+
+  Future<bool> setFollow(String userId, bool follow) async {
+    final data = await _client.put(
+      '/users/$userId/follow',
+      auth: true,
+      body: {'follow': follow},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['following'] == true;
+    }
+    return follow;
   }
 }

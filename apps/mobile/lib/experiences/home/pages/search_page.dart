@@ -12,9 +12,6 @@ import '../../../ui-system/typography.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
 import '../../../services/user_search_service.dart';
-import '../../../services/chat_service.dart';
-import '../tabs/chats/chat_thread_page.dart';
-import '../tabs/chats/chats_page.dart';
 import '../tabs/profile/public_profile_page.dart';
 
 class SearchPage extends StatefulWidget {
@@ -27,7 +24,6 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _controller = TextEditingController();
   final UserSearchService _searchService = UserSearchService();
-  final ChatService _chatService = ChatService();
   final Set<String> _pendingActions = <String>{};
 
   Timer? _debounce;
@@ -126,7 +122,7 @@ class _SearchPageState extends State<SearchPage> {
       setState(() => _pendingActions.remove(user.id));
       PravaToast.show(
         context,
-        message: 'Unable to update friend status',
+        message: 'Unable to update follow status',
         type: PravaToastType.error,
       );
     }
@@ -143,96 +139,11 @@ class _SearchPageState extends State<SearchPage> {
     _results[index] = updated;
   }
 
-  Future<void> _startChat(UserSearchResult user) async {
-    HapticFeedback.selectionClick();
-    if (_isPending(user.id)) return;
-    setState(() => _pendingActions.add(user.id));
-
-    try {
-      final conversationId =
-          await _chatService.createDm(otherUserId: user.id);
-      if (!mounted) return;
-      setState(() => _pendingActions.remove(user.id));
-
-      if (conversationId == null || conversationId.isEmpty) {
-        PravaToast.show(
-          context,
-          message: 'Unable to start chat',
-          type: PravaToastType.error,
-        );
-        return;
-      }
-
-      final preview = ChatPreview(
-        id: conversationId,
-        name: user.displayName.isNotEmpty ? user.displayName : user.username,
-        lastMessage: 'Say hello on Prava',
-        time: 'Now',
-        unreadCount: 0,
-        isGroup: false,
-        isOnline: false,
-        isMuted: false,
-        isPinned: false,
-        isTyping: false,
-        lastMessageFromMe: false,
-        delivery: MessageDeliveryState.sent,
-        lastMessageId: null,
-        lastMessageSeq: null,
-        lastMessageType: ChatMessageType.text,
-        lastMessageDeletedForAllAt: null,
-      );
-
-      PravaNavigator.push(
-        context,
-        ChatThreadPage(chat: preview),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _pendingActions.remove(user.id));
-      PravaToast.show(
-        context,
-        message: 'Unable to start chat',
-        type: PravaToastType.error,
-      );
-    }
-  }
-
   void _openProfile(UserSearchResult user) {
-    final profile = PublicProfile(
-      displayName: user.displayName.isNotEmpty ? user.displayName : user.username,
-      username: user.username,
-      bio: 'Premium Prava member. Creating and connecting in realtime.',
-      location: 'Prava Network',
-      website: 'prava.app/@${user.username}',
-      joined: 'Joined recently',
-      verified: user.isVerified,
-      online: user.isFriend,
-      statusLine: user.isFriend ? 'Connected on Prava' : 'Active on Prava',
-      coverCaption: 'Prava community',
-      stats: [
-        PublicStat(label: 'Posts', value: 0),
-        PublicStat(label: 'Followers', value: 0),
-        PublicStat(label: 'Following', value: 0),
-      ],
-      interests: ['Realtime', 'Community', 'Security'],
-      posts: [
-        PublicPost(
-          body: 'New to Prava. Building my public profile.',
-          timestamp: 'now',
-          likes: '0',
-          comments: '0',
-          shares: '0',
-          badge: 'New',
-          tags: ['#prava'],
-        ),
-      ],
-    );
-
     PravaNavigator.push(
       context,
       PublicProfilePage(
         userId: user.id,
-        initialProfile: profile,
         initialIsFollowing: user.isFollowing,
         initialIsFollowedBy: user.isFollowedBy,
       ),
@@ -330,13 +241,7 @@ class _SearchPageState extends State<SearchPage> {
                                     border: border,
                                     pending: pending,
                                     onTap: () => _openProfile(user),
-                                    onAction: () {
-                                      if (user.isFriend) {
-                                        _startChat(user);
-                                      } else {
-                                        _toggleFollow(user);
-                                      }
-                                    },
+                                    onAction: () => _toggleFollow(user),
                                   );
                                 },
                               )
@@ -574,16 +479,18 @@ class _ActionButton extends StatelessWidget {
     }
 
     if (user.isFriend) {
-      return _IconActionButton(
-        icon: CupertinoIcons.chat_bubble_2_fill,
+      return _TextActionButton(
+        label: 'Friends',
+        icon: CupertinoIcons.person_2_fill,
+        outlined: true,
         onTap: onTap,
       );
     }
 
     if (user.isRequested) {
       return _TextActionButton(
-        label: 'Requested',
-        icon: CupertinoIcons.xmark,
+        label: 'Following',
+        icon: CupertinoIcons.check_mark,
         outlined: true,
         onTap: onTap,
       );
@@ -599,40 +506,10 @@ class _ActionButton extends StatelessWidget {
     }
 
     return _TextActionButton(
-      label: 'Add friend',
+      label: 'Follow',
       icon: CupertinoIcons.person_add_solid,
       outlined: false,
       onTap: onTap,
-    );
-  }
-}
-
-class _IconActionButton extends StatelessWidget {
-  const _IconActionButton({
-    required this.icon,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: PravaColors.accentPrimary,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(
-          icon,
-          size: 16,
-          color: Colors.white,
-        ),
-      ),
     );
   }
 }

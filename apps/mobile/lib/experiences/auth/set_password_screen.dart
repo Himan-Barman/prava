@@ -183,8 +183,6 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
         isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
     final secondaryText =
         isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final tertiaryText =
-        isDark ? PravaColors.darkTextTertiary : PravaColors.lightTextTertiary;
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
@@ -249,15 +247,6 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                           _buildPasswordCard(
                             isDark: isDark,
                             primaryText: primaryText,
-                            secondaryText: secondaryText,
-                            tertiaryText: tertiaryText,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Protected with Argon2id hashing and zero-knowledge design.',
-                            style: PravaTypography.caption.copyWith(
-                              color: tertiaryText,
-                            ),
                           ),
                         ],
                       ),
@@ -275,23 +264,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
   Widget _buildPasswordCard({
     required bool isDark,
     required Color primaryText,
-    required Color secondaryText,
-    required Color tertiaryText,
   }) {
-    final confirmText = _confirmController.text;
-    final showMatchState = confirmText.isNotEmpty;
-    final matchLabel = showMatchState
-        ? (_matches ? 'Passwords match' : 'Passwords must match')
-        : 'Confirm your password';
-    final matchColor = showMatchState
-        ? (_matches ? secondaryText : PravaColors.error)
-        : tertiaryText;
-    final matchIcon = showMatchState
-        ? (_matches
-            ? Icons.check_circle_outline
-            : Icons.error_outline)
-        : Icons.info_outline;
-
     final cardColor = isDark
         ? Colors.white.withValues(alpha: 0.06)
         : Colors.white.withValues(alpha: 0.9);
@@ -346,57 +319,11 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                 controller: _passwordController,
                 autofillHints: const [AutofillHints.newPassword],
               ),
-              const SizedBox(height: 16),
-              _RuleItem(
-                label: '12+ characters',
-                satisfied: _hasLength,
-                activeColor: PravaColors.success,
-                inactiveColor: tertiaryText,
-              ),
-              _RuleItem(
-                label: 'Capital letter',
-                satisfied: _hasUpper,
-                activeColor: PravaColors.success,
-                inactiveColor: tertiaryText,
-              ),
-              _RuleItem(
-                label: 'Number',
-                satisfied: _hasNumber,
-                activeColor: PravaColors.success,
-                inactiveColor: tertiaryText,
-              ),
-              _RuleItem(
-                label: 'Special character',
-                satisfied: _hasSymbol,
-                activeColor: PravaColors.success,
-                inactiveColor: tertiaryText,
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               PravaPasswordInput(
                 hint: 'Confirm password',
                 controller: _confirmController,
                 autofillHints: const [AutofillHints.newPassword],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(
-                    matchIcon,
-                    size: 16,
-                    color: showMatchState
-                        ? (_matches
-                            ? PravaColors.success
-                            : PravaColors.error)
-                        : tertiaryText,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    matchLabel,
-                    style: PravaTypography.caption.copyWith(
-                      color: matchColor,
-                    ),
-                  ),
-                ],
               ),
               const SizedBox(height: 22),
               PravaButton(
@@ -413,44 +340,5 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
 
   Widget _buildBackground(bool isDark) {
     return PravaBackground(isDark: isDark);
-  }
-}
-
-class _RuleItem extends StatelessWidget {
-  const _RuleItem({
-    required this.label,
-    required this.satisfied,
-    required this.activeColor,
-    required this.inactiveColor,
-  });
-
-  final String label;
-  final bool satisfied;
-  final Color activeColor;
-  final Color inactiveColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Icon(
-            satisfied
-                ? Icons.check_circle_outline
-                : Icons.radio_button_unchecked,
-            size: 16,
-            color: satisfied ? activeColor : inactiveColor,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: PravaTypography.caption.copyWith(
-              color: satisfied ? activeColor : inactiveColor,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
