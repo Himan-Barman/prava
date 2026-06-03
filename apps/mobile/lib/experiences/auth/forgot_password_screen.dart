@@ -103,110 +103,118 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
     final secondaryText =
         isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusScope.of(context).unfocus(),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Reset your password',
-                      style: PravaTypography.h1.copyWith(
-                        letterSpacing: -0.6,
-                        color: primaryText,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Enter your email and we will send a secure reset code.',
-                      style: PravaTypography.body.copyWith(
-                        color: secondaryText,
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-                    PravaInput(
-                      hint: 'Email address',
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                    ),
-                    const SizedBox(height: 20),
-                    PravaButton(
-                      label: _sent ? 'Resend reset code' : 'Send reset code',
-                      loading: _loading,
-                      onPressed: _canSend ? _requestReset : null,
-                    ),
-                    if (_sent) ...[
-                      const SizedBox(height: 20),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.04)
-                              : Colors.black.withValues(alpha: 0.04),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.08)
-                                : Colors.black.withValues(alpha: 0.08),
-                          ),
+          child: AnimatedPadding(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.only(bottom: keyboardInset),
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Reset your password',
+                        style: PravaTypography.h1.copyWith(
+                          letterSpacing: -0.6,
+                          color: primaryText,
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Check your inbox',
-                              style: PravaTypography.body.copyWith(
-                                color: primaryText,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'We sent a reset code to ${_emailController.text.trim()}.',
-                              style: PravaTypography.bodySmall.copyWith(
-                                color: secondaryText,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Reset codes expire in 10 minutes.',
-                              style: PravaTypography.caption.copyWith(
-                                color: secondaryText,
-                              ),
-                            ),
-                          ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Enter your email and we will send a secure reset code.',
+                        style: PravaTypography.body.copyWith(
+                          color: secondaryText,
                         ),
+                      ),
+                      const SizedBox(height: 28),
+                      PravaInput(
+                        hint: 'Email address',
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
                       ),
                       const SizedBox(height: 20),
                       PravaButton(
-                        label: 'Enter reset code',
-                        onPressed: _openReset,
+                        label: _sent ? 'Resend reset code' : 'Send reset code',
+                        loading: _loading,
+                        onPressed: _canSend ? _requestReset : null,
                       ),
-                    ],
-                    const SizedBox(height: 24),
-                    Center(
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Text(
-                          'Back to sign in',
-                          style: PravaTypography.body.copyWith(
-                            color: PravaColors.accentPrimary,
-                            fontWeight: FontWeight.w600,
+                      if (_sent) ...[
+                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.04)
+                                : Colors.black.withValues(alpha: 0.04),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.08)
+                                  : Colors.black.withValues(alpha: 0.08),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Check your inbox',
+                                style: PravaTypography.body.copyWith(
+                                  color: primaryText,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'We sent a reset code to ${_emailController.text.trim()}.',
+                                style: PravaTypography.bodySmall.copyWith(
+                                  color: secondaryText,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Reset codes expire in 10 minutes.',
+                                style: PravaTypography.caption.copyWith(
+                                  color: secondaryText,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        PravaButton(
+                          label: 'Enter reset code',
+                          onPressed: _openReset,
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      Center(
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Text(
+                            'Back to sign in',
+                            style: PravaTypography.bodySmall.copyWith(
+                              color: PravaColors.accentPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

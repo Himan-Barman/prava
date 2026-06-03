@@ -245,58 +245,67 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
         isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
     final tertiaryText =
         isDark ? PravaColors.darkTextTertiary : PravaColors.lightTextTertiary;
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Stack(
           children: [
             _buildBackground(isDark),
             SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Verify your email',
-                          style: PravaTypography.h1.copyWith(
-                            letterSpacing: -0.6,
-                            color: primaryText,
+              child: AnimatedPadding(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsets.only(bottom: keyboardInset),
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Verify your email',
+                            style: PravaTypography.h1.copyWith(
+                              letterSpacing: -0.6,
+                              color: primaryText,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Enter the 6-digit code sent to ${widget.email}.',
-                          style: PravaTypography.body.copyWith(
-                            color: secondaryText,
+                          const SizedBox(height: 8),
+                          Text(
+                            'Enter the 6-digit code sent to ${widget.email}.',
+                            style: PravaTypography.body.copyWith(
+                              color: secondaryText,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                        _buildOtpCard(
-                          isDark: isDark,
-                          primaryText: primaryText,
-                          secondaryText: secondaryText,
-                          tertiaryText: tertiaryText,
-                        ),
-                        const SizedBox(height: 20),
-                        Center(
-                          child: GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Text(
-                              'Change email',
-                              style: PravaTypography.body.copyWith(
-                                color: PravaColors.accentPrimary,
-                                fontWeight: FontWeight.w600,
+                          const SizedBox(height: 24),
+                          _buildOtpCard(
+                            isDark: isDark,
+                            primaryText: primaryText,
+                            secondaryText: secondaryText,
+                            tertiaryText: tertiaryText,
+                          ),
+                          const SizedBox(height: 20),
+                          Center(
+                            child: GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: Text(
+                                'Change email',
+                                style: PravaTypography.body.copyWith(
+                                  color: PravaColors.accentPrimary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -320,8 +329,9 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
     final cardBorder = isDark
         ? Colors.white.withValues(alpha: 0.12)
         : Colors.black.withValues(alpha: 0.08);
-    final shadowColor =
-        isDark ? Colors.black.withValues(alpha: 0.4) : Colors.black.withValues(alpha: 0.08);
+    final shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.4)
+        : Colors.black.withValues(alpha: 0.08);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),

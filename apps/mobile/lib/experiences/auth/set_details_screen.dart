@@ -167,52 +167,61 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
         isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
     final tertiaryText =
         isDark ? PravaColors.darkTextTertiary : PravaColors.lightTextTertiary;
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Stack(
           children: [
             _buildBackground(isDark),
             SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Complete your profile',
-                          style: PravaTypography.h1.copyWith(
-                            letterSpacing: -0.6,
-                            color: primaryText,
+              child: AnimatedPadding(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsets.only(bottom: keyboardInset),
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Complete your profile',
+                            style: PravaTypography.h1.copyWith(
+                              letterSpacing: -0.6,
+                              color: primaryText,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Add trusted details to protect your account.',
-                          style: PravaTypography.body.copyWith(
-                            color: secondaryText,
+                          const SizedBox(height: 8),
+                          Text(
+                            'Add trusted details to protect your account.',
+                            style: PravaTypography.body.copyWith(
+                              color: secondaryText,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                        _buildDetailsCard(
-                          isDark: isDark,
-                          primaryText: primaryText,
-                          secondaryText: secondaryText,
-                          tertiaryText: tertiaryText,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Your phone stays private and is used for account recovery.',
-                          style: PravaTypography.caption.copyWith(
-                            color: tertiaryText,
+                          const SizedBox(height: 24),
+                          _buildDetailsCard(
+                            isDark: isDark,
+                            primaryText: primaryText,
+                            secondaryText: secondaryText,
+                            tertiaryText: tertiaryText,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 16),
+                          Text(
+                            'Your phone stays private and is used for account recovery.',
+                            style: PravaTypography.caption.copyWith(
+                              color: tertiaryText,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -236,8 +245,9 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
     final cardBorder = isDark
         ? Colors.white.withValues(alpha: 0.12)
         : Colors.black.withValues(alpha: 0.08);
-    final shadowColor =
-        isDark ? Colors.black.withValues(alpha: 0.4) : Colors.black.withValues(alpha: 0.08);
+    final shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.4)
+        : Colors.black.withValues(alpha: 0.08);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),

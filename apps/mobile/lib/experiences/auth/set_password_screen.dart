@@ -203,52 +203,61 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
         isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
     final tertiaryText =
         isDark ? PravaColors.darkTextTertiary : PravaColors.lightTextTertiary;
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Stack(
           children: [
             _buildBackground(isDark),
             SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Secure your account',
-                          style: PravaTypography.h1.copyWith(
-                            letterSpacing: -0.6,
-                            color: primaryText,
+              child: AnimatedPadding(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsets.only(bottom: keyboardInset),
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Secure your account',
+                            style: PravaTypography.h1.copyWith(
+                              letterSpacing: -0.6,
+                              color: primaryText,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Create a strong password to unlock your private workspace.',
-                          style: PravaTypography.body.copyWith(
-                            color: secondaryText,
+                          const SizedBox(height: 8),
+                          Text(
+                            'Create a strong password to unlock your private workspace.',
+                            style: PravaTypography.body.copyWith(
+                              color: secondaryText,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                        _buildPasswordCard(
-                          isDark: isDark,
-                          primaryText: primaryText,
-                          secondaryText: secondaryText,
-                          tertiaryText: tertiaryText,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Protected with Argon2id hashing and zero-knowledge design.',
-                          style: PravaTypography.caption.copyWith(
-                            color: tertiaryText,
+                          const SizedBox(height: 24),
+                          _buildPasswordCard(
+                            isDark: isDark,
+                            primaryText: primaryText,
+                            secondaryText: secondaryText,
+                            tertiaryText: tertiaryText,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 16),
+                          Text(
+                            'Protected with Argon2id hashing and zero-knowledge design.',
+                            style: PravaTypography.caption.copyWith(
+                              color: tertiaryText,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -286,8 +295,9 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
     final cardBorder = isDark
         ? Colors.white.withValues(alpha: 0.12)
         : Colors.black.withValues(alpha: 0.08);
-    final shadowColor =
-        isDark ? Colors.black.withValues(alpha: 0.4) : Colors.black.withValues(alpha: 0.08);
+    final shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.4)
+        : Colors.black.withValues(alpha: 0.08);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),

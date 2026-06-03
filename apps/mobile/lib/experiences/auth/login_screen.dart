@@ -27,8 +27,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
-    with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
@@ -37,16 +36,9 @@ class _LoginScreenState extends State<LoginScreen>
   bool _showCard = false;
   final AuthService _auth = AuthService();
 
-  late final AnimationController _lockController;
-
   @override
   void initState() {
     super.initState();
-    _lockController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1600),
-    )..repeat(reverse: true);
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() => _showHeader = true);
@@ -63,7 +55,6 @@ class _LoginScreenState extends State<LoginScreen>
     _passwordController.clear();
     _emailController.dispose();
     _passwordController.dispose();
-    _lockController.dispose();
     super.dispose();
   }
 
@@ -165,9 +156,10 @@ class _LoginScreenState extends State<LoginScreen>
         isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
     final tertiaryText =
         isDark ? PravaColors.darkTextTertiary : PravaColors.lightTextTertiary;
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusScope.of(context).unfocus(),
@@ -177,169 +169,194 @@ class _LoginScreenState extends State<LoginScreen>
             SafeArea(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight,
-                      ),
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 32, 24, 96),
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 440),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                AnimatedSlide(
-                                  offset: _showHeader
-                                      ? Offset.zero
-                                      : const Offset(0, 0.05),
-                                  duration: const Duration(milliseconds: 520),
-                                  curve: Curves.easeOut,
-                                  child: AnimatedOpacity(
-                                    opacity: _showHeader ? 1 : 0,
+                  return AnimatedPadding(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    padding: EdgeInsets.only(bottom: keyboardInset),
+                    child: SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      physics: const BouncingScrollPhysics(),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight,
+                        ),
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 440),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  AnimatedSlide(
+                                    offset: _showHeader
+                                        ? Offset.zero
+                                        : const Offset(0, 0.05),
                                     duration:
                                         const Duration(milliseconds: 520),
                                     curve: Curves.easeOut,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          "Prava",
-                                          style: PravaTypography.h1.copyWith(
-                                            letterSpacing: -0.8,
-                                            color: primaryText,
+                                    child: AnimatedOpacity(
+                                      opacity: _showHeader ? 1 : 0,
+                                      duration:
+                                          const Duration(milliseconds: 520),
+                                      curve: Curves.easeOut,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            "Prava",
+                                            style:
+                                                PravaTypography.h1.copyWith(
+                                              letterSpacing: -0.8,
+                                              color: primaryText,
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(height: 10),
-                                        Text(
-                                          "Sign in to your private workspace",
-                                          style: PravaTypography.bodyLarge
-                                              .copyWith(
-                                            color: secondaryText,
-                                            letterSpacing: 0.2,
+                                          const SizedBox(height: 10),
+                                          Text(
+                                            "Sign in to your private workspace",
+                                            style: PravaTypography.bodyLarge
+                                                .copyWith(
+                                              color: secondaryText,
+                                              letterSpacing: 0.2,
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(height: 18),
-                                      ],
+                                          const SizedBox(height: 18),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 28),
-                                AnimatedSlide(
-                                  offset: _showCard
-                                      ? Offset.zero
-                                      : const Offset(0, 0.06),
-                                  duration: const Duration(milliseconds: 560),
-                                  curve: Curves.easeOut,
-                                  child: AnimatedOpacity(
-                                    opacity: _showCard ? 1 : 0,
+                                  const SizedBox(height: 28),
+                                  AnimatedSlide(
+                                    offset: _showCard
+                                        ? Offset.zero
+                                        : const Offset(0, 0.06),
                                     duration:
                                         const Duration(milliseconds: 560),
                                     curve: Curves.easeOut,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        _buildLoginCard(
-                                          isDark: isDark,
-                                          primaryText: primaryText,
-                                          secondaryText: secondaryText,
-                                          tertiaryText: tertiaryText,
-                                        ),
-                                        const SizedBox(height: 20),
-                                        Center(
-                                          child: GestureDetector(
-                                            onTap: () {
-                                              HapticFeedback.selectionClick();
-                                              PravaNavigator.push(
-                                                context,
-                                                const SignupScreen(),
-                                              );
-                                            },
-                                            child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 16,
-                                                vertical: 12,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: isDark
-                                                    ? Colors.white
-                                                        .withValues(alpha: 0.04)
-                                                    : Colors.white
-                                                        .withValues(alpha: 0.75),
-                                                borderRadius:
-                                                    BorderRadius.circular(18),
-                                                border: Border.all(
+                                    child: AnimatedOpacity(
+                                      opacity: _showCard ? 1 : 0,
+                                      duration:
+                                          const Duration(milliseconds: 560),
+                                      curve: Curves.easeOut,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _buildLoginCard(
+                                            isDark: isDark,
+                                            primaryText: primaryText,
+                                            secondaryText: secondaryText,
+                                            tertiaryText: tertiaryText,
+                                          ),
+                                          const SizedBox(height: 20),
+                                          Center(
+                                            child: GestureDetector(
+                                              onTap: () {
+                                                HapticFeedback.selectionClick();
+                                                PravaNavigator.push(
+                                                  context,
+                                                  const SignupScreen(),
+                                                );
+                                              },
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 16,
+                                                  vertical: 12,
+                                                ),
+                                                decoration: BoxDecoration(
                                                   color: isDark
                                                       ? Colors.white
-                                                          .withValues(alpha: 0.1)
-                                                      : Colors.black
-                                                          .withValues(alpha: 0.06),
-                                                ),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Text(
-                                                    "New here?",
-                                                    style: PravaTypography
-                                                        .bodySmall
-                                                        .copyWith(
-                                                      color: secondaryText,
-                                                    ),
+                                                          .withValues(
+                                                            alpha: 0.04,
+                                                          )
+                                                      : Colors.white
+                                                          .withValues(
+                                                            alpha: 0.75,
+                                                          ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(18),
+                                                  border: Border.all(
+                                                    color: isDark
+                                                        ? Colors.white
+                                                            .withValues(
+                                                              alpha: 0.1,
+                                                            )
+                                                        : Colors.black
+                                                            .withValues(
+                                                              alpha: 0.06,
+                                                            ),
                                                   ),
-                                                  const SizedBox(width: 6),
-                                                  Text(
-                                                    "Create account",
-                                                    style: PravaTypography
-                                                        .bodySmall
-                                                        .copyWith(
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      "New here?",
+                                                      style: PravaTypography
+                                                          .bodySmall
+                                                          .copyWith(
+                                                        color: secondaryText,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    Text(
+                                                      "Create account",
+                                                      style: PravaTypography
+                                                          .bodySmall
+                                                          .copyWith(
+                                                        color: PravaColors
+                                                            .accentPrimary,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    const Icon(
+                                                      Icons
+                                                          .arrow_forward_rounded,
+                                                      size: 16,
                                                       color: PravaColors
                                                           .accentPrimary,
-                                                      fontWeight:
-                                                          FontWeight.w600,
                                                     ),
-                                                  ),
-                                                  const SizedBox(width: 4),
-                                                  const Icon(
-                                                    Icons
-                                                        .arrow_forward_rounded,
-                                                    size: 16,
-                                                    color: PravaColors
-                                                        .accentPrimary,
-                                                  ),
-                                                ],
+                                                  ],
+                                                ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                        if (kDebugMode) ...[
-                                          const SizedBox(height: 18),
-                                          Center(
-                                            child: GestureDetector(
-                                              onTap: _devLogin,
-                                              child: Text(
-                                                "Dev login (debug only)",
-                                                style: PravaTypography.caption
-                                                    .copyWith(
-                                                  color: PravaColors
-                                                      .accentPrimary,
-                                                  fontWeight: FontWeight.w600,
+                                          if (kDebugMode) ...[
+                                            const SizedBox(height: 18),
+                                            Center(
+                                              child: GestureDetector(
+                                                onTap: _devLogin,
+                                                child: Text(
+                                                  "Dev login (debug only)",
+                                                  style: PravaTypography.caption
+                                                      .copyWith(
+                                                    color: PravaColors
+                                                        .accentPrimary,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
                                                 ),
                                               ),
+                                            ),
+                                          ],
+                                          const SizedBox(height: 22),
+                                          Center(
+                                            child: _buildSecurityFooter(
+                                              tertiaryText,
                                             ),
                                           ),
                                         ],
-                                      ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -347,17 +364,6 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
                   );
                 },
-              ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 12,
-              child: SafeArea(
-                top: false,
-                child: Center(
-                  child: _buildSecurityFooter(tertiaryText),
-                ),
               ),
             ),
           ],
@@ -378,8 +384,9 @@ class _LoginScreenState extends State<LoginScreen>
     final cardBorder = isDark
         ? Colors.white.withValues(alpha: 0.12)
         : Colors.black.withValues(alpha: 0.08);
-    final shadowColor =
-        isDark ? Colors.black.withValues(alpha: 0.4) : Colors.black.withValues(alpha: 0.08);
+    final shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.4)
+        : Colors.black.withValues(alpha: 0.08);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -493,31 +500,23 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildSecurityFooter(Color tertiaryText) {
-    return FadeTransition(
-      opacity: Tween(begin: 0.35, end: 0.9).animate(
-        CurvedAnimation(
-          parent: _lockController,
-          curve: Curves.easeInOut,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.lock_outline,
+          size: 16,
+          color: tertiaryText,
         ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.lock_outline,
-            size: 16,
+        const SizedBox(width: 6),
+        Text(
+          "End-to-end encrypted",
+          style: PravaTypography.caption.copyWith(
             color: tertiaryText,
+            letterSpacing: 0.2,
           ),
-          const SizedBox(width: 6),
-          Text(
-            "End-to-end encrypted",
-            style: PravaTypography.caption.copyWith(
-              color: tertiaryText,
-              letterSpacing: 0.2,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

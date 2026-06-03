@@ -274,9 +274,10 @@ class _SignupScreenState extends State<SignupScreen> {
             size: 18,
             color: _emailValid ? PravaColors.success : PravaColors.error,
           );
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusScope.of(context).unfocus(),
@@ -286,79 +287,88 @@ class _SignupScreenState extends State<SignupScreen> {
             SafeArea(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight,
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 440),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            "Create your account",
-                                            style:
-                                                PravaTypography.h1.copyWith(
-                                              letterSpacing: -0.6,
-                                              color: primaryText,
+                  return AnimatedPadding(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    padding: EdgeInsets.only(bottom: keyboardInset),
+                    child: SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      physics: const BouncingScrollPhysics(),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 440),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              "Create your account",
+                                              style:
+                                                  PravaTypography.h1.copyWith(
+                                                letterSpacing: -0.6,
+                                                color: primaryText,
+                                              ),
                                             ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            "Secure signup with verified email and device-bound sessions.",
-                                            style:
-                                                PravaTypography.body.copyWith(
-                                              color: secondaryText,
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              "Secure signup with verified email and device-bound sessions.",
+                                              style:
+                                                  PravaTypography.body.copyWith(
+                                                color: secondaryText,
+                                              ),
                                             ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    _StepBadge(
-                                      isDark: isDark,
-                                      textColor: secondaryText,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                const _StepIndicator(),
-                                const SizedBox(height: 20),
-                                _buildFormCard(
-                                  isDark: isDark,
-                                  primaryText: primaryText,
-                                  tertiaryText: tertiaryText,
-                                  emailSuffix: emailSuffix,
-                                  usernameStatus: status,
-                                ),
-                                const SizedBox(height: 24),
-                                Center(
-                                  child: GestureDetector(
-                                    onTap: () => Navigator.pop(context),
-                                    child: Text(
-                                      "Back to sign in",
-                                      style: PravaTypography.body.copyWith(
-                                        color: PravaColors.accentPrimary,
-                                        fontWeight: FontWeight.w600,
+                                      const SizedBox(width: 12),
+                                      _StepBadge(
+                                        isDark: isDark,
+                                        textColor: secondaryText,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const _StepIndicator(),
+                                  const SizedBox(height: 20),
+                                  _buildFormCard(
+                                    isDark: isDark,
+                                    primaryText: primaryText,
+                                    tertiaryText: tertiaryText,
+                                    emailSuffix: emailSuffix,
+                                    usernameStatus: status,
+                                  ),
+                                  const SizedBox(height: 24),
+                                  Center(
+                                    child: GestureDetector(
+                                      onTap: () => Navigator.pop(context),
+                                      child: Text(
+                                        "Back to sign in",
+                                        style:
+                                            PravaTypography.bodySmall.copyWith(
+                                          color: PravaColors.accentPrimary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -387,8 +397,9 @@ class _SignupScreenState extends State<SignupScreen> {
     final cardBorder = isDark
         ? Colors.white.withValues(alpha: 0.12)
         : Colors.black.withValues(alpha: 0.08);
-    final shadowColor =
-        isDark ? Colors.black.withValues(alpha: 0.4) : Colors.black.withValues(alpha: 0.08);
+    final shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.4)
+        : Colors.black.withValues(alpha: 0.08);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),

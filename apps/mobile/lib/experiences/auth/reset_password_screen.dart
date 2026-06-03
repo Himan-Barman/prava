@@ -138,83 +138,91 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     final subtitle = widget.email != null && widget.email!.isNotEmpty
         ? 'Enter the 6-digit reset code sent to ${widget.email}.'
         : 'Enter the 6-digit reset code from your email and choose a new password.';
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusScope.of(context).unfocus(),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Set a new password',
-                      style: PravaTypography.h1.copyWith(
-                        letterSpacing: -0.6,
-                        color: primaryText,
+          child: AnimatedPadding(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.only(bottom: keyboardInset),
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Set a new password',
+                        style: PravaTypography.h1.copyWith(
+                          letterSpacing: -0.6,
+                          color: primaryText,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      subtitle,
-                      style: PravaTypography.body.copyWith(
-                        color: secondaryText,
+                      const SizedBox(height: 8),
+                      Text(
+                        subtitle,
+                        style: PravaTypography.body.copyWith(
+                          color: secondaryText,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 28),
-                    PravaInput(
-                      hint: '6-digit reset code',
-                      controller: _tokenController,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(6),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    PravaPasswordInput(
-                      hint: 'New password',
-                      controller: _passwordController,
-                      autofillHints: const [AutofillHints.newPassword],
-                    ),
-                    const SizedBox(height: 12),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: LinearProgressIndicator(
-                        value: _strength,
-                        minHeight: 6,
-                        backgroundColor:
-                            isDark ? Colors.white12 : Colors.black12,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(_strengthColor),
+                      const SizedBox(height: 28),
+                      PravaInput(
+                        hint: '6-digit reset code',
+                        controller: _tokenController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(6),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 18),
-                    PravaPasswordInput(
-                      hint: 'Confirm password',
-                      controller: _confirmController,
-                      autofillHints: const [AutofillHints.newPassword],
-                    ),
-                    const SizedBox(height: 28),
-                    PravaButton(
-                      label: 'Update password',
-                      loading: _loading,
-                      onPressed: _valid ? _resetPassword : null,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'For security, all active sessions will be signed out.',
-                      style: PravaTypography.caption.copyWith(
-                        color: secondaryText,
+                      const SizedBox(height: 18),
+                      PravaPasswordInput(
+                        hint: 'New password',
+                        controller: _passwordController,
+                        autofillHints: const [AutofillHints.newPassword],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: _strength,
+                          minHeight: 6,
+                          backgroundColor:
+                              isDark ? Colors.white12 : Colors.black12,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(_strengthColor),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      PravaPasswordInput(
+                        hint: 'Confirm password',
+                        controller: _confirmController,
+                        autofillHints: const [AutofillHints.newPassword],
+                      ),
+                      const SizedBox(height: 28),
+                      PravaButton(
+                        label: 'Update password',
+                        loading: _loading,
+                        onPressed: _valid ? _resetPassword : null,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'For security, all active sessions will be signed out.',
+                        style: PravaTypography.caption.copyWith(
+                          color: secondaryText,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

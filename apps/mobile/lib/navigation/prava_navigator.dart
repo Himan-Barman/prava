@@ -1,15 +1,34 @@
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 
 class PravaNavigator {
-  static CupertinoPageRoute<T> route<T>(
+  static PageRoute<T> route<T>(
     Widget page, {
     bool fullscreenDialog = false,
     RouteSettings? settings,
   }) {
-    return CupertinoPageRoute<T>(
-      builder: (_) => page,
+    return PageRouteBuilder<T>(
+      pageBuilder: (_, __, ___) => page,
       fullscreenDialog: fullscreenDialog,
       settings: settings,
+      transitionDuration: const Duration(milliseconds: 260),
+      reverseTransitionDuration: const Duration(milliseconds: 220),
+      transitionsBuilder: (_, animation, __, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.04, 0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
     );
   }
 
