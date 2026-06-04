@@ -115,10 +115,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _openEditProfile() async {
     HapticFeedback.selectionClick();
     final changed = await Navigator.of(context, rootNavigator: true).push<bool>(
-      PravaNavigator.route(
-        const _ProfileEditPage(),
-        fullscreenDialog: true,
-      ),
+      PravaNavigator.route(const _ProfileEditPage(), fullscreenDialog: true),
     );
     if (changed == true) {
       _loadProfile();
@@ -133,19 +130,18 @@ class _ProfilePageState extends State<ProfilePage> {
     final parts = name.trim().split(RegExp(r'\s+'));
     if (parts.isEmpty || parts.first.isEmpty) return '?';
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts[0].substring(0, 1) + parts[1].substring(0, 1))
-        .toUpperCase();
+    return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
   }
 
   String _formatCount(int value) {
     if (value >= 1000000) {
-      final short =
-          (value / 1000000).toStringAsFixed(value % 1000000 == 0 ? 0 : 1);
+      final short = (value / 1000000).toStringAsFixed(
+        value % 1000000 == 0 ? 0 : 1,
+      );
       return '${short}M';
     }
     if (value >= 1000) {
-      final short =
-          (value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1);
+      final short = (value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1);
       return '${short}K';
     }
     return value.toString();
@@ -156,12 +152,15 @@ class _ProfilePageState extends State<ProfilePage> {
     if (_loading) return const ProfileSkeleton();
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
     final profile = _profile;
 
     if (profile == null) {
@@ -361,8 +360,7 @@ class _ProfileHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
+    final surface = isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
@@ -885,8 +883,9 @@ class _ProfileSection extends StatelessWidget {
         AnimatedCrossFade(
           firstChild: Column(children: children),
           secondChild: const SizedBox.shrink(),
-          crossFadeState:
-              collapsed ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          crossFadeState: collapsed
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
           duration: const Duration(milliseconds: 180),
         ),
       ],
@@ -916,10 +915,7 @@ class _ProfileInfoRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 38,
-            child: Icon(icon, size: 24, color: primary),
-          ),
+          SizedBox(width: 38, child: Icon(icon, size: 24, color: primary)),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -1014,11 +1010,11 @@ class _ProfileEditPageState extends State<_ProfileEditPage> {
       if (!mounted) return;
       final cropped = await Navigator.of(context, rootNavigator: true)
           .push<Uint8List>(
-        PravaNavigator.route(
-          _AvatarCropPage(imageBytes: bytes),
-          fullscreenDialog: true,
-        ),
-      );
+            PravaNavigator.route(
+              _AvatarCropPage(imageBytes: bytes),
+              fullscreenDialog: true,
+            ),
+          );
       if (cropped == null || cropped.isEmpty) return;
 
       setState(() => _uploadingAvatar = true);
@@ -1071,14 +1067,16 @@ class _ProfileEditPageState extends State<_ProfileEditPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-    final surface =
-        isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final surface = isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
     final account = _account;
 
     return Scaffold(
@@ -1087,140 +1085,132 @@ class _ProfileEditPageState extends State<_ProfileEditPage> {
         child: _loading
             ? const Center(child: CupertinoActivityIndicator())
             : account == null
-                ? _ProfileErrorState(
+            ? _ProfileErrorState(
+                primary: primary,
+                secondary: secondary,
+                onRetry: _loadAccount,
+              )
+            : Column(
+                children: [
+                  _FullscreenHeader(
+                    title: 'Edit profile',
+                    leadingIcon: CupertinoIcons.xmark,
+                    onClose: _close,
                     primary: primary,
-                    secondary: secondary,
-                    onRetry: _loadAccount,
-                  )
-                : Column(
-                    children: [
-                      _FullscreenHeader(
-                        title: 'Edit profile',
-                        leadingIcon: CupertinoIcons.xmark,
-                        onClose: _close,
-                        primary: primary,
-                      ),
-                      Expanded(
-                        child: ListView(
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+                      children: [
+                        _EditAvatarHeader(
+                          account: account,
+                          uploading: _uploadingAvatar,
+                          primary: primary,
+                          onAvatarTap: _pickAvatar,
+                        ),
+                        const SizedBox(height: 20),
+                        _EditSection(
+                          title: 'Intro',
+                          primary: primary,
                           children: [
-                            _EditAvatarHeader(
-                              account: account,
-                              uploading: _uploadingAvatar,
+                            _EditableRow(
+                              icon: CupertinoIcons.hand_raised_fill,
+                              title: 'Bio',
+                              value: account.bio,
+                              placeholder: 'Add a bio',
                               primary: primary,
-                              onAvatarTap: _pickAvatar,
-                            ),
-                            const SizedBox(height: 20),
-                            _EditSection(
-                              title: 'Intro',
-                              primary: primary,
-                              children: [
-                                _EditableRow(
-                                  icon: CupertinoIcons.hand_raised_fill,
-                                  title: 'Bio',
-                                  value: account.bio,
-                                  placeholder: 'Add a bio',
-                                  primary: primary,
-                                  secondary: secondary,
-                                  onTap: () => _openField(
-                                    _ProfileEditField.bio(),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            _EditSection(
-                              title: 'Category',
-                              primary: primary,
-                              children: [
-                                _EditableRow(
-                                  icon: Icons.category_rounded,
-                                  title: 'Category',
-                                  value: account.category,
-                                  placeholder: 'Digital creator',
-                                  primary: primary,
-                                  secondary: secondary,
-                                  onTap: () => _openField(
-                                    _ProfileEditField.category(),
-                                  ),
-                                ),
-                                _EditableRow(
-                                  icon: CupertinoIcons.sparkles,
-                                  title: 'AI creator',
-                                  value: account.aiCreator ? 'Yes' : 'No',
-                                  placeholder: 'No',
-                                  primary: primary,
-                                  secondary: secondary,
-                                  onTap: () => _openField(
-                                    _ProfileEditField.aiCreator(),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            _EditSection(
-                              title: 'Personal details',
-                              primary: primary,
-                              children: [
-                                _EditableRow(
-                                  icon: CupertinoIcons.location,
-                                  title: 'Location',
-                                  value: account.location,
-                                  placeholder: 'Add current city',
-                                  primary: primary,
-                                  secondary: secondary,
-                                  onTap: () => _openField(
-                                    _ProfileEditField.location(),
-                                  ),
-                                ),
-                                _EditableRow(
-                                  icon: CupertinoIcons.house,
-                                  title: 'Hometown',
-                                  value: account.hometown,
-                                  placeholder: 'Add hometown',
-                                  primary: primary,
-                                  secondary: secondary,
-                                  onTap: () => _openField(
-                                    _ProfileEditField.hometown(),
-                                  ),
-                                ),
-                                _EditableRow(
-                                  icon: CupertinoIcons.phone,
-                                  title: 'Phone',
-                                  value: [
-                                    account.phoneCountryCode,
-                                    account.phoneNumber,
-                                  ].where((v) => v.trim().isNotEmpty).join(' '),
-                                  placeholder: 'Add phone number',
-                                  primary: primary,
-                                  secondary: secondary,
-                                  onTap: () => _openField(
-                                    _ProfileEditField.phone(),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            _EditSection(
-                              title: 'Links',
-                              primary: primary,
-                              children: [
-                                _EditableRow(
-                                  icon: CupertinoIcons.link,
-                                  title: 'Website',
-                                  value: account.website,
-                                  placeholder: 'Add website',
-                                  primary: primary,
-                                  secondary: secondary,
-                                  onTap: () => _openField(
-                                    _ProfileEditField.website(),
-                                  ),
-                                ),
-                              ],
+                              secondary: secondary,
+                              onTap: () => _openField(_ProfileEditField.bio()),
                             ),
                           ],
                         ),
-                      ),
-                    ],
+                        _EditSection(
+                          title: 'Category',
+                          primary: primary,
+                          children: [
+                            _EditableRow(
+                              icon: Icons.category_rounded,
+                              title: 'Category',
+                              value: account.category,
+                              placeholder: 'Digital creator',
+                              primary: primary,
+                              secondary: secondary,
+                              onTap: () =>
+                                  _openField(_ProfileEditField.category()),
+                            ),
+                            _EditableRow(
+                              icon: CupertinoIcons.sparkles,
+                              title: 'AI creator',
+                              value: account.aiCreator ? 'Yes' : 'No',
+                              placeholder: 'No',
+                              primary: primary,
+                              secondary: secondary,
+                              onTap: () =>
+                                  _openField(_ProfileEditField.aiCreator()),
+                            ),
+                          ],
+                        ),
+                        _EditSection(
+                          title: 'Personal details',
+                          primary: primary,
+                          children: [
+                            _EditableRow(
+                              icon: CupertinoIcons.location,
+                              title: 'Location',
+                              value: account.location,
+                              placeholder: 'Add current city',
+                              primary: primary,
+                              secondary: secondary,
+                              onTap: () =>
+                                  _openField(_ProfileEditField.location()),
+                            ),
+                            _EditableRow(
+                              icon: CupertinoIcons.house,
+                              title: 'Hometown',
+                              value: account.hometown,
+                              placeholder: 'Add hometown',
+                              primary: primary,
+                              secondary: secondary,
+                              onTap: () =>
+                                  _openField(_ProfileEditField.hometown()),
+                            ),
+                            _EditableRow(
+                              icon: CupertinoIcons.phone,
+                              title: 'Phone',
+                              value: [
+                                account.phoneCountryCode,
+                                account.phoneNumber,
+                              ].where((v) => v.trim().isNotEmpty).join(' '),
+                              placeholder: 'Add phone number',
+                              primary: primary,
+                              secondary: secondary,
+                              onTap: () =>
+                                  _openField(_ProfileEditField.phone()),
+                            ),
+                          ],
+                        ),
+                        _EditSection(
+                          title: 'Links',
+                          primary: primary,
+                          children: [
+                            _EditableRow(
+                              icon: CupertinoIcons.link,
+                              title: 'Website',
+                              value: account.website,
+                              placeholder: 'Add website',
+                              primary: primary,
+                              secondary: secondary,
+                              onTap: () =>
+                                  _openField(_ProfileEditField.website()),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
+                ],
+              ),
       ),
     );
   }
@@ -1288,8 +1278,7 @@ class _EditAvatarHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
+    final surface = isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
     final name = account.displayName.isNotEmpty
         ? account.displayName
         : account.username;
@@ -1417,8 +1406,9 @@ class _EditSectionState extends State<_EditSection> {
           AnimatedCrossFade(
             firstChild: Column(children: widget.children),
             secondChild: const SizedBox.shrink(),
-            crossFadeState:
-                _collapsed ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            crossFadeState: _collapsed
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 180),
           ),
         ],
@@ -1515,74 +1505,71 @@ class _ProfileEditField {
   final bool phone;
 
   factory _ProfileEditField.bio() => const _ProfileEditField(
-        id: 'bio',
-        sectionTitle: 'Intro',
-        heading: 'Add a bio',
-        placeholder: 'Introduce yourself',
-        maxLength: 101,
-        visibilityKey: 'bio',
-        multiline: true,
-      );
+    id: 'bio',
+    sectionTitle: 'Intro',
+    heading: 'Add a bio',
+    placeholder: 'Introduce yourself',
+    maxLength: 101,
+    visibilityKey: 'bio',
+    multiline: true,
+  );
 
   factory _ProfileEditField.category() => const _ProfileEditField(
-        id: 'category',
-        sectionTitle: 'Category',
-        heading: 'Category',
-        placeholder: 'Digital creator',
-        maxLength: 80,
-      );
+    id: 'category',
+    sectionTitle: 'Category',
+    heading: 'Category',
+    placeholder: 'Digital creator',
+    maxLength: 80,
+  );
 
   factory _ProfileEditField.aiCreator() => const _ProfileEditField(
-        id: 'aiCreator',
-        sectionTitle: 'Category',
-        heading: 'AI creator',
-        placeholder: 'No',
-        maxLength: 3,
-        boolean: true,
-      );
+    id: 'aiCreator',
+    sectionTitle: 'Category',
+    heading: 'AI creator',
+    placeholder: 'No',
+    maxLength: 3,
+    boolean: true,
+  );
 
   factory _ProfileEditField.location() => const _ProfileEditField(
-        id: 'location',
-        sectionTitle: 'Personal details',
-        heading: 'Location',
-        placeholder: 'Search city, state or country',
-        maxLength: 120,
-        visibilityKey: 'location',
-      );
+    id: 'location',
+    sectionTitle: 'Personal details',
+    heading: 'Location',
+    placeholder: 'Search city, state or country',
+    maxLength: 120,
+    visibilityKey: 'location',
+  );
 
   factory _ProfileEditField.hometown() => const _ProfileEditField(
-        id: 'hometown',
-        sectionTitle: 'Personal details',
-        heading: 'Hometown',
-        placeholder: 'Search hometown',
-        maxLength: 120,
-        visibilityKey: 'location',
-      );
+    id: 'hometown',
+    sectionTitle: 'Personal details',
+    heading: 'Hometown',
+    placeholder: 'Search hometown',
+    maxLength: 120,
+    visibilityKey: 'location',
+  );
 
   factory _ProfileEditField.website() => const _ProfileEditField(
-        id: 'website',
-        sectionTitle: 'Personal details',
-        heading: 'Website',
-        placeholder: 'Add website',
-        maxLength: 240,
-        visibilityKey: 'website',
-      );
+    id: 'website',
+    sectionTitle: 'Personal details',
+    heading: 'Website',
+    placeholder: 'Add website',
+    maxLength: 240,
+    visibilityKey: 'website',
+  );
 
   factory _ProfileEditField.phone() => const _ProfileEditField(
-        id: 'phone',
-        sectionTitle: 'Personal details',
-        heading: 'Phone number',
-        placeholder: 'Add phone number',
-        maxLength: 32,
-        phone: true,
-      );
+    id: 'phone',
+    sectionTitle: 'Personal details',
+    heading: 'Phone number',
+    placeholder: 'Add phone number',
+    maxLength: 32,
+    phone: true,
+  );
 }
 
 class _ProfileFieldEditPage extends StatefulWidget {
-  const _ProfileFieldEditPage({
-    required this.field,
-    required this.account,
-  });
+  const _ProfileFieldEditPage({required this.field, required this.account});
 
   final _ProfileEditField field;
   final AccountInfo account;
@@ -1593,7 +1580,8 @@ class _ProfileFieldEditPage extends StatefulWidget {
 
 class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
   final AccountService _accountService = AccountService();
-  final LocationSuggestionService _locationService = LocationSuggestionService();
+  final LocationSuggestionService _locationService =
+      LocationSuggestionService();
   final ProfileService _profileService = ProfileService();
   late final TextEditingController _controller;
   late final TextEditingController _countryController;
@@ -1664,11 +1652,13 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
           _phoneController.text.trim() != widget.account.phoneNumber;
     }
     final textChanged = _controller.text.trim() != _initialText().trim();
-    final visibilityChanged = widget.field.visibilityKey != null &&
+    final visibilityChanged =
+        widget.field.visibilityKey != null &&
         _visibilityLevel != null &&
         _visibilityLevel !=
-            (_visibility ?? ProfileVisibility.defaultsForOwner())
-                .levelFor(widget.field.visibilityKey!);
+            (_visibility ?? ProfileVisibility.defaultsForOwner()).levelFor(
+              widget.field.visibilityKey!,
+            );
     return textChanged || visibilityChanged;
   }
 
@@ -1726,7 +1716,8 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
   Future<void> _chooseVisibility() async {
     final key = widget.field.visibilityKey;
     if (key == null) return;
-    final currentLevel = _visibilityLevel ??
+    final currentLevel =
+        _visibilityLevel ??
         (_visibility ?? ProfileVisibility.defaultsForOwner()).levelFor(key);
     final next = await showCupertinoModalPopup<String>(
       context: context,
@@ -1768,9 +1759,7 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
           );
           break;
         case 'aiCreator':
-          await _accountService.updateProfileDetails(
-            aiCreator: _booleanValue,
-          );
+          await _accountService.updateProfileDetails(aiCreator: _booleanValue);
           break;
         case 'location':
           await _accountService.updateProfileDetails(
@@ -1816,14 +1805,16 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-    final surface =
-        isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final surface = isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
     final enabled = _hasChanges && !_saving;
 
     return Scaffold(
@@ -1948,7 +1939,8 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
 
   String _counterText() {
     if (widget.field.boolean) return '';
-    if (widget.field.phone) return _phoneController.text.trim().length.toString();
+    if (widget.field.phone)
+      return _phoneController.text.trim().length.toString();
     return '${_controller.text.trim().length}/${widget.field.maxLength}';
   }
 }
@@ -2308,8 +2300,8 @@ class _AvatarCropPageState extends State<_AvatarCropPage> {
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details, double previewSize) {
-    final nextScale =
-        ((_startScale * details.scale).clamp(1.0, 4.0) as num).toDouble();
+    final nextScale = ((_startScale * details.scale).clamp(1.0, 4.0) as num)
+        .toDouble();
     final rawOffset = _startOffset + details.focalPoint - _startFocal;
     setState(() {
       _scale = nextScale;
@@ -2365,10 +2357,12 @@ class _AvatarCropPageState extends State<_AvatarCropPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
     final bg = isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
     final previewSize = math.min(MediaQuery.of(context).size.width - 56, 340.0);
     final decoded = image_lib.decodeImage(widget.imageBytes);
@@ -2501,8 +2495,11 @@ class _ProfileErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(CupertinoIcons.person_crop_circle_badge_exclam,
-                size: 42, color: secondary),
+            Icon(
+              CupertinoIcons.person_crop_circle_badge_exclam,
+              size: 42,
+              color: secondary,
+            ),
             const SizedBox(height: 14),
             Text(
               'Profile unavailable',

@@ -56,8 +56,7 @@ class ProfileUser {
       phoneCountryCode: json['phoneCountryCode']?.toString() ?? '',
       phoneNumber: json['phoneNumber']?.toString() ?? '',
       isVerified: json['isVerified'] == true,
-      createdAt:
-          DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
     );
   }
 }
@@ -118,7 +117,8 @@ class ProfileFeedPost {
     return ProfileFeedPost(
       id: json['id']?.toString() ?? '',
       body: json['body']?.toString() ?? '',
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
       likeCount: json['likeCount'] is int
           ? json['likeCount'] as int
@@ -181,7 +181,8 @@ class ProfileMentionSummary {
 
   factory ProfileMentionSummary.fromJson(Map<String, dynamic> json) {
     return ProfileMentionSummary(
-      username: json['username']?.toString() ??
+      username:
+          json['username']?.toString() ??
           json['mention']?.toString() ??
           json['tag']?.toString() ??
           '',
@@ -236,9 +237,7 @@ class ProfileSummary {
         .toList();
 
     return ProfileSummary(
-      user: ProfileUser.fromJson(
-        json['user'] as Map<String, dynamic>? ?? {},
-      ),
+      user: ProfileUser.fromJson(json['user'] as Map<String, dynamic>? ?? {}),
       stats: ProfileStats.fromJson(
         json['stats'] as Map<String, dynamic>? ?? {},
       ),
@@ -255,7 +254,7 @@ class ProfileSummary {
 
 class ProfileService {
   ProfileService({SecureStore? store})
-      : _client = ApiClient(store ?? SecureStore());
+    : _client = ApiClient(store ?? SecureStore());
 
   final ApiClient _client;
 
@@ -266,9 +265,7 @@ class ProfileService {
       query: {'limit': limit.toString()},
     );
 
-    final payload = data is Map<String, dynamic>
-        ? data
-        : <String, dynamic>{};
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
     return ProfileSummary.fromJson(payload);
   }
 

@@ -85,7 +85,8 @@ class FeedPost {
     return FeedPost(
       id: json['id']?.toString() ?? '',
       body: json['body']?.toString() ?? '',
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
       likeCount: json['likeCount'] is int
           ? json['likeCount'] as int
@@ -146,7 +147,8 @@ class FeedComment {
         return value.isEmpty ? null : value;
       }(),
       body: json['body']?.toString() ?? '',
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
       likeCount: json['likeCount'] is int
           ? json['likeCount'] as int
@@ -164,7 +166,7 @@ class FeedComment {
 
 class FeedService {
   FeedService({SecureStore? store})
-      : _client = ApiClient(store ?? SecureStore());
+    : _client = ApiClient(store ?? SecureStore());
 
   final ApiClient _client;
 
@@ -174,10 +176,7 @@ class FeedService {
     String mode = 'for-you',
     String? tag,
   }) async {
-    final query = <String, String>{
-      'limit': limit.toString(),
-      'mode': mode,
-    };
+    final query = <String, String>{'limit': limit.toString(), 'mode': mode};
     if (before != null) {
       query['before'] = before.toUtc().toIso8601String();
     }
@@ -210,9 +209,7 @@ class FeedService {
   }
 
   Future<FeedPost> createPost(String body) async {
-    final data = await _client.post('/feed', auth: true, body: {
-      'body': body,
-    });
+    final data = await _client.post('/feed', auth: true, body: {'body': body});
     return FeedPost.fromJson(data);
   }
 

@@ -21,8 +21,7 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell>
-    with TickerProviderStateMixin {
+class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
   int _index = 0;
   bool _isAnimatingToIndex = false;
   bool _feedChromeVisible = true;
@@ -36,10 +35,7 @@ class _HomeShellState extends State<HomeShell>
   final ChatsPageController _chatsController = ChatsPageController();
   final ProfilePageController _profileController = ProfilePageController();
 
-  final _keys = List.generate(
-    4,
-    (_) => GlobalKey<NavigatorState>(),
-  );
+  final _keys = List.generate(4, (_) => GlobalKey<NavigatorState>());
 
   @override
   void initState() {
@@ -62,9 +58,7 @@ class _HomeShellState extends State<HomeShell>
   // ------------------------------------------------
   void _onTabChange(int index) {
     if (index == _index) {
-      _keys[index]
-          .currentState
-          ?.popUntil((route) => route.isFirst);
+      _keys[index].currentState?.popUntil((route) => route.isFirst);
     } else {
       HapticFeedback.selectionClick();
 
@@ -76,16 +70,18 @@ class _HomeShellState extends State<HomeShell>
       });
 
       final target = index;
-      _pageController.animateToPage(
-        index,
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeOutCubic, // WhatsApp-like
-      ).whenComplete(() {
-        if (!mounted) return;
-        if (_targetIndex == target) {
-          setState(() => _isAnimatingToIndex = false);
-        }
-      });
+      _pageController
+          .animateToPage(
+            index,
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic, // WhatsApp-like
+          )
+          .whenComplete(() {
+            if (!mounted) return;
+            if (_targetIndex == target) {
+              setState(() => _isAnimatingToIndex = false);
+            }
+          });
     }
   }
 
@@ -116,33 +112,28 @@ class _HomeShellState extends State<HomeShell>
   // Per-tab pages (kept alive)
   // ------------------------------------------------
   List<Widget> _buildPages() => [
-        _KeepAliveTab(
-          child: TabNavigator(
-            navigatorKey: _keys[0],
-            child: FeedPage(
-              onChromeVisibilityChanged: _setFeedChromeVisible,
-            ),
-          ),
-        ),
-        _KeepAliveTab(
-          child: TabNavigator(
-            navigatorKey: _keys[1],
-            child: ChatsPage(controller: _chatsController),
-          ),
-        ),
-        _KeepAliveTab(
-          child: TabNavigator(
-            navigatorKey: _keys[2],
-            child: const FriendsPage(),
-          ),
-        ),
-        _KeepAliveTab(
-          child: TabNavigator(
-            navigatorKey: _keys[3],
-            child: ProfilePage(controller: _profileController),
-          ),
-        ),
-      ];
+    _KeepAliveTab(
+      child: TabNavigator(
+        navigatorKey: _keys[0],
+        child: FeedPage(onChromeVisibilityChanged: _setFeedChromeVisible),
+      ),
+    ),
+    _KeepAliveTab(
+      child: TabNavigator(
+        navigatorKey: _keys[1],
+        child: ChatsPage(controller: _chatsController),
+      ),
+    ),
+    _KeepAliveTab(
+      child: TabNavigator(navigatorKey: _keys[2], child: const FriendsPage()),
+    ),
+    _KeepAliveTab(
+      child: TabNavigator(
+        navigatorKey: _keys[3],
+        child: ProfilePage(controller: _profileController),
+      ),
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -150,8 +141,7 @@ class _HomeShellState extends State<HomeShell>
 
     return WillPopScope(
       onWillPop: () async {
-        final canPop =
-            await _keys[_index].currentState?.maybePop() ?? false;
+        final canPop = await _keys[_index].currentState?.maybePop() ?? false;
         return !canPop;
       },
       child: Scaffold(
@@ -204,17 +194,13 @@ class _HomeShellState extends State<HomeShell>
 
                         if (_pageController.position.haveDimensions) {
                           value = (_pageController.page! - i).abs();
-                          value = (1 - (value * 0.15))
-                              .clamp(0.9, 1.0);
+                          value = (1 - (value * 0.15)).clamp(0.9, 1.0);
                         }
 
                         return Opacity(
                           opacity: value,
                           child: Transform.translate(
-                            offset: Offset(
-                              (1 - value) * 30,
-                              0,
-                            ),
+                            offset: Offset((1 - value) * 30, 0),
                             child: child,
                           ),
                         );
@@ -231,10 +217,7 @@ class _HomeShellState extends State<HomeShell>
         /// ⬇️ Bottom bar
         bottomNavigationBar: _ShellChromeVisibility(
           visible: chromeVisible,
-          child: HomeBottomBar(
-            index: _index,
-            onChanged: _onTabChange,
-          ),
+          child: HomeBottomBar(index: _index, onChanged: _onTabChange),
         ),
       ),
     );
@@ -242,10 +225,7 @@ class _HomeShellState extends State<HomeShell>
 }
 
 class _ShellChromeVisibility extends StatelessWidget {
-  const _ShellChromeVisibility({
-    required this.visible,
-    required this.child,
-  });
+  const _ShellChromeVisibility({required this.visible, required this.child});
 
   final bool visible;
   final Widget child;

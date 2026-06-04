@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:gestures';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -20,10 +20,7 @@ import '../../../../core/storage/secure_store.dart';
 import '../profile/public_profile_page.dart';
 
 class FeedPage extends StatefulWidget {
-  const FeedPage({
-    super.key,
-    this.onChromeVisibilityChanged,
-  });
+  const FeedPage({super.key, this.onChromeVisibilityChanged});
 
   final ValueChanged<bool>? onChromeVisibilityChanged;
 
@@ -59,8 +56,7 @@ class _FeedPageState extends State<FeedPage> {
   double _lastScrollOffset = 0;
 
   static const int _pageSize = 20;
-  String _currentFeedMode() =>
-      _segmentIndex == 1 ? 'following' : 'for-you';
+  String _currentFeedMode() => _segmentIndex == 1 ? 'following' : 'for-you';
 
   @override
   void initState() {
@@ -82,10 +78,7 @@ class _FeedPageState extends State<FeedPage> {
 
   Future<void> _bootstrap() async {
     _userId = await _store.getUserId();
-    await Future.wait([
-      _loadFeed(showSkeleton: true),
-      _loadTags(),
-    ]);
+    await Future.wait([_loadFeed(showSkeleton: true), _loadTags()]);
     await _realtime.connect(_handleRealtimeEvent);
   }
 
@@ -410,6 +403,7 @@ class _FeedPageState extends State<FeedPage> {
 
     if (mounted) setState(() {});
   }
+
   Future<void> _toggleLike(FeedPost post) async {
     if (_pendingLikes.contains(post.id)) return;
 
@@ -556,10 +550,7 @@ class _FeedPageState extends State<FeedPage> {
     HapticFeedback.selectionClick();
     Navigator.of(context, rootNavigator: true).push(
       PravaNavigator.route(
-        PublicProfilePage(
-          userId: author.id,
-          initialIsFollowing: false,
-        ),
+        PublicProfilePage(userId: author.id, initialIsFollowing: false),
         fullscreenDialog: true,
       ),
     );
@@ -605,23 +596,15 @@ class _FeedPageState extends State<FeedPage> {
     );
   }
 
-  TextSpan _buildPostSpan(
-    String text,
-    TextStyle base,
-    TextStyle highlight,
-  ) {
-    final regex =
-        RegExp(r'(@[a-zA-Z0-9_]{2,32}|#[a-zA-Z0-9_]{2,32})');
+  TextSpan _buildPostSpan(String text, TextStyle base, TextStyle highlight) {
+    final regex = RegExp(r'(@[a-zA-Z0-9_]{2,32}|#[a-zA-Z0-9_]{2,32})');
     final spans = <TextSpan>[];
     var start = 0;
 
     for (final match in regex.allMatches(text)) {
       if (match.start > start) {
         spans.add(
-          TextSpan(
-            text: text.substring(start, match.start),
-            style: base,
-          ),
+          TextSpan(text: text.substring(start, match.start), style: base),
         );
       }
       final token = match.group(0) ?? '';
@@ -631,7 +614,7 @@ class _FeedPageState extends State<FeedPage> {
           style: highlight,
           recognizer: token.startsWith('#')
               ? (TapGestureRecognizer()
-                ..onTap = () => _openHashtagFeed(token.substring(1)))
+                  ..onTap = () => _openHashtagFeed(token.substring(1)))
               : null,
         ),
       );
@@ -652,12 +635,15 @@ class _FeedPageState extends State<FeedPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final surface = isDark
+        ? PravaColors.darkBgSurface
+        : PravaColors.lightBgSurface;
 
     final visiblePosts = _posts;
 
@@ -753,11 +739,11 @@ class _FeedPageState extends State<FeedPage> {
                                       const SizedBox(height: 12),
                                       Text(
                                         'No posts yet',
-                                        style:
-                                            PravaTypography.bodyLarge.copyWith(
-                                          color: primary,
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                                        style: PravaTypography.bodyLarge
+                                            .copyWith(
+                                              color: primary,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
@@ -778,8 +764,12 @@ class _FeedPageState extends State<FeedPage> {
                               itemBuilder: (context, index) {
                                 final post = visiblePosts[index];
                                 return Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    6,
+                                    16,
+                                    12,
+                                  ),
                                   child: _PostCard(
                                     post: post,
                                     isDark: isDark,
@@ -792,8 +782,9 @@ class _FeedPageState extends State<FeedPage> {
                                     onAuthorTap: () =>
                                         _openPublicProfile(post.author),
                                     showFollow: post.author.id != _userId,
-                                    pendingFollow: _pendingFollows
-                                        .contains(post.author.id),
+                                    pendingFollow: _pendingFollows.contains(
+                                      post.author.id,
+                                    ),
                                     timeAgo: _formatTimeAgo(post.createdAt),
                                     bodySpan: _buildPostSpan(
                                       post.body,
@@ -840,10 +831,7 @@ class _FeedPageState extends State<FeedPage> {
 }
 
 class HashtagFeedPage extends StatefulWidget {
-  const HashtagFeedPage({
-    super.key,
-    required this.tag,
-  });
+  const HashtagFeedPage({super.key, required this.tag});
 
   final String tag;
 
@@ -1077,13 +1065,8 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
     );
   }
 
-  TextSpan _buildPostSpan(
-    String text,
-    TextStyle base,
-    TextStyle highlight,
-  ) {
-    final regex =
-        RegExp(r'(@[a-zA-Z0-9_]{2,32}|#[a-zA-Z0-9_]{2,32})');
+  TextSpan _buildPostSpan(String text, TextStyle base, TextStyle highlight) {
+    final regex = RegExp(r'(@[a-zA-Z0-9_]{2,32}|#[a-zA-Z0-9_]{2,32})');
     final spans = <TextSpan>[];
     var start = 0;
 
@@ -1098,7 +1081,7 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
           style: highlight,
           recognizer: token.startsWith('#')
               ? (TapGestureRecognizer()
-                ..onTap = () => _openHashtagFeed(token.substring(1)))
+                  ..onTap = () => _openHashtagFeed(token.substring(1)))
               : null,
         ),
       );
@@ -1124,14 +1107,18 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final background =
-        isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final background = isDark
+        ? PravaColors.darkBgMain
+        : PravaColors.lightBgMain;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
 
     return Scaffold(
       backgroundColor: background,
@@ -1143,10 +1130,7 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: Icon(
-                      CupertinoIcons.chevron_left,
-                      color: primary,
-                    ),
+                    icon: Icon(CupertinoIcons.chevron_left, color: primary),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                   Expanded(
@@ -1166,8 +1150,9 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
                           'Recent posts with strongest engagement',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style:
-                              PravaTypography.caption.copyWith(color: secondary),
+                          style: PravaTypography.caption.copyWith(
+                            color: secondary,
+                          ),
                         ),
                       ],
                     ),
@@ -1206,8 +1191,12 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
                               itemBuilder: (context, index) {
                                 final post = _posts[index];
                                 return Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    10,
+                                    16,
+                                    4,
+                                  ),
                                   child: _PostCard(
                                     post: post,
                                     isDark: isDark,
@@ -1220,8 +1209,9 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
                                     onAuthorTap: () =>
                                         _openPublicProfile(post.author),
                                     showFollow: post.author.id != _userId,
-                                    pendingFollow: _pendingFollows
-                                        .contains(post.author.id),
+                                    pendingFollow: _pendingFollows.contains(
+                                      post.author.id,
+                                    ),
                                     timeAgo: _formatTimeAgo(post.createdAt),
                                     bodySpan: _buildPostSpan(
                                       post.body,
@@ -1278,10 +1268,12 @@ class _TagRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     if (loading && tags.isEmpty) {
       return const SizedBox(height: 38);
@@ -1419,14 +1411,18 @@ class _ComposerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final surface = isDark
+        ? PravaColors.darkBgSurface
+        : PravaColors.lightBgSurface;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
@@ -1451,7 +1447,9 @@ class _ComposerCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 22,
-                backgroundColor: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                backgroundColor: PravaColors.accentPrimary.withValues(
+                  alpha: 0.16,
+                ),
                 child: const Icon(
                   CupertinoIcons.person_fill,
                   color: PravaColors.accentPrimary,
@@ -1511,9 +1509,7 @@ class _ComposerCard extends StatelessWidget {
                       Text(
                         '$count/200',
                         style: PravaTypography.caption.copyWith(
-                          color: tooLong
-                              ? PravaColors.error
-                              : secondary,
+                          color: tooLong ? PravaColors.error : secondary,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -1564,8 +1560,9 @@ class _ComposerIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final background =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+    final background = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.05);
 
     return InkWell(
       onTap: onTap,
@@ -1636,6 +1633,7 @@ class _ComposeFab extends StatelessWidget {
     );
   }
 }
+
 class _PostCard extends StatelessWidget {
   const _PostCard({
     required this.post,
@@ -1669,10 +1667,12 @@ class _PostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final surface = isDark
+        ? PravaColors.darkBgSurface
+        : PravaColors.lightBgSurface;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
 
     return RepaintBoundary(
       child: Container(
@@ -1693,8 +1693,9 @@ class _PostCard extends StatelessWidget {
                   onTap: onAuthorTap,
                   child: CircleAvatar(
                     radius: 22,
-                    backgroundColor:
-                        PravaColors.accentPrimary.withValues(alpha: 0.16),
+                    backgroundColor: PravaColors.accentPrimary.withValues(
+                      alpha: 0.16,
+                    ),
                     backgroundImage: post.author.avatarUrl.trim().isNotEmpty
                         ? NetworkImage(post.author.avatarUrl.trim())
                         : null,
@@ -1756,10 +1757,7 @@ class _PostCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            RichText(
-              text: bodySpan,
-              textWidthBasis: TextWidthBasis.parent,
-            ),
+            RichText(text: bodySpan, textWidthBasis: TextWidthBasis.parent),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1820,17 +1818,10 @@ class _ActionButton extends StatelessWidget {
             AnimatedScale(
               scale: active ? 1.1 : 1.0,
               duration: const Duration(milliseconds: 180),
-              child: Icon(
-                icon,
-                size: 18,
-                color: color,
-              ),
+              child: Icon(icon, size: 18, color: color),
             ),
             const SizedBox(width: 6),
-            Text(
-              label,
-              style: PravaTypography.caption.copyWith(color: color),
-            ),
+            Text(label, style: PravaTypography.caption.copyWith(color: color)),
           ],
         ),
       ),
@@ -1852,8 +1843,9 @@ class _FollowButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
 
     return GestureDetector(
       onTap: pending ? null : onTap,
@@ -1861,18 +1853,13 @@ class _FollowButton extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: following
-              ? Colors.transparent
-              : PravaColors.accentPrimary,
+          color: following ? Colors.transparent : PravaColors.accentPrimary,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: following ? border : Colors.transparent,
-          ),
+          border: Border.all(color: following ? border : Colors.transparent),
         ),
         child: pending
             ? CupertinoActivityIndicator(
-                color:
-                    following ? PravaColors.accentPrimary : Colors.white,
+                color: following ? PravaColors.accentPrimary : Colors.white,
               )
             : Text(
                 following ? 'Following' : 'Follow',
@@ -1885,6 +1872,7 @@ class _FollowButton extends StatelessWidget {
     );
   }
 }
+
 class _CommentSheet extends StatefulWidget {
   const _CommentSheet({
     required this.post,
@@ -2073,25 +2061,28 @@ class _CommentSheetState extends State<_CommentSheet> {
       ];
     }
 
-    return [
-      for (final root in roots) ...branch(root, 0),
-    ];
+    return [for (final root in roots) ...branch(root, 0)];
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? PravaColors.darkBgElevated : PravaColors.lightBgElevated;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final surface = isDark
+        ? PravaColors.darkBgElevated
+        : PravaColors.lightBgElevated;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return AnimatedPadding(
       duration: const Duration(milliseconds: 120),
       curve: Curves.easeOut,
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: SafeArea(
         top: false,
         child: Container(
@@ -2101,8 +2092,7 @@ class _CommentSheetState extends State<_CommentSheet> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
           decoration: BoxDecoration(
             color: surface,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
             children: [
@@ -2157,8 +2147,10 @@ class _CommentSheetState extends State<_CommentSheet> {
                 const SizedBox(height: 8),
                 Container(
                   width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: PravaColors.accentPrimary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(14),
@@ -2206,8 +2198,9 @@ class _CommentSheetState extends State<_CommentSheet> {
                         hintText: _replyingTo == null
                             ? 'Add a comment'
                             : 'Write a reply',
-                        hintStyle:
-                            PravaTypography.body.copyWith(color: secondary),
+                        hintStyle: PravaTypography.body.copyWith(
+                          color: secondary,
+                        ),
                         filled: true,
                         fillColor: isDark ? Colors.white10 : Colors.black12,
                         contentPadding: const EdgeInsets.symmetric(
@@ -2278,8 +2271,9 @@ class _CommentTile extends StatelessWidget {
             onTap: onAuthorTap,
             child: CircleAvatar(
               radius: 16,
-              backgroundColor:
-                  PravaColors.accentPrimary.withValues(alpha: 0.16),
+              backgroundColor: PravaColors.accentPrimary.withValues(
+                alpha: 0.16,
+              ),
               backgroundImage: comment.author.avatarUrl.trim().isNotEmpty
                   ? NetworkImage(comment.author.avatarUrl.trim())
                   : null,
@@ -2320,8 +2314,9 @@ class _CommentTile extends StatelessWidget {
                       const SizedBox(width: 8),
                       Text(
                         timeAgo,
-                        style:
-                            PravaTypography.caption.copyWith(color: secondary),
+                        style: PravaTypography.caption.copyWith(
+                          color: secondary,
+                        ),
                       ),
                     ],
                   ),
@@ -2395,6 +2390,7 @@ class _CommentTile extends StatelessWidget {
     );
   }
 }
+
 class _ShareSheet extends StatefulWidget {
   const _ShareSheet({
     required this.post,
@@ -2497,12 +2493,15 @@ class _ShareSheetState extends State<_ShareSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? PravaColors.darkBgElevated : PravaColors.lightBgElevated;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final surface = isDark
+        ? PravaColors.darkBgElevated
+        : PravaColors.lightBgElevated;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return SafeArea(
       top: false,
@@ -2516,172 +2515,169 @@ class _ShareSheetState extends State<_ShareSheet> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
-        children: [
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: secondary.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Text(
-                'Share post',
-                style: PravaTypography.h3.copyWith(color: primary),
-              ),
-              const Spacer(),
-              const Icon(
-                CupertinoIcons.paperplane_fill,
-                color: PravaColors.accentPrimary,
-                size: 18,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          InkWell(
-            onTap: _sending ? null : _shareOutsideApp,
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              padding: const EdgeInsets.all(12),
+          children: [
+            Container(
+              width: 36,
+              height: 4,
               decoration: BoxDecoration(
-                color: isDark ? Colors.white10 : Colors.black12,
-                borderRadius: BorderRadius.circular(16),
+                color: secondary.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(4),
               ),
-              child: Row(
-                children: [
-                  const Icon(
-                    CupertinoIcons.square_arrow_up,
-                    color: PravaColors.accentPrimary,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Share with another app',
-                      style: PravaTypography.body.copyWith(
-                        color: primary,
-                        fontWeight: FontWeight.w700,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  'Share post',
+                  style: PravaTypography.h3.copyWith(color: primary),
+                ),
+                const Spacer(),
+                const Icon(
+                  CupertinoIcons.paperplane_fill,
+                  color: PravaColors.accentPrimary,
+                  size: 18,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: _sending ? null : _shareOutsideApp,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white10 : Colors.black12,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      CupertinoIcons.square_arrow_up,
+                      color: PravaColors.accentPrimary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Share with another app',
+                        style: PravaTypography.body.copyWith(
+                          color: primary,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
-                  Icon(
-                    CupertinoIcons.chevron_right,
-                    color: secondary,
-                    size: 16,
-                  ),
-                ],
+                    Icon(
+                      CupertinoIcons.chevron_right,
+                      color: secondary,
+                      size: 16,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Chats',
-              style: PravaTypography.caption.copyWith(
-                color: secondary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: CupertinoActivityIndicator(),
-            )
-          else if (_conversations.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
               child: Text(
-                'No chats available yet',
-                style: PravaTypography.body.copyWith(color: secondary),
+                'Chats',
+                style: PravaTypography.caption.copyWith(
+                  color: secondary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            )
-          else
-            Expanded(
-              child: ListView.separated(
-                itemCount: _conversations.length,
-                separatorBuilder: (_, __) =>
-                    const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final convo = _conversations[index];
-                  return InkWell(
-                    onTap: _sending
-                        ? null
-                        : () => _shareToConversation(convo),
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white10
-                            : Colors.black12,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor:
-                                PravaColors.accentPrimary.withValues(alpha: 0.16),
-                            child: Text(
-                              convo.title.isNotEmpty
-                                  ? convo.title[0].toUpperCase()
-                                  : 'C',
-                              style: PravaTypography.caption.copyWith(
-                                color: PravaColors.accentPrimary,
-                                fontWeight: FontWeight.w600,
+            ),
+            const SizedBox(height: 8),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: CupertinoActivityIndicator(),
+              )
+            else if (_conversations.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  'No chats available yet',
+                  style: PravaTypography.body.copyWith(color: secondary),
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.separated(
+                  itemCount: _conversations.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final convo = _conversations[index];
+                    return InkWell(
+                      onTap: _sending
+                          ? null
+                          : () => _shareToConversation(convo),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white10 : Colors.black12,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: PravaColors.accentPrimary
+                                  .withValues(alpha: 0.16),
+                              child: Text(
+                                convo.title.isNotEmpty
+                                    ? convo.title[0].toUpperCase()
+                                    : 'C',
+                                style: PravaTypography.caption.copyWith(
+                                  color: PravaColors.accentPrimary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  convo.title,
-                                  style: PravaTypography.body.copyWith(
-                                    color: primary,
-                                    fontWeight: FontWeight.w600,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    convo.title,
+                                    style: PravaTypography.body.copyWith(
+                                      color: primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  convo.lastMessageBody,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: PravaTypography.caption.copyWith(
-                                    color: secondary,
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    convo.lastMessageBody,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: PravaTypography.caption.copyWith(
+                                      color: secondary,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          Icon(
-                            CupertinoIcons.chevron_right,
-                            color: secondary,
-                            size: 16,
-                          ),
-                        ],
+                            Icon(
+                              CupertinoIcons.chevron_right,
+                              color: secondary,
+                              size: 16,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
-          const SizedBox(height: 8),
-          if (_sending)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: CupertinoActivityIndicator(),
-            ),
-        ],
-      ),
+            const SizedBox(height: 8),
+            if (_sending)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: CupertinoActivityIndicator(),
+              ),
+          ],
+        ),
       ),
     );
   }
