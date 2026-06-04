@@ -254,6 +254,13 @@ class ConversationSummary {
     this.lastMessageType,
     this.lastMessageEditVersion,
     this.lastMessageDeletedForAllAt,
+    this.requestStatus = 'active',
+    this.requestSenderUserId,
+    this.requestRecipientUserId,
+    this.isFavorite = false,
+    this.isStarred = false,
+    this.isMuted = false,
+    this.isArchived = false,
   });
 
   final String id;
@@ -269,6 +276,13 @@ class ConversationSummary {
   final ChatMessageType? lastMessageType;
   final int? lastMessageEditVersion;
   final DateTime? lastMessageDeletedForAllAt;
+  final String requestStatus;
+  final String? requestSenderUserId;
+  final String? requestRecipientUserId;
+  final bool isFavorite;
+  final bool isStarred;
+  final bool isMuted;
+  final bool isArchived;
 
   factory ConversationSummary.fromJson(Map<String, dynamic> json) {
     return ConversationSummary(
@@ -293,6 +307,13 @@ class ConversationSummary {
       lastMessageDeletedForAllAt: _parseDate(
         json['lastMessageDeletedForAllAt'],
       ),
+      requestStatus: json['requestStatus']?.toString() ?? 'active',
+      requestSenderUserId: json['requestSenderUserId']?.toString(),
+      requestRecipientUserId: json['requestRecipientUserId']?.toString(),
+      isFavorite: json['isFavorite'] == true,
+      isStarred: json['isStarred'] == true,
+      isMuted: json['isMuted'] == true,
+      isArchived: json['isArchived'] == true,
     );
   }
 }
@@ -307,6 +328,16 @@ class ChatService {
 
   Future<List<ConversationSummary>> listConversations() async {
     final data = await _client.get('/conversations', auth: true);
+    if (data is! List) return [];
+
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map(ConversationSummary.fromJson)
+        .toList();
+  }
+
+  Future<List<ConversationSummary>> listMessageRequests() async {
+    final data = await _client.get('/conversations/requests', auth: true);
     if (data is! List) return [];
 
     return data
@@ -396,6 +427,53 @@ class ChatService {
     }
 
     return null;
+  }
+
+  Future<bool> acceptMessageRequest(String conversationId) async {
+    final data = await _client.post(
+      '/conversations/requests/$conversationId/accept',
+      auth: true,
+      body: {},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> declineMessageRequest(String conversationId) async {
+    final data = await _client.delete(
+      '/conversations/requests/$conversationId',
+      auth: true,
+      body: {},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> updatePreferences({
+    required String conversationId,
+    required bool isFavorite,
+    required bool isStarred,
+    required bool isMuted,
+    required bool isArchived,
+  }) async {
+    final data = await _client.put(
+      '/conversations/$conversationId/preferences',
+      auth: true,
+      body: {
+        'isFavorite': isFavorite,
+        'isStarred': isStarred,
+        'isMuted': isMuted,
+        'isArchived': isArchived,
+      },
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
   }
 
   Future<String?> createGroup({

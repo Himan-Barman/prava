@@ -85,7 +85,41 @@ function conversationSummary(conversation: any, currentUserId: string, peerMap: 
     memberCount: Array.isArray(conversation.memberIds) ? conversation.memberIds.length : 0,
     isAdmin: groupMeta ? isGroupAdmin(groupMeta, currentUserId) : false,
     myRole: groupMeta ? roleForUser(groupMeta, currentUserId) : "member",
+    requestStatus: conversation.dmRequestStatus || "active",
+    requestSenderUserId: conversation.dmRequestSenderUserId || null,
+    requestRecipientUserId: conversation.dmRequestRecipientUserId || null,
+    requestRespondedAt: toIso(conversation.dmRequestRespondedAt),
+    isFavorite: conversation.isFavorite === true,
+    isStarred: conversation.isStarred === true,
+    isMuted: conversation.isMuted === true,
+    isArchived: conversation.isArchived === true,
   };
+}
+
+async function areMutualFollowers(a: string, b: string): Promise<boolean> {
+  const rows = await queryMany(
+    `SELECT follower_id, following_id
+     FROM follows
+     WHERE (follower_id = $1 AND following_id = $2)
+        OR (follower_id = $2 AND following_id = $1)`,
+    [a, b]
+  );
+  const aFollowsB = rows.some((row) => row.follower_id === a && row.following_id === b);
+  const bFollowsA = rows.some((row) => row.follower_id === b && row.following_id === a);
+  return aFollowsB && bFollowsA;
+}
+
+function ensureConversationOpenForUser(conversation: any, userId: string) {
+  if (conversation.type !== "dm") {
+    return;
+  }
+  ensure(conversation.dmRequestStatus !== "declined", 403, "Message request was removed");
+  if (
+    conversation.dmRequestStatus === "pending" &&
+    conversation.dmRequestRecipientUserId === userId
+  ) {
+    throw new HttpError(403, "Accept the message request before opening this chat");
+  }
 }
 
 export default async function chatService(app: any) {
@@ -93,10 +127,24 @@ export default async function chatService(app: any) {
     const limit = parseLimit(request.query?.limit, 30, 1, 100);
 
     const rows = await queryMany(
-      `SELECT c.*
+      `SELECT c.*,
+              COALESCE(cup.is_favorite, FALSE) AS is_favorite,
+              COALESCE(cup.is_starred, FALSE) AS is_starred,
+              COALESCE(cup.is_muted, FALSE) AS is_muted,
+              COALESCE(cup.is_archived, FALSE) AS is_archived
        FROM conversations c
        JOIN conversation_members cm ON cm.conversation_id = c.conversation_id
+       LEFT JOIN conversation_user_preferences cup
+         ON cup.conversation_id = c.conversation_id
+        AND cup.user_id = $1
        WHERE cm.user_id = $1 AND cm.left_at IS NULL
+         AND COALESCE(cup.is_archived, FALSE) = FALSE
+         AND (
+           c.type <> 'dm'
+           OR c.dm_request_status = 'active'
+           OR c.dm_request_sender_user_id = $1
+         )
+         AND c.dm_request_status <> 'declined'
        ORDER BY c.updated_at DESC
        LIMIT $2`,
       [request.user.userId, limit]
@@ -140,11 +188,184 @@ export default async function chatService(app: any) {
     );
   });
 
+  app.get("/requests", { preHandler: requireAuth }, async (request: any) => {
+    const limit = parseLimit(request.query?.limit, 30, 1, 100);
+
+    const rows = await queryMany(
+      `SELECT c.*,
+              COALESCE(cup.is_favorite, FALSE) AS is_favorite,
+              COALESCE(cup.is_starred, FALSE) AS is_starred,
+              COALESCE(cup.is_muted, FALSE) AS is_muted,
+              COALESCE(cup.is_archived, FALSE) AS is_archived
+       FROM conversations c
+       JOIN conversation_members cm ON cm.conversation_id = c.conversation_id
+       LEFT JOIN conversation_user_preferences cup
+         ON cup.conversation_id = c.conversation_id
+        AND cup.user_id = $1
+       WHERE c.type = 'dm'
+         AND c.dm_request_status = 'pending'
+         AND c.dm_request_recipient_user_id = $1
+         AND c.last_message_id IS NOT NULL
+         AND cm.user_id = $1
+         AND cm.left_at IS NULL
+       ORDER BY c.updated_at DESC
+       LIMIT $2`,
+      [request.user.userId, limit]
+    );
+
+    const conversations = await hydrateConversations(rows);
+    if (conversations.length === 0) {
+      return [];
+    }
+
+    const conversationIds = conversations.map((row) => row.conversationId);
+    const reads = await queryMany(
+      `SELECT conversation_id, last_read_seq
+       FROM conversation_reads
+       WHERE user_id = $1 AND conversation_id = ANY($2::text[])`,
+      [request.user.userId, conversationIds]
+    );
+    const readMap = new Map(reads.map((item) => [item.conversation_id, Number(item.last_read_seq || 0)]));
+
+    const otherUserIds = new Set<string>();
+    for (const conversation of conversations) {
+      for (const memberId of conversation.memberIds || []) {
+        if (memberId !== request.user.userId) {
+          otherUserIds.add(memberId);
+        }
+      }
+    }
+
+    const otherUsers = await loadActiveUsers([...otherUserIds]);
+    const userMap = new Map(otherUsers.map((user) => [user.user_id, user]));
+
+    return conversations.map((conversation) =>
+      conversationSummary(
+        conversation,
+        request.user.userId,
+        userMap,
+        readMap.get(conversation.conversationId) || 0
+      )
+    );
+  });
+
+  app.post("/requests/:conversationId/accept", { preHandler: requireAuth }, async (request: any) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+
+    const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensure(conversation.type === "dm", 400, "Conversation is not a DM");
+    ensure(conversation.dmRequestStatus === "pending", 400, "Message request is not pending");
+    ensure(conversation.dmRequestRecipientUserId === request.user.userId, 403, "Only the recipient can accept this request");
+
+    const ts = now();
+    await query(
+      `UPDATE conversations
+       SET dm_request_status = 'active',
+           dm_request_responded_at = $2,
+           updated_at = $2
+       WHERE conversation_id = $1`,
+      [conversationId, ts]
+    );
+
+    publishToConversation(conversation.memberIds, "MESSAGE_REQUEST_ACCEPTED", {
+      conversationId,
+      acceptedBy: request.user.userId,
+      acceptedAt: toIso(ts),
+    });
+
+    return {
+      success: true,
+      conversationId,
+      requestStatus: "active",
+    };
+  });
+
+  app.delete("/requests/:conversationId", { preHandler: requireAuth }, async (request: any) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+
+    const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensure(conversation.type === "dm", 400, "Conversation is not a DM");
+    ensure(conversation.dmRequestStatus === "pending", 400, "Message request is not pending");
+    ensure(conversation.dmRequestRecipientUserId === request.user.userId, 403, "Only the recipient can remove this request");
+
+    const ts = now();
+    await query(
+      `UPDATE conversations
+       SET dm_request_status = 'declined',
+           dm_request_responded_at = $2,
+           updated_at = $2
+       WHERE conversation_id = $1`,
+      [conversationId, ts]
+    );
+
+    publishToConversation(conversation.memberIds, "MESSAGE_REQUEST_DECLINED", {
+      conversationId,
+      declinedBy: request.user.userId,
+      declinedAt: toIso(ts),
+    });
+
+    return {
+      success: true,
+      conversationId,
+      requestStatus: "declined",
+    };
+  });
+
+  app.put("/:conversationId/preferences", { preHandler: requireAuth }, async (request: any) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+    await loadConversationForUser(conversationId, request.user.userId);
+
+    const ts = now();
+    const incoming = request.body || {};
+    const isFavorite = incoming.isFavorite === true;
+    const isStarred = incoming.isStarred === true;
+    const isMuted = incoming.isMuted === true;
+    const isArchived = incoming.isArchived === true;
+
+    await query(
+      `INSERT INTO conversation_user_preferences (
+         conversation_id, user_id, is_favorite, is_starred, is_muted, is_archived, updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (conversation_id, user_id)
+       DO UPDATE SET
+         is_favorite = EXCLUDED.is_favorite,
+         is_starred = EXCLUDED.is_starred,
+         is_muted = EXCLUDED.is_muted,
+         is_archived = EXCLUDED.is_archived,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        conversationId,
+        request.user.userId,
+        isFavorite,
+        isStarred,
+        isMuted,
+        isArchived,
+        ts,
+      ]
+    );
+
+    return {
+      success: true,
+      preferences: {
+        isFavorite,
+        isStarred,
+        isMuted,
+        isArchived,
+        updatedAt: toIso(ts),
+      },
+    };
+  });
+
   app.get("/:conversationId", { preHandler: requireAuth }, async (request: any) => {
     const conversationId = normalizeString(request.params.conversationId);
     ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensureConversationOpenForUser(conversation, request.user.userId);
     const groupMeta = conversation.type === "group" ? getGroupMeta(conversation) : null;
 
     let title = conversation.title || "Conversation";
@@ -189,17 +410,29 @@ export default async function chatService(app: any) {
     const memberIds = [request.user.userId, otherUserId].sort();
     const memberHash = normalizeMemberHash(memberIds);
     const ts = now();
+    const isFriend = await areMutualFollowers(request.user.userId, otherUserId);
+    const requestStatus = isFriend ? "active" : "pending";
 
     const result = await withTransaction(async (client) => {
       const inserted = await client.query(
         `INSERT INTO conversations (
            conversation_id, type, title, member_hash, owner_user_id, seq_counter,
+           dm_request_status, dm_request_sender_user_id, dm_request_recipient_user_id,
            created_at, updated_at
          )
-         VALUES ($1, 'dm', NULL, $2, $3, 0, $4, $5)
+         VALUES ($1, 'dm', NULL, $2, $3, 0, $4, $5, $6, $7, $8)
          ON CONFLICT (member_hash) DO NOTHING
          RETURNING conversation_id`,
-        [generateId(), memberHash, memberIds[0] || request.user.userId, ts, ts]
+        [
+          generateId(),
+          memberHash,
+          memberIds[0] || request.user.userId,
+          requestStatus,
+          requestStatus === "pending" ? request.user.userId : null,
+          requestStatus === "pending" ? otherUserId : null,
+          ts,
+          ts,
+        ]
       );
 
       let conversationId = inserted.rows[0]?.conversation_id;
@@ -216,19 +449,39 @@ export default async function chatService(app: any) {
         throw new HttpError(500, "Failed to create conversation");
       }
 
-      if (created) {
-        for (const memberId of memberIds) {
-          await client.query(
-            `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at, left_at)
-             VALUES ($1, $2, 'member', $3, NULL)
-             ON CONFLICT (conversation_id, user_id)
-             DO UPDATE SET left_at = NULL`,
-            [conversationId, memberId, ts]
-          );
-        }
+      if (!created && isFriend) {
+        await client.query(
+          `UPDATE conversations
+           SET dm_request_status = 'active',
+               dm_request_responded_at = $2,
+               updated_at = $2
+           WHERE conversation_id = $1
+             AND type = 'dm'
+             AND dm_request_status <> 'active'`,
+          [conversationId, ts]
+        );
       }
 
-      return { conversationId, created };
+      for (const memberId of memberIds) {
+        await client.query(
+          `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at, left_at)
+           VALUES ($1, $2, 'member', $3, NULL)
+           ON CONFLICT (conversation_id, user_id)
+           DO UPDATE SET left_at = NULL`,
+          [conversationId, memberId, ts]
+        );
+      }
+
+      const statusRow = await client.query(
+        `SELECT dm_request_status FROM conversations WHERE conversation_id = $1`,
+        [conversationId]
+      );
+
+      return {
+        conversationId,
+        created,
+        requestStatus: statusRow.rows[0]?.dm_request_status || requestStatus,
+      };
     });
 
     return result;
@@ -602,7 +855,8 @@ export default async function chatService(app: any) {
     const conversationId = normalizeString(request.params.conversationId);
     ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    await loadConversationForUser(conversationId, request.user.userId);
+    const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensureConversationOpenForUser(conversation, request.user.userId);
 
     const limit = parseLimit(request.query?.limit, 50, 1, 100);
     const params: unknown[] = [conversationId];
@@ -634,6 +888,7 @@ export default async function chatService(app: any) {
     ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensureConversationOpenForUser(conversation, request.user.userId);
     const memberIds = Array.isArray(conversation.memberIds) ? conversation.memberIds : [];
 
     const reads = await queryMany(
@@ -717,6 +972,16 @@ export default async function chatService(app: any) {
     for (const item of normalized) {
       const meta = allowedMap.get(item.conversationId);
       if (!meta) continue;
+      if (
+        meta.type === "dm" &&
+        (meta.dmRequestStatus === "declined" ||
+          (
+            meta.dmRequestStatus === "pending" &&
+            meta.dmRequestRecipientUserId === request.user.userId
+          ))
+      ) {
+        continue;
+      }
 
       const deltaMessages = await queryMany(
         `SELECT *
@@ -745,6 +1010,15 @@ export default async function chatService(app: any) {
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
     const memberIds = Array.isArray(conversation.memberIds) ? conversation.memberIds : [];
+    if (conversation.type === "dm") {
+      ensure(conversation.dmRequestStatus !== "declined", 403, "Message request was removed");
+      if (
+        conversation.dmRequestStatus === "pending" &&
+        conversation.dmRequestRecipientUserId === request.user.userId
+      ) {
+        throw new HttpError(403, "Accept the message request before replying");
+      }
+    }
 
     const body = normalizeString(request.body?.body);
     const contentType = normalizeString(request.body?.contentType || "text").toLowerCase();
@@ -906,6 +1180,7 @@ export default async function chatService(app: any) {
     ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensureConversationOpenForUser(conversation, request.user.userId);
     const parsed = Number.parseInt(String(request.body?.lastDeliveredSeq || "0"), 10);
     ensure(!Number.isNaN(parsed) && parsed >= 0, 400, "Invalid lastDeliveredSeq");
 
@@ -927,6 +1202,7 @@ export default async function chatService(app: any) {
     ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensureConversationOpenForUser(conversation, request.user.userId);
     const parsed = Number.parseInt(String(request.body?.lastReadSeq || "0"), 10);
     ensure(!Number.isNaN(parsed) && parsed >= 0, 400, "Invalid lastReadSeq");
 

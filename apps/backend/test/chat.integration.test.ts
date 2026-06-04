@@ -198,6 +198,52 @@ test("chat routes: dm create, send message, read + delivery + sync", async () =>
   assert.ok(sendMessage.data.message.messageId);
   assert.equal(sendMessage.data.message.seq, 1);
 
+  const listForBBeforeAccept = await httpJson<Array<{ id: string; unreadCount: number }>>(
+    baseUrl,
+    "/api/conversations",
+    {
+      token: userBToken,
+    }
+  );
+  assert.equal(listForBBeforeAccept.status, 200);
+  assert.equal(
+    listForBBeforeAccept.data.find((item) => item.id === conversationId),
+    undefined
+  );
+
+  const requestsForB = await httpJson<Array<{ id: string; unreadCount: number }>>(
+    baseUrl,
+    "/api/conversations/requests",
+    {
+      token: userBToken,
+    }
+  );
+  assert.equal(requestsForB.status, 200);
+  const requestRow = requestsForB.data.find((item) => item.id === conversationId);
+  assert.ok(requestRow);
+  assert.equal(requestRow.unreadCount, 1);
+
+  const messagesBeforeAccept = await httpJson<{ message?: string }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/messages`,
+    {
+      token: userBToken,
+    }
+  );
+  assert.equal(messagesBeforeAccept.status, 403);
+
+  const acceptRequest = await httpJson<{ success: boolean }>(
+    baseUrl,
+    `/api/conversations/requests/${conversationId}/accept`,
+    {
+      method: "POST",
+      token: userBToken,
+      body: {},
+    }
+  );
+  assert.equal(acceptRequest.status, 200, JSON.stringify(acceptRequest.data));
+  assert.equal(acceptRequest.data.success, true);
+
   const listForB = await httpJson<Array<{ id: string; unreadCount: number }>>(
     baseUrl,
     "/api/conversations",

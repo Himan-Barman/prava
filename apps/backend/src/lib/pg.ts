@@ -256,10 +256,19 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       last_message_deleted_for_all_at TIMESTAMPTZ DEFAULT NULL,
       last_message_created_at TIMESTAMPTZ DEFAULT NULL,
       last_message_edit_version INT NOT NULL DEFAULT 0,
+      dm_request_status TEXT NOT NULL DEFAULT 'active',
+      dm_request_sender_user_id TEXT DEFAULT NULL,
+      dm_request_recipient_user_id TEXT DEFAULT NULL,
+      dm_request_responded_at TIMESTAMPTZ DEFAULT NULL,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS dm_request_status TEXT NOT NULL DEFAULT 'active';
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS dm_request_sender_user_id TEXT DEFAULT NULL;
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS dm_request_recipient_user_id TEXT DEFAULT NULL;
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS dm_request_responded_at TIMESTAMPTZ DEFAULT NULL;
     CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations (updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_conversations_dm_requests ON conversations (dm_request_recipient_user_id, dm_request_status, updated_at DESC);
 
     CREATE TABLE IF NOT EXISTS conversation_members (
       conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
@@ -309,6 +318,18 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       PRIMARY KEY (conversation_id, user_id)
     );
     CREATE INDEX IF NOT EXISTS idx_conv_reads_user ON conversation_reads (user_id, conversation_id);
+
+    CREATE TABLE IF NOT EXISTS conversation_user_preferences (
+      conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      is_favorite     BOOLEAN NOT NULL DEFAULT FALSE,
+      is_starred      BOOLEAN NOT NULL DEFAULT FALSE,
+      is_muted        BOOLEAN NOT NULL DEFAULT FALSE,
+      is_archived     BOOLEAN NOT NULL DEFAULT FALSE,
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (conversation_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_conv_preferences_user ON conversation_user_preferences (user_id, is_favorite, is_starred, updated_at DESC);
 
     -- E2EE CRYPTO
     CREATE TABLE IF NOT EXISTS crypto_devices (

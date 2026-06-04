@@ -18,6 +18,7 @@ import '../../../../services/group_e2ee_service.dart';
 import '../../../../core/storage/secure_store.dart';
 import 'chat_thread_page.dart';
 import '../../pages/new_group_page.dart';
+import 'message_requests_page.dart';
 
 DateTime? _parseDate(dynamic value) {
   if (value == null) return null;
@@ -45,6 +46,10 @@ ChatMessageType _parseContentType(String? value) {
   }
 }
 
+enum _ChatListFilter { all, unread, favoriteGroups, groups, starred, broadcasts }
+
+enum _ChatsMenuAction { newGroup, broadcasts, starred, messageRequests }
+
 class ChatsPage extends StatefulWidget {
   const ChatsPage({super.key});
 
@@ -62,6 +67,8 @@ class _ChatsPageState extends State<ChatsPage> {
   List<ChatPreview> _chats = [];
   bool _loading = true;
   String? _userId;
+  _ChatListFilter _filter = _ChatListFilter.all;
+  int _messageRequestCount = 0;
   final Map<String, Set<String>> _onlineByConversation = {};
   final Map<String, Timer> _typingTimers = {};
 
@@ -108,6 +115,7 @@ class _ChatsPageState extends State<ChatsPage> {
         _chats = data.map(_mapConversation).toList();
         _loading = false;
       });
+      _loadMessageRequestCount();
 
       for (final convo in data) {
         final seq = convo.lastMessageSeq;
@@ -122,6 +130,14 @@ class _ChatsPageState extends State<ChatsPage> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadMessageRequestCount() async {
+    try {
+      final requests = await _chatService.listMessageRequests();
+      if (!mounted) return;
+      setState(() => _messageRequestCount = requests.length);
+    } catch (_) {}
   }
 
   Future<void> _syncInit() async {
@@ -173,8 +189,10 @@ class _ChatsPageState extends State<ChatsPage> {
       unreadCount: convo.unreadCount,
       isGroup: isGroup,
       isOnline: onlineSet != null && onlineSet.isNotEmpty,
-      isMuted: false,
-      isPinned: false,
+      isMuted: convo.isMuted,
+      isPinned: convo.isStarred,
+      isFavorite: convo.isFavorite,
+      isStarred: convo.isStarred,
       isTyping: _typingTimers.containsKey(convo.id),
       lastMessageFromMe: lastMessageFromMe,
       delivery: lastMessageFromMe
@@ -187,6 +205,99 @@ class _ChatsPageState extends State<ChatsPage> {
     );
   }
 
+  Future<void> _openNewGroup() async {
+    final created = await PravaNavigator.push(
+      context,
+      const NewGroupPage(),
+    );
+    if (created != null) {
+      _loadChats(showLoading: false);
+    }
+  }
+
+  Future<void> _openMessageRequests() async {
+    final changed = await PravaNavigator.push(
+      context,
+      const MessageRequestsPage(),
+    );
+    if (changed == true) {
+      _loadChats(showLoading: false);
+    } else {
+      _loadMessageRequestCount();
+    }
+  }
+
+  void _handleMenuAction(_ChatsMenuAction action) {
+    HapticFeedback.selectionClick();
+    switch (action) {
+      case _ChatsMenuAction.newGroup:
+        _openNewGroup();
+        break;
+      case _ChatsMenuAction.broadcasts:
+        setState(() => _filter = _ChatListFilter.broadcasts);
+        break;
+      case _ChatsMenuAction.starred:
+        setState(() => _filter = _ChatListFilter.starred);
+        break;
+      case _ChatsMenuAction.messageRequests:
+        _openMessageRequests();
+        break;
+    }
+  }
+
+  String _filterEmptyTitle() {
+    switch (_filter) {
+      case _ChatListFilter.all:
+        return 'No chats yet';
+      case _ChatListFilter.unread:
+        return 'No unread chats';
+      case _ChatListFilter.favoriteGroups:
+        return 'No favourite groups';
+      case _ChatListFilter.groups:
+        return 'No groups yet';
+      case _ChatListFilter.starred:
+        return 'No starred chats';
+      case _ChatListFilter.broadcasts:
+        return 'No broadcasts';
+    }
+  }
+
+  String _filterEmptySubtitle() {
+    switch (_filter) {
+      case _ChatListFilter.all:
+        return 'Start a new conversation to see it here.';
+      case _ChatListFilter.unread:
+        return 'Unread messages will appear here.';
+      case _ChatListFilter.favoriteGroups:
+        return 'Favourite group chats will appear here.';
+      case _ChatListFilter.groups:
+        return 'Create or join a group to see it here.';
+      case _ChatListFilter.starred:
+        return 'Starred chats will appear here.';
+      case _ChatListFilter.broadcasts:
+        return 'Broadcast lists will appear here.';
+    }
+  }
+
+  List<ChatPreview> _applyFilter(List<ChatPreview> chats) {
+    switch (_filter) {
+      case _ChatListFilter.all:
+        return chats;
+      case _ChatListFilter.unread:
+        return chats.where((chat) => chat.unreadCount > 0).toList();
+      case _ChatListFilter.favoriteGroups:
+        return chats
+            .where((chat) => chat.isGroup && chat.isFavorite)
+            .toList();
+      case _ChatListFilter.groups:
+        return chats.where((chat) => chat.isGroup).toList();
+      case _ChatListFilter.starred:
+        return chats.where((chat) => chat.isStarred).toList();
+      case _ChatListFilter.broadcasts:
+        return <ChatPreview>[];
+    }
+  }
+
   void _handleRealtimeEvent(Map<String, dynamic> event) {
     final type = event['type']?.toString();
     final payload = event['payload'];
@@ -195,6 +306,13 @@ class _ChatsPageState extends State<ChatsPage> {
     switch (type) {
       case 'MESSAGE_PUSH':
         _handleMessagePush(payload);
+        break;
+      case 'MESSAGE_REQUEST_ACCEPTED':
+        _loadChats(showLoading: false);
+        _loadMessageRequestCount();
+        break;
+      case 'MESSAGE_REQUEST_DECLINED':
+        _handleMessageRequestDeclined(payload);
         break;
       case 'MESSAGE_ACK':
         _handleMessageAck(payload);
@@ -282,6 +400,16 @@ class _ChatsPageState extends State<ChatsPage> {
     final messageId = payload['messageId']?.toString();
     final seq = _parseInt(payload['seq']);
 
+    final knownConversation =
+        _chats.any((chat) => chat.id == conversationId);
+    if (!knownConversation) {
+      if (!isFromMe) {
+        _loadMessageRequestCount();
+      }
+      _loadChats(showLoading: false);
+      return;
+    }
+
     final preview = _formatPreviewText(
       body: body,
       contentType: contentType,
@@ -310,6 +438,17 @@ class _ChatsPageState extends State<ChatsPage> {
       ),
     );
     _bumpChatToTop(conversationId);
+  }
+
+  void _handleMessageRequestDeclined(Map<String, dynamic> payload) {
+    final conversationId = payload['conversationId']?.toString();
+    if (conversationId == null) return;
+
+    if (!mounted) return;
+    setState(() {
+      _chats = _chats.where((chat) => chat.id != conversationId).toList();
+    });
+    _loadMessageRequestCount();
   }
 
   void _handleMessageAck(Map<String, dynamic> payload) {
@@ -449,6 +588,96 @@ class _ChatsPageState extends State<ChatsPage> {
     });
   }
 
+  Future<void> _updateChatPreferences(
+    ChatPreview chat, {
+    bool? isFavorite,
+    bool? isStarred,
+    bool? isMuted,
+  }) async {
+    final nextFavorite = isFavorite ?? chat.isFavorite;
+    final nextStarred = isStarred ?? chat.isStarred;
+    final nextMuted = isMuted ?? chat.isMuted;
+
+    _updateChat(
+      chat.id,
+      (current) => current.copyWith(
+        isFavorite: nextFavorite,
+        isStarred: nextStarred,
+        isPinned: nextStarred,
+        isMuted: nextMuted,
+      ),
+    );
+
+    final ok = await _chatService.updatePreferences(
+      conversationId: chat.id,
+      isFavorite: nextFavorite,
+      isStarred: nextStarred,
+      isMuted: nextMuted,
+      isArchived: false,
+    );
+    if (!ok && mounted) {
+      _updateChat(
+        chat.id,
+        (current) => current.copyWith(
+          isFavorite: chat.isFavorite,
+          isStarred: chat.isStarred,
+          isPinned: chat.isPinned,
+          isMuted: chat.isMuted,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showChatActions(ChatPreview chat) async {
+    HapticFeedback.selectionClick();
+    final action = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) {
+        final actions = <CupertinoActionSheetAction>[
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('star'),
+            child: Text(chat.isStarred ? 'Remove star' : 'Star chat'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('mute'),
+            child: Text(chat.isMuted ? 'Unmute' : 'Mute'),
+          ),
+        ];
+        if (chat.isGroup) {
+          actions.insert(
+            1,
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(context).pop('favorite'),
+              child: Text(
+                chat.isFavorite
+                    ? 'Remove from favourite groups'
+                    : 'Add to favourite groups',
+              ),
+            ),
+          );
+        }
+
+        return CupertinoActionSheet(
+          title: Text(chat.name),
+          actions: actions,
+          cancelButton: CupertinoActionSheetAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        );
+      },
+    );
+
+    if (action == 'star') {
+      _updateChatPreferences(chat, isStarred: !chat.isStarred);
+    } else if (action == 'favorite') {
+      _updateChatPreferences(chat, isFavorite: !chat.isFavorite);
+    } else if (action == 'mute') {
+      _updateChatPreferences(chat, isMuted: !chat.isMuted);
+    }
+  }
+
   String _formatChatTime(DateTime? date) {
     if (date == null) return 'New';
 
@@ -502,7 +731,7 @@ class _ChatsPageState extends State<ChatsPage> {
         ? PravaColors.darkBorderSubtle
         : PravaColors.lightBorderSubtle;
     final query = _searchController.text.trim().toLowerCase();
-    final visibleChats = query.isEmpty
+    final searchedChats = query.isEmpty
         ? _chats
         : _chats
               .where(
@@ -511,6 +740,7 @@ class _ChatsPageState extends State<ChatsPage> {
                     chat.lastMessage.toLowerCase().contains(query),
               )
               .toList();
+    final visibleChats = _applyFilter(searchedChats);
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -521,7 +751,7 @@ class _ChatsPageState extends State<ChatsPage> {
           Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
                 child: Row(
                   children: [
                     Text(
@@ -532,10 +762,9 @@ class _ChatsPageState extends State<ChatsPage> {
                       ),
                     ),
                     const Spacer(),
-                    _HeaderPill(
-                      label: 'New',
-                      icon: CupertinoIcons.square_pencil,
-                      onTap: () => HapticFeedback.selectionClick(),
+                    _ChatsMenuButton(
+                      requestCount: _messageRequestCount,
+                      onSelected: _handleMenuAction,
                     ),
                   ],
                 ),
@@ -563,30 +792,40 @@ class _ChatsPageState extends State<ChatsPage> {
                   ),
                 ),
               ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Row(
+              SizedBox(
+                height: 42,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  physics: const BouncingScrollPhysics(),
                   children: [
-                    _QuickAction(
-                      icon: CupertinoIcons.person_2,
-                      label: 'New group',
-                      onTap: () async {
-                        final created = await PravaNavigator.push(
-                          context,
-                          const NewGroupPage(),
-                        );
-                        if (created != null) {
-                          _loadChats(showLoading: false);
-                        }
-                      },
+                    _FilterChip(
+                      label: 'All',
+                      selected: _filter == _ChatListFilter.all,
+                      onTap: () => setState(() => _filter = _ChatListFilter.all),
                     ),
-                    SizedBox(width: 10),
-                    _QuickAction(
-                      icon: CupertinoIcons.speaker_2,
-                      label: 'Broadcast',
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: 'Unread',
+                      selected: _filter == _ChatListFilter.unread,
+                      onTap: () =>
+                          setState(() => _filter = _ChatListFilter.unread),
                     ),
-                    SizedBox(width: 10),
-                    _QuickAction(icon: CupertinoIcons.star, label: 'Starred'),
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: 'Favourite groups',
+                      selected: _filter == _ChatListFilter.favoriteGroups,
+                      onTap: () => setState(
+                        () => _filter = _ChatListFilter.favoriteGroups,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: 'Groups',
+                      selected: _filter == _ChatListFilter.groups,
+                      onTap: () =>
+                          setState(() => _filter = _ChatListFilter.groups),
+                    ),
                   ],
                 ),
               ),
@@ -599,7 +838,14 @@ class _ChatsPageState extends State<ChatsPage> {
                           onRefresh: () => _loadChats(showLoading: false),
                           color: PravaColors.accentPrimary,
                           child: visibleChats.isEmpty
-                              ? _EmptyChatsState(hasQuery: query.isNotEmpty)
+                              ? _EmptyChatsState(
+                                  title: query.isEmpty
+                                      ? _filterEmptyTitle()
+                                      : 'No matches',
+                                  subtitle: query.isEmpty
+                                      ? _filterEmptySubtitle()
+                                      : 'Try another name or message.',
+                                )
                               : ListView.separated(
                                   padding: const EdgeInsets.fromLTRB(
                                     16,
@@ -617,6 +863,8 @@ class _ChatsPageState extends State<ChatsPage> {
                                     final chat = visibleChats[index];
                                     return _ChatTile(
                                       chat: chat,
+                                      onLongPress: () =>
+                                          _showChatActions(chat),
                                       onTap: () {
                                         HapticFeedback.selectionClick();
                                         _updateChat(
@@ -645,100 +893,146 @@ class _ChatsPageState extends State<ChatsPage> {
   }
 }
 
-class _HeaderPill extends StatelessWidget {
-  const _HeaderPill({
-    required this.label,
-    required this.icon,
-    required this.onTap,
+class _ChatsMenuButton extends StatelessWidget {
+  const _ChatsMenuButton({
+    required this.requestCount,
+    required this.onSelected,
   });
 
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
+  final int requestCount;
+  final ValueChanged<_ChatsMenuAction> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [PravaColors.accentPrimary, PravaColors.accentMuted],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: PravaColors.accentPrimary.withValues(alpha: 0.35),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final surface = isDark
+        ? PravaColors.darkBgElevated
+        : PravaColors.lightBgElevated;
+
+    return PopupMenuButton<_ChatsMenuAction>(
+      onSelected: onSelected,
+      color: surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      itemBuilder: (context) => [
+        _menuItem(
+          value: _ChatsMenuAction.newGroup,
+          icon: CupertinoIcons.person_2_fill,
+          label: 'New group',
+          primary: primary,
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        _menuItem(
+          value: _ChatsMenuAction.broadcasts,
+          icon: CupertinoIcons.speaker_2_fill,
+          label: 'Broadcasts',
+          primary: primary,
+        ),
+        _menuItem(
+          value: _ChatsMenuAction.starred,
+          icon: CupertinoIcons.star_fill,
+          label: 'Starred',
+          primary: primary,
+        ),
+        _menuItem(
+          value: _ChatsMenuAction.messageRequests,
+          icon: CupertinoIcons.tray_full_fill,
+          label: requestCount > 0
+              ? 'Message requests ($requestCount)'
+              : 'Message requests',
+          primary: primary,
+        ),
+      ],
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
           children: [
-            Icon(icon, size: 16, color: Colors.white),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: PravaTypography.caption.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
+            Icon(CupertinoIcons.ellipsis_vertical, size: 20, color: primary),
+            if (requestCount > 0)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: PravaColors.accentPrimary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),
     );
   }
+
+  PopupMenuItem<_ChatsMenuAction> _menuItem({
+    required _ChatsMenuAction value,
+    required IconData icon,
+    required String label,
+    required Color primary,
+  }) {
+    return PopupMenuItem(
+      value: value,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: PravaColors.accentPrimary),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: PravaTypography.body.copyWith(color: primary),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _QuickAction extends StatelessWidget {
-  const _QuickAction({required this.icon, required this.label, this.onTap});
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
-  final IconData icon;
   final String label;
-  final VoidCallback? onTap;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark
-        ? Colors.white10
-        : Colors.black.withValues(alpha: 0.06);
     final secondary = isDark
         ? PravaColors.darkTextSecondary
         : PravaColors.lightTextSecondary;
+    final background = selected
+        ? PravaColors.accentPrimary
+        : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06));
 
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 16, color: PravaColors.accentPrimary),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: PravaTypography.caption.copyWith(
-                    color: secondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: PravaTypography.caption.copyWith(
+            color: selected ? Colors.white : secondary,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
@@ -758,10 +1052,15 @@ class _ChatsBackground extends StatelessWidget {
 }
 
 class _ChatTile extends StatelessWidget {
-  const _ChatTile({required this.chat, required this.onTap});
+  const _ChatTile({
+    required this.chat,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   final ChatPreview chat;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   Color _avatarColor(String name) {
     const palette = [
@@ -807,6 +1106,7 @@ class _ChatTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Ink(
           decoration: BoxDecoration(
             color: baseColor,
@@ -998,6 +1298,8 @@ class ChatPreview {
   final bool isOnline;
   final bool isMuted;
   final bool isPinned;
+  final bool isFavorite;
+  final bool isStarred;
   final bool isTyping;
   final bool lastMessageFromMe;
   final MessageDeliveryState delivery;
@@ -1016,6 +1318,8 @@ class ChatPreview {
     required this.isOnline,
     required this.isMuted,
     required this.isPinned,
+    this.isFavorite = false,
+    this.isStarred = false,
     required this.isTyping,
     required this.lastMessageFromMe,
     required this.delivery,
@@ -1033,6 +1337,8 @@ class ChatPreview {
     bool? isOnline,
     bool? isMuted,
     bool? isPinned,
+    bool? isFavorite,
+    bool? isStarred,
     bool? isTyping,
     bool? lastMessageFromMe,
     MessageDeliveryState? delivery,
@@ -1051,6 +1357,8 @@ class ChatPreview {
       isOnline: isOnline ?? this.isOnline,
       isMuted: isMuted ?? this.isMuted,
       isPinned: isPinned ?? this.isPinned,
+      isFavorite: isFavorite ?? this.isFavorite,
+      isStarred: isStarred ?? this.isStarred,
       isTyping: isTyping ?? this.isTyping,
       lastMessageFromMe: lastMessageFromMe ?? this.lastMessageFromMe,
       delivery: delivery ?? this.delivery,
@@ -1064,9 +1372,13 @@ class ChatPreview {
 }
 
 class _EmptyChatsState extends StatelessWidget {
-  const _EmptyChatsState({required this.hasQuery});
+  const _EmptyChatsState({
+    required this.title,
+    required this.subtitle,
+  });
 
-  final bool hasQuery;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -1088,7 +1400,7 @@ class _EmptyChatsState extends StatelessWidget {
         const SizedBox(height: 12),
         Center(
           child: Text(
-            hasQuery ? 'No matches' : 'No chats yet',
+            title,
             style: PravaTypography.bodyLarge.copyWith(
               color: primary,
               fontWeight: FontWeight.w600,
@@ -1098,9 +1410,7 @@ class _EmptyChatsState extends StatelessWidget {
         const SizedBox(height: 6),
         Center(
           child: Text(
-            hasQuery
-                ? 'Try another name or message.'
-                : 'Start a new conversation to see it here.',
+            subtitle,
             textAlign: TextAlign.center,
             style: PravaTypography.body.copyWith(color: secondary),
           ),
