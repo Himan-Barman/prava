@@ -257,6 +257,7 @@ class ConversationSummary {
     this.requestStatus = 'active',
     this.requestSenderUserId,
     this.requestRecipientUserId,
+    this.peerAvatarUrl = '',
     this.isFavorite = false,
     this.isStarred = false,
     this.isMuted = false,
@@ -279,6 +280,7 @@ class ConversationSummary {
   final String requestStatus;
   final String? requestSenderUserId;
   final String? requestRecipientUserId;
+  final String peerAvatarUrl;
   final bool isFavorite;
   final bool isStarred;
   final bool isMuted;
@@ -310,6 +312,7 @@ class ConversationSummary {
       requestStatus: json['requestStatus']?.toString() ?? 'active',
       requestSenderUserId: json['requestSenderUserId']?.toString(),
       requestRecipientUserId: json['requestRecipientUserId']?.toString(),
+      peerAvatarUrl: json['peerAvatarUrl']?.toString() ?? '',
       isFavorite: json['isFavorite'] == true,
       isStarred: json['isStarred'] == true,
       isMuted: json['isMuted'] == true,

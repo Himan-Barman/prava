@@ -157,25 +157,28 @@ class _FriendsPageState extends State<FriendsPage> {
         throw Exception('Conversation not created');
       }
       final name = user.displayName.isNotEmpty ? user.displayName : user.username;
-      await PravaNavigator.push(
-        context,
-        ChatThreadPage(
-          chat: ChatPreview(
-            id: conversationId,
-            name: name,
-            lastMessage: 'No messages yet',
-            time: 'New',
-            unreadCount: 0,
-            isGroup: false,
-            isOnline: user.isOnline,
-            isMuted: false,
-            isPinned: false,
-            isFavorite: false,
-            isStarred: false,
-            isTyping: false,
-            lastMessageFromMe: false,
-            delivery: MessageDeliveryState.read,
+      await Navigator.of(context, rootNavigator: true).push(
+        PravaNavigator.route(
+          ChatThreadPage(
+            chat: ChatPreview(
+              id: conversationId,
+              name: name,
+              lastMessage: 'No messages yet',
+              time: 'New',
+              unreadCount: 0,
+              isGroup: false,
+              isOnline: user.isOnline,
+              isMuted: false,
+              isPinned: false,
+              isFavorite: false,
+              isStarred: false,
+              isTyping: false,
+              avatarUrl: user.avatarUrl,
+              lastMessageFromMe: false,
+              delivery: MessageDeliveryState.read,
+            ),
           ),
+          fullscreenDialog: true,
         ),
       );
     } catch (_) {
@@ -440,7 +443,7 @@ class _FriendsPageState extends State<FriendsPage> {
                             padding: const EdgeInsets.fromLTRB(12, 2, 12, 18),
                             itemCount: rows.length,
                             separatorBuilder: (_, __) =>
-                                Divider(color: border, height: 1),
+                                const SizedBox(height: 10),
                             itemBuilder: (context, index) {
                               final row = rows[index];
                               return _FriendRow(
@@ -449,7 +452,6 @@ class _FriendsPageState extends State<FriendsPage> {
                                 primary: primary,
                                 secondary: secondary,
                                 onTap: () => _openProfile(row.item),
-                                onMessage: () => _messageUser(row.item),
                                 onPrimaryAction: () {
                                   switch (row.kind) {
                                     case _FriendRowKind.friend:
@@ -566,7 +568,6 @@ class _FriendRow extends StatelessWidget {
     required this.primary,
     required this.secondary,
     required this.onTap,
-    required this.onMessage,
     required this.onPrimaryAction,
     required this.onMore,
   });
@@ -576,78 +577,102 @@ class _FriendRow extends StatelessWidget {
   final Color primary;
   final Color secondary;
   final VoidCallback onTap;
-  final VoidCallback onMessage;
   final VoidCallback onPrimaryAction;
   final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark
+        ? PravaColors.darkBgSurface.withValues(alpha: 0.86)
+        : Colors.white.withValues(alpha: 0.9);
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
     final user = row.item.user;
     final name = user.displayName.isNotEmpty ? user.displayName : user.username;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-        child: Row(
-          children: [
-            _FriendAvatar(user: user),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: PravaTypography.bodyLarge.copyWith(
-                            color: primary,
-                            fontWeight: FontWeight.w800,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.05),
+                blurRadius: 14,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              _FriendAvatar(user: user),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PravaTypography.bodyLarge.copyWith(
+                              color: primary,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
-                      ),
-                      if (user.isVerified) ...[
-                        const SizedBox(width: 5),
-                        const Icon(
-                          CupertinoIcons.check_mark_circled_solid,
-                          color: PravaColors.accentPrimary,
-                          size: 15,
-                        ),
+                        if (user.isVerified) ...[
+                          const SizedBox(width: 5),
+                          const Icon(
+                            CupertinoIcons.check_mark_circled_solid,
+                            color: PravaColors.accentPrimary,
+                            size: 15,
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '@${user.username}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PravaTypography.bodySmall.copyWith(
-                      color: secondary,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    Text(
+                      '@${user.username}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PravaTypography.bodySmall.copyWith(
+                        color: secondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            _FriendActionButton(
-              label: _buttonLabel(),
-              pending: pending,
-              onTap: onPrimaryAction,
-            ),
-            IconButton(
-              onPressed: onMore,
-              icon: Icon(
-                CupertinoIcons.ellipsis,
-                color: secondary,
-                size: 24,
+              const SizedBox(width: 8),
+              _FriendActionButton(
+                label: _buttonLabel(),
+                pending: pending,
+                compact: row.kind == _FriendRowKind.friend,
+                onTap: onPrimaryAction,
               ),
-            ),
-          ],
+              IconButton(
+                onPressed: onMore,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: EdgeInsets.zero,
+                icon: Icon(
+                  CupertinoIcons.ellipsis_vertical,
+                  color: secondary,
+                  size: 20,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -702,22 +727,28 @@ class _FriendActionButton extends StatelessWidget {
   const _FriendActionButton({
     required this.label,
     required this.pending,
+    required this.compact,
     required this.onTap,
   });
 
   final String label;
   final bool pending;
+  final bool compact;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final constraints = compact
+        ? const BoxConstraints(minWidth: 72, maxWidth: 88)
+        : const BoxConstraints(minWidth: 90, maxWidth: 118);
+
     return GestureDetector(
       onTap: pending ? null : onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         height: 34,
-        constraints: const BoxConstraints(minWidth: 84, maxWidth: 116),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        constraints: constraints,
+        padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
         decoration: BoxDecoration(
           color: pending
               ? PravaColors.accentPrimary.withValues(alpha: 0.45)

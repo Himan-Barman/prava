@@ -5,7 +5,7 @@ import '../core/storage/secure_store.dart';
 import '../experiences/auth/login_screen.dart';
 import '../experiences/home/home_shell.dart';
 import '../navigation/prava_navigator.dart';
-import '../services/auth_service.dart';
+import '../services/backend_keepalive_service.dart';
 import '../ui-system/theme.dart';
 import 'deep_link_handler.dart';
 import 'settings_controller.dart';
@@ -25,14 +25,17 @@ class _PravaAppState extends State<PravaApp> {
   late final DeepLinkHandler _deepLinks;
   late final AuthState _authState;
   late final SecureStore _store;
+  late final BackendKeepAliveService _backendKeepAlive;
 
   @override
   void initState() {
     super.initState();
     _store = SecureStore();
     _authState = AuthState(store: _store);
+    _backendKeepAlive = BackendKeepAliveService();
     _deepLinks = DeepLinkHandler(navigatorKey: _navigatorKey);
     _deepLinks.start();
+    _backendKeepAlive.start();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _deepLinks.notifyReady();
     });
@@ -60,6 +63,7 @@ class _PravaAppState extends State<PravaApp> {
   @override
   void dispose() {
     _authState.removeListener(_onAuthChanged);
+    _backendKeepAlive.stop();
     _deepLinks.dispose();
     super.dispose();
   }

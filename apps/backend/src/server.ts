@@ -65,6 +65,8 @@ const app = Fastify({
 
 let ready = false;
 let shuttingDown = false;
+let backendKeepAliveTimer: ReturnType<typeof setInterval> | null = null;
+let backendKeepAliveInitialTimer: ReturnType<typeof setTimeout> | null = null;
 
 function buildCorsOrigin(origins: string[]) {
   if (origins.includes("*")) {
@@ -212,6 +214,101 @@ function registerRoutes(): void {
   });
 }
 
+function parseBooleanEnv(value: string | undefined): boolean {
+  return ["1", "true", "yes", "on"].includes((value || "").trim().toLowerCase());
+}
+
+function resolveBackendKeepAliveUrl(): string | null {
+  const explicit = (process.env.KEEPALIVE_URL || "").trim();
+
+  if (explicit) {
+    try {
+      return new URL(explicit).toString();
+    } catch {
+      return null;
+    }
+  }
+
+  const serviceName = (process.env.RENDER_SERVICE_NAME || "").trim();
+  const base = (
+    process.env.BACKEND_PUBLIC_URL
+    || process.env.RENDER_EXTERNAL_URL
+    || (serviceName ? `https://${serviceName}.onrender.com` : "")
+    || env.APP_PUBLIC_URL
+    || ""
+  ).trim();
+
+  if (!base) {
+    return null;
+  }
+
+  try {
+    const url = new URL(base);
+    url.pathname = `${url.pathname.replace(/\/+$/, "")}/api/health`;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function startBackendKeepAlive(): void {
+  if (backendKeepAliveTimer || env.NODE_ENV === "test") {
+    return;
+  }
+  if (parseBooleanEnv(process.env.KEEPALIVE_DISABLED)) {
+    return;
+  }
+
+  const url = resolveBackendKeepAliveUrl();
+  if (!url) {
+    app.log.info("backend keepalive disabled; no public backend URL configured");
+    return;
+  }
+
+  const rawMinutes = Number.parseInt(process.env.KEEPALIVE_INTERVAL_MINUTES || "10", 10);
+  const intervalMinutes = Number.isFinite(rawMinutes)
+    ? Math.max(5, Math.min(14, rawMinutes))
+    : 10;
+  const intervalMs = intervalMinutes * 60 * 1000;
+
+  const ping = async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    timeout.unref?.();
+    try {
+      await fetch(url, { signal: controller.signal });
+    } catch (error) {
+      app.log.debug({ err: error }, "backend keepalive ping failed");
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  backendKeepAliveInitialTimer = setTimeout(() => {
+    void ping();
+  }, 60 * 1000);
+  backendKeepAliveInitialTimer.unref?.();
+
+  backendKeepAliveTimer = setInterval(() => {
+    void ping();
+  }, intervalMs);
+  backendKeepAliveTimer.unref?.();
+  app.log.info({ url, intervalMinutes }, "backend keepalive enabled");
+}
+
+function stopBackendKeepAlive(): void {
+  if (backendKeepAliveInitialTimer) {
+    clearTimeout(backendKeepAliveInitialTimer);
+    backendKeepAliveInitialTimer = null;
+  }
+  if (backendKeepAliveTimer) {
+    clearInterval(backendKeepAliveTimer);
+    backendKeepAliveTimer = null;
+  }
+}
+
 function registerErrorHandlers(): void {
   app.setErrorHandler((error, request, reply) => {
     const unknownError = error as { statusCode?: unknown; message?: unknown };
@@ -271,6 +368,7 @@ async function bootstrap(): Promise<void> {
     app.log.error({ err: error }, "realtime hub unavailable");
   }
   ready = true;
+  startBackendKeepAlive();
 
   app.log.info({ env: env.NODE_ENV }, "backend ready");
 }
@@ -283,6 +381,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   ready = false;
   app.log.warn({ signal }, "shutdown requested");
+  stopBackendKeepAlive();
 
   try {
     await app.close();

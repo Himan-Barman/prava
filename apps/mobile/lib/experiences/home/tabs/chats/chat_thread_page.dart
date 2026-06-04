@@ -425,22 +425,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       }
     }
 
-    if (_realtime.isConnected) {
-      _realtime.sendMessage(
-        conversationId: widget.chat.id,
-        body: outboundBody,
-        tempId: tempId,
-        contentType: 'text',
-        clientTimestamp: DateTime.now(),
-      );
-      return;
-    }
-
     try {
       final sent = await _chatService.sendMessage(
         conversationId: widget.chat.id,
         body: outboundBody,
         tempId: tempId,
+        clientTimestamp: DateTime.now(),
       );
       if (sent != null) {
         _applyServerMessage(tempId, sent);
@@ -538,19 +528,6 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       }
     }
 
-    if (_realtime.isConnected) {
-      _realtime.sendMessage(
-        conversationId: widget.chat.id,
-        body: outboundBody,
-        tempId: tempId,
-        contentType:
-            message.type == ChatMessageType.media ? 'media' : 'text',
-        mediaAssetId: message.mediaAssetId,
-        clientTimestamp: DateTime.now(),
-      );
-      return;
-    }
-
     try {
       final sent = await _chatService.sendMessage(
         conversationId: widget.chat.id,
@@ -559,6 +536,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         contentType:
             message.type == ChatMessageType.media ? 'media' : 'text',
         mediaAssetId: message.mediaAssetId,
+        clientTimestamp: DateTime.now(),
       );
       if (sent != null) {
         _applyServerMessage(tempId, sent);
@@ -620,21 +598,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
             );
       if (envelope == null || envelope.isEmpty) return;
 
-      if (_realtime.isConnected) {
-        _realtime.sendMessage(
-          conversationId: widget.chat.id,
-          body: envelope,
-          tempId: _generateTempId(),
-          contentType: 'system',
-          clientTimestamp: DateTime.now(),
-        );
-        return;
-      }
-
       await _chatService.sendMessage(
         conversationId: widget.chat.id,
         body: envelope,
         contentType: 'system',
+        tempId: _generateTempId(),
+        clientTimestamp: DateTime.now(),
       );
     } catch (_) {}
   }
@@ -1523,6 +1492,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                     name: widget.chat.name,
                     subtitle: subtitle,
                     initial: initial,
+                    avatarUrl: widget.chat.avatarUrl,
                   ),
                   Expanded(
                     child: AnimatedSwitcher(
@@ -1691,11 +1661,13 @@ class _ChatHeader extends StatelessWidget {
     required this.name,
     required this.subtitle,
     required this.initial,
+    required this.avatarUrl,
   });
 
   final String name;
   final String subtitle;
   final String initial;
+  final String avatarUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -1725,20 +1697,25 @@ class _ChatHeader extends StatelessWidget {
             ),
             child: Row(
               children: [
-                _HeaderAction(
-                  icon: CupertinoIcons.back,
-                  onTap: () => Navigator.of(context).pop(),
-                ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor:
-                      PravaColors.accentPrimary.withValues(alpha: 0.18),
-                  child: Text(
-                    initial,
-                    style: PravaTypography.h3.copyWith(
-                      color: PravaColors.accentPrimary,
-                    ),
+                SizedBox(
+                  width: 46,
+                  height: 46,
+                  child: ClipOval(
+                    child: avatarUrl.trim().isNotEmpty
+                        ? Image.network(avatarUrl, fit: BoxFit.cover)
+                        : Container(
+                            color: PravaColors.accentPrimary
+                                .withValues(alpha: 0.18),
+                            child: Center(
+                              child: Text(
+                                initial,
+                                style: PravaTypography.h3.copyWith(
+                                  color: PravaColors.accentPrimary,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1761,55 +1738,15 @@ class _ChatHeader extends StatelessWidget {
                         style: PravaTypography.caption.copyWith(
                           color: secondary,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                _HeaderAction(
-                  icon: CupertinoIcons.phone,
-                  onTap: () {},
-                ),
-                const SizedBox(width: 6),
-                _HeaderAction(
-                  icon: CupertinoIcons.video_camera,
-                  onTap: () {},
-                ),
-                const SizedBox(width: 6),
-                _HeaderAction(
-                  icon: CupertinoIcons.info,
-                  onTap: () {},
-                ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HeaderAction extends StatelessWidget {
-  const _HeaderAction({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.white10 : Colors.black12,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: PravaColors.accentPrimary,
         ),
       ),
     );
@@ -2204,14 +2141,6 @@ class _ComposerBar extends StatelessWidget {
                         ),
                       ),
                     ),
-                    _ComposerIcon(
-                      icon: CupertinoIcons.photo,
-                      onTap: () {},
-                    ),
-                    _ComposerIcon(
-                      icon: CupertinoIcons.paperclip,
-                      onTap: () {},
-                    ),
                   ],
                 ),
               ),
@@ -2223,6 +2152,9 @@ class _ComposerBar extends StatelessWidget {
           valueListenable: controller,
           builder: (context, value, child) {
             final hasText = value.text.trim().isNotEmpty;
+            final buttonColor = hasText
+                ? PravaColors.accentPrimary
+                : (isDark ? Colors.white12 : Colors.black12);
             return GestureDetector(
               onTap: () {
                 HapticFeedback.selectionClick();
@@ -2236,27 +2168,21 @@ class _ComposerBar extends StatelessWidget {
                 height: 50,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [
-                      PravaColors.accentPrimary,
-                      PravaColors.accentMuted,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: PravaColors.accentPrimary.withValues(alpha: 0.35),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
+                  color: buttonColor,
+                  boxShadow: hasText
+                      ? [
+                          BoxShadow(
+                            color: PravaColors.accentPrimary
+                                .withValues(alpha: 0.28),
+                            blurRadius: 16,
+                            offset: const Offset(0, 8),
+                          ),
+                        ]
+                      : null,
                 ),
                 child: Icon(
-                  hasText
-                      ? CupertinoIcons.paperplane_fill
-                      : CupertinoIcons.mic_fill,
-                  color: Colors.white,
+                  CupertinoIcons.paperplane_fill,
+                  color: hasText ? Colors.white : secondary,
                   size: 18,
                 ),
               ),

@@ -42,7 +42,7 @@ async function loadActiveUsers(ids: string[]): Promise<any[]> {
     return [];
   }
   return queryMany(
-    `SELECT user_id, username, display_name
+    `SELECT user_id, username, display_name, avatar_url
      FROM users
      WHERE user_id = ANY($1::text[]) AND deleted_at IS NULL`,
     [ids]
@@ -56,11 +56,13 @@ async function loadMessagesWithReactions(rows: any[]): Promise<any[]> {
 
 function conversationSummary(conversation: any, currentUserId: string, peerMap: Map<string, any>, lastReadSeq: number) {
   let title = conversation.title || "Conversation";
+  let peerAvatarUrl = "";
   if (conversation.type === "dm") {
     const peerId = (conversation.memberIds || []).find((id) => id !== currentUserId);
     const peer = peerId ? peerMap.get(peerId) : null;
     if (peer) {
       title = userDisplayName(peer);
+      peerAvatarUrl = peer.avatar_url || "";
     }
   }
 
@@ -85,6 +87,7 @@ function conversationSummary(conversation: any, currentUserId: string, peerMap: 
     memberCount: Array.isArray(conversation.memberIds) ? conversation.memberIds.length : 0,
     isAdmin: groupMeta ? isGroupAdmin(groupMeta, currentUserId) : false,
     myRole: groupMeta ? roleForUser(groupMeta, currentUserId) : "member",
+    peerAvatarUrl,
     requestStatus: conversation.dmRequestStatus || "active",
     requestSenderUserId: conversation.dmRequestSenderUserId || null,
     requestRecipientUserId: conversation.dmRequestRecipientUserId || null,

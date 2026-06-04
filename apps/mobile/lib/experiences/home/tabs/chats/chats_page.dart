@@ -239,6 +239,7 @@ class _ChatsPageState extends State<ChatsPage> {
       isFavorite: convo.isFavorite,
       isStarred: convo.isStarred,
       isTyping: _typingTimers.containsKey(convo.id),
+      avatarUrl: convo.peerAvatarUrl,
       lastMessageFromMe: lastMessageFromMe,
       delivery: lastMessageFromMe
           ? MessageDeliveryState.sent
@@ -880,9 +881,14 @@ class _ChatsPageState extends State<ChatsPage> {
                                           (current) =>
                                               current.copyWith(unreadCount: 0),
                                         );
-                                        PravaNavigator.push(
+                                        Navigator.of(
                                           context,
-                                          ChatThreadPage(chat: chat),
+                                          rootNavigator: true,
+                                        ).push(
+                                          PravaNavigator.route(
+                                            ChatThreadPage(chat: chat),
+                                            fullscreenDialog: true,
+                                          ),
                                         ).then((_) {
                                           _loadChats(showLoading: false);
                                         });
@@ -1206,6 +1212,7 @@ class ChatPreview {
   final bool isFavorite;
   final bool isStarred;
   final bool isTyping;
+  final String avatarUrl;
   final bool lastMessageFromMe;
   final MessageDeliveryState delivery;
   final String? lastMessageId;
@@ -1226,6 +1233,7 @@ class ChatPreview {
     this.isFavorite = false,
     this.isStarred = false,
     required this.isTyping,
+    this.avatarUrl = '',
     required this.lastMessageFromMe,
     required this.delivery,
     this.lastMessageId,
@@ -1245,6 +1253,7 @@ class ChatPreview {
     bool? isFavorite,
     bool? isStarred,
     bool? isTyping,
+    String? avatarUrl,
     bool? lastMessageFromMe,
     MessageDeliveryState? delivery,
     String? lastMessageId,
@@ -1265,6 +1274,7 @@ class ChatPreview {
       isFavorite: isFavorite ?? this.isFavorite,
       isStarred: isStarred ?? this.isStarred,
       isTyping: isTyping ?? this.isTyping,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       lastMessageFromMe: lastMessageFromMe ?? this.lastMessageFromMe,
       delivery: delivery ?? this.delivery,
       lastMessageId: lastMessageId ?? this.lastMessageId,
