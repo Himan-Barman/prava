@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -18,23 +17,23 @@ class HomeBottomBar extends StatelessWidget {
   static const _items = [
     _NavItemData(
       label: 'Feed',
-      icon: CupertinoIcons.news,
-      activeIcon: CupertinoIcons.news_solid,
+      icon: Icons.dynamic_feed_rounded,
+      activeIcon: Icons.dynamic_feed_rounded,
     ),
     _NavItemData(
       label: 'Chats',
-      icon: CupertinoIcons.chat_bubble_2,
-      activeIcon: CupertinoIcons.chat_bubble_2_fill,
+      icon: Icons.chat_bubble_rounded,
+      activeIcon: Icons.chat_bubble_rounded,
     ),
     _NavItemData(
       label: 'Friends',
-      icon: CupertinoIcons.person_2,
-      activeIcon: CupertinoIcons.person_2_fill,
+      icon: Icons.groups_rounded,
+      activeIcon: Icons.groups_rounded,
     ),
     _NavItemData(
       label: 'Profile',
-      icon: CupertinoIcons.person,
-      activeIcon: CupertinoIcons.person_fill,
+      icon: Icons.person_rounded,
+      activeIcon: Icons.person_rounded,
     ),
   ];
 
@@ -132,7 +131,7 @@ class _NavItem extends StatelessWidget {
                   curve: Curves.easeOutCubic,
                   child: Icon(
                     active ? item.activeIcon : item.icon,
-                    size: 22,
+                    size: active ? 26 : 24,
                     color: iconColor,
                   ),
                 ),

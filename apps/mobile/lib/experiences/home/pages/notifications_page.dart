@@ -308,59 +308,41 @@ class _NotificationsPageState extends State<NotificationsPage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Notifications',
-                        style: PravaTypography.h2.copyWith(
-                          color: primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const Spacer(),
-                      ValueListenableBuilder<int>(
-                        valueListenable: _center.unreadCount,
-                        builder: (_, count, __) {
-                          return _UnreadPill(count: count, isDark: isDark);
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: _markingAll ? null : _markAllRead,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? Colors.white10
-                                : Colors.white.withValues(alpha: 0.9),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: border),
-                          ),
-                          child: _markingAll
-                              ? const CupertinoActivityIndicator(radius: 8)
-                              : Row(
-                                  children: [
-                                    const Icon(
-                                      CupertinoIcons.check_mark_circled,
-                                      size: 14,
-                                      color: PravaColors.accentPrimary,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'Mark all read',
-                                      style: PravaTypography.caption.copyWith(
-                                        color: PravaColors.accentPrimary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _center.unreadCount,
+                    builder: (_, count, __) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Notifications',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: PravaTypography.h2.copyWith(
+                                    color: primary,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
-                        ),
-                      ),
-                    ],
+                              ),
+                              if (count > 0)
+                                _MarkAllReadButton(
+                                  marking: _markingAll,
+                                  border: border,
+                                  isDark: isDark,
+                                  onTap: _markingAll ? null : _markAllRead,
+                                ),
+                            ],
+                          ),
+                          if (count > 0) ...[
+                            const SizedBox(height: 8),
+                            _UnreadPill(count: count, isDark: isDark),
+                          ],
+                        ],
+                      );
+                    },
                   ),
                 ),
                 Padding(
@@ -462,6 +444,45 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 }
 
+class _MarkAllReadButton extends StatelessWidget {
+  const _MarkAllReadButton({
+    required this.marking,
+    required this.border,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final bool marking;
+  final Color border;
+  final bool isDark;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 38,
+        height: 38,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white10 : Colors.white.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: border),
+        ),
+        child: marking
+            ? const CupertinoActivityIndicator(radius: 8)
+            : const Icon(
+                Icons.done_all_rounded,
+                size: 23,
+                color: PravaColors.accentPrimary,
+              ),
+      ),
+    );
+  }
+}
+
 class _NotificationControlPanel extends StatelessWidget {
   const _NotificationControlPanel({
     required this.permission,
@@ -532,15 +553,7 @@ class _NotificationControlPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.14),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(CupertinoIcons.bell_fill, color: accent, size: 20),
-              ),
+              Icon(Icons.notifications_active_rounded, color: accent, size: 31),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -581,77 +594,83 @@ class _NotificationControlPanel extends StatelessWidget {
             onTap: onRequestPermission,
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _NotificationSignal(
-                  icon: CupertinoIcons.bolt_fill,
-                  label: 'Realtime',
-                  value: settings.inAppSounds || settings.inAppHaptics
-                      ? 'Active'
-                      : 'Silent',
-                  primary: primary,
-                  secondary: secondary,
-                  border: border,
-                  fill: inactive,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _NotificationSignal(
-                  icon: CupertinoIcons.circle_grid_3x3_fill,
-                  label: 'Unread',
-                  value: unreadCount.toString(),
-                  primary: primary,
-                  secondary: secondary,
-                  border: border,
-                  fill: inactive,
-                ),
-              ),
-            ],
+          _NotificationSummaryLine(
+            realtime: settings.inAppSounds || settings.inAppHaptics,
+            unreadCount: unreadCount,
+            primary: primary,
+            secondary: secondary,
           ),
           const SizedBox(height: 10),
-          _DeliveryToggle(
-            icon: CupertinoIcons.app_badge_fill,
-            title: 'Push',
-            subtitle: permission.canDeliver
-                ? 'Device alerts'
-                : 'Needs system permission',
-            value: settings.pushNotifications,
-            enabled: !saving,
-            primary: primary,
-            secondary: secondary,
-            onChanged: onPushChanged,
-          ),
-          _DeliveryToggle(
-            icon: CupertinoIcons.envelope_fill,
-            title: 'Email',
-            subtitle: 'Security and digest alerts',
-            value: settings.emailNotifications,
-            enabled: !saving,
-            primary: primary,
-            secondary: secondary,
-            onChanged: onEmailChanged,
-          ),
-          _DeliveryToggle(
-            icon: CupertinoIcons.speaker_2_fill,
-            title: 'Sound',
-            subtitle: 'In-app notification tone',
-            value: settings.inAppSounds,
-            enabled: !saving,
-            primary: primary,
-            secondary: secondary,
-            onChanged: onSoundChanged,
-          ),
-          _DeliveryToggle(
-            icon: CupertinoIcons.waveform,
-            title: 'Haptics',
-            subtitle: 'Vibration feedback',
-            value: settings.inAppHaptics,
-            enabled: !saving,
-            primary: primary,
-            secondary: secondary,
-            onChanged: onHapticsChanged,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final tileWidth = (constraints.maxWidth - 8) / 2;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  SizedBox(
+                    width: tileWidth,
+                    child: _DeliveryToggle(
+                      icon: Icons.notifications_rounded,
+                      title: 'Push',
+                      subtitle: permission.canDeliver ? 'Device' : 'Blocked',
+                      value: settings.pushNotifications,
+                      enabled: !saving,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                      fill: inactive,
+                      onChanged: onPushChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: tileWidth,
+                    child: _DeliveryToggle(
+                      icon: Icons.email_rounded,
+                      title: 'Email',
+                      subtitle: 'Digest',
+                      value: settings.emailNotifications,
+                      enabled: !saving,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                      fill: inactive,
+                      onChanged: onEmailChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: tileWidth,
+                    child: _DeliveryToggle(
+                      icon: Icons.volume_up_rounded,
+                      title: 'Sound',
+                      subtitle: 'In-app',
+                      value: settings.inAppSounds,
+                      enabled: !saving,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                      fill: inactive,
+                      onChanged: onSoundChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: tileWidth,
+                    child: _DeliveryToggle(
+                      icon: Icons.vibration_rounded,
+                      title: 'Haptics',
+                      subtitle: 'Feedback',
+                      value: settings.inAppHaptics,
+                      enabled: !saving,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                      fill: inactive,
+                      onChanged: onHapticsChanged,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -722,14 +741,14 @@ class _PermissionRow extends StatelessWidget {
       child: Row(
         children: [
           const Icon(
-            CupertinoIcons.shield_lefthalf_fill,
+            Icons.shield_rounded,
             color: PravaColors.accentPrimary,
-            size: 19,
+            size: 24,
           ),
           const SizedBox(width: 9),
           Expanded(
             child: Text(
-              'Native permission: $enabledCount/3 channels',
+              'System permission - $enabledCount/3',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: PravaTypography.caption.copyWith(
@@ -770,64 +789,47 @@ class _PermissionRow extends StatelessWidget {
   }
 }
 
-class _NotificationSignal extends StatelessWidget {
-  const _NotificationSignal({
-    required this.icon,
-    required this.label,
-    required this.value,
+class _NotificationSummaryLine extends StatelessWidget {
+  const _NotificationSummaryLine({
+    required this.realtime,
+    required this.unreadCount,
     required this.primary,
     required this.secondary,
-    required this.border,
-    required this.fill,
   });
 
-  final IconData icon;
-  final String label;
-  final String value;
+  final bool realtime;
+  final int unreadCount;
   final Color primary;
   final Color secondary;
-  final Color border;
-  final Color fill;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: PravaColors.accentPrimary, size: 17),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: PravaTypography.caption.copyWith(
-                    color: secondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: PravaTypography.bodySmall.copyWith(
-                    color: primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
+    return Row(
+      children: [
+        const Icon(
+          Icons.bolt_rounded,
+          color: PravaColors.accentPrimary,
+          size: 21,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          realtime ? 'Realtime active' : 'Realtime silent',
+          style: PravaTypography.caption.copyWith(
+            color: primary,
+            fontWeight: FontWeight.w700,
           ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 14),
+        Icon(Icons.mark_email_unread_rounded, color: secondary, size: 19),
+        const SizedBox(width: 6),
+        Text(
+          '$unreadCount unread',
+          style: PravaTypography.caption.copyWith(
+            color: secondary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -841,6 +843,8 @@ class _DeliveryToggle extends StatelessWidget {
     required this.enabled,
     required this.primary,
     required this.secondary,
+    required this.border,
+    required this.fill,
     required this.onChanged,
   });
 
@@ -851,28 +855,39 @@ class _DeliveryToggle extends StatelessWidget {
   final bool enabled;
   final Color primary;
   final Color secondary;
+  final Color border;
+  final Color fill;
   final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
+    return Container(
+      height: 68,
+      padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
       child: Row(
         children: [
-          Icon(icon, color: secondary, size: 18),
-          const SizedBox(width: 10),
+          Icon(icon, color: secondary, size: 23),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: PravaTypography.bodySmall.copyWith(
                     color: primary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 1),
                 Text(
                   subtitle,
                   maxLines: 1,
@@ -883,7 +898,7 @@ class _DeliveryToggle extends StatelessWidget {
             ),
           ),
           Transform.scale(
-            scale: 0.78,
+            scale: 0.66,
             child: CupertinoSwitch(
               value: value,
               onChanged: enabled ? onChanged : null,

@@ -68,7 +68,7 @@ class HomeTopBar extends StatelessWidget {
             const SizedBox.shrink(),
           ] else if (tabIndex == 3) ...[
             _TopIconButton(
-              icon: CupertinoIcons.pencil_circle_fill,
+              icon: Icons.edit_rounded,
               onPressed: () {
                 HapticFeedback.selectionClick();
                 onProfileEdit?.call();
@@ -77,7 +77,7 @@ class HomeTopBar extends StatelessWidget {
           ] else ...[
             /// Search
             _TopIconButton(
-              icon: CupertinoIcons.search_circle_fill,
+              icon: Icons.search_rounded,
               onPressed: () {
                 HapticFeedback.selectionClick();
                 PravaNavigator.push(
@@ -108,7 +108,7 @@ class HomeTopBar extends StatelessWidget {
 
             /// Overflow menu
             _TopIconButton(
-              icon: CupertinoIcons.line_horizontal_3,
+              icon: Icons.menu_rounded,
               onPressed: () {
                 HapticFeedback.selectionClick();
                 PravaNavigator.push(
@@ -135,9 +135,9 @@ class _TopIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return IconButton(
       visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+      constraints: const BoxConstraints.tightFor(width: 40, height: 40),
       padding: EdgeInsets.zero,
-      icon: Icon(icon, size: 22),
+      icon: Icon(icon, size: 27),
       onPressed: onPressed,
     );
   }
@@ -198,13 +198,7 @@ class _ChatTopMenuButton extends StatelessWidget {
         child: Stack(
           alignment: Alignment.center,
           clipBehavior: Clip.none,
-          children: [
-            Icon(
-              CupertinoIcons.ellipsis_vertical_circle_fill,
-              size: 22,
-              color: primary,
-            ),
-          ],
+          children: [Icon(Icons.more_vert_rounded, size: 27, color: primary)],
         ),
       ),
     );
@@ -246,9 +240,9 @@ class _NotificationBell extends StatelessWidget {
       children: [
         IconButton(
           visualDensity: VisualDensity.compact,
-          constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
           padding: EdgeInsets.zero,
-          icon: const Icon(CupertinoIcons.bell_fill, size: 21),
+          icon: const Icon(Icons.notifications_rounded, size: 27),
           onPressed: onTap,
         ),
         if (count > 0)

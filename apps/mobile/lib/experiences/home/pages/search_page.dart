@@ -230,22 +230,9 @@ class _SearchPageState extends State<SearchPage> {
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
                     child: Row(
                       children: [
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          constraints: const BoxConstraints.tightFor(
-                            width: 38,
-                            height: 38,
-                          ),
-                          padding: EdgeInsets.zero,
-                          icon: Icon(
-                            CupertinoIcons.chevron_left,
-                            color: primary,
-                          ),
-                          onPressed: () => Navigator.of(context).pop(),
-                        ),
                         Expanded(
                           child: _SearchField(
                             controller: _controller,
@@ -317,23 +304,52 @@ class _SearchField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 42,
+      height: 44,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: border),
         color: isDark ? Colors.white10 : Colors.white,
       ),
-      child: CupertinoSearchTextField(
-        controller: controller,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        prefixInsets: const EdgeInsetsDirectional.only(start: 12),
-        suffixInsets: const EdgeInsetsDirectional.only(end: 10),
-        placeholder: 'Search Prava',
-        style: PravaTypography.body.copyWith(
-          color: isDark
-              ? PravaColors.darkTextPrimary
-              : PravaColors.lightTextPrimary,
-        ),
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, child) {
+          return TextField(
+            controller: controller,
+            textInputAction: TextInputAction.search,
+            cursorColor: PravaColors.accentPrimary,
+            style: PravaTypography.body.copyWith(
+              color: isDark
+                  ? PravaColors.darkTextPrimary
+                  : PravaColors.lightTextPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+            decoration: InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              hintText: 'Search Prava',
+              hintStyle: PravaTypography.body.copyWith(
+                color: isDark
+                    ? PravaColors.darkTextTertiary
+                    : PravaColors.lightTextTertiary,
+              ),
+              contentPadding: const EdgeInsets.fromLTRB(16, 11, 8, 11),
+              suffixIcon: value.text.isEmpty
+                  ? null
+                  : IconButton(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      icon: Icon(
+                        Icons.close_rounded,
+                        size: 20,
+                        color: isDark
+                            ? PravaColors.darkTextSecondary
+                            : PravaColors.lightTextSecondary,
+                      ),
+                      onPressed: controller.clear,
+                    ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -364,9 +380,7 @@ class _HistoryView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (history.isEmpty) {
-      return Center(
-        child: Icon(CupertinoIcons.search, color: secondary, size: 34),
-      );
+      return const SizedBox.expand();
     }
 
     return ListView(
