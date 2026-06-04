@@ -1,17 +1,19 @@
 import 'dart:async';
-import 'dart:ui';
+import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/storage/secure_store.dart';
 import '../../../navigation/prava_navigator.dart';
+import '../../../services/user_search_service.dart';
 import '../../../ui-system/background.dart';
 import '../../../ui-system/colors.dart';
-import '../../../ui-system/typography.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
-import '../../../services/user_search_service.dart';
+import '../../../ui-system/typography.dart';
+import '../tabs/feed/feed_page.dart';
 import '../tabs/profile/public_profile_page.dart';
 
 class SearchPage extends StatefulWidget {
@@ -24,18 +26,21 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _controller = TextEditingController();
   final UserSearchService _searchService = UserSearchService();
+  final SecureStore _store = SecureStore();
   final Set<String> _pendingActions = <String>{};
 
   Timer? _debounce;
   int _searchToken = 0;
   bool _loading = false;
   String _query = '';
-  List<UserSearchResult> _results = [];
+  SmartSearchResult _results = SmartSearchResult.empty();
+  List<String> _history = <String>[];
 
   @override
   void initState() {
     super.initState();
     _controller.addListener(_onQueryChanged);
+    _loadHistory();
   }
 
   @override
@@ -46,8 +51,29 @@ class _SearchPageState extends State<SearchPage> {
     super.dispose();
   }
 
+  Future<void> _loadHistory() async {
+    final raw = await _store.getSearchHistoryJson();
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List && mounted) {
+        setState(() {
+          _history = decoded
+              .map((item) => item.toString())
+              .where((item) => item.trim().isNotEmpty)
+              .take(12)
+              .toList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveHistory() async {
+    await _store.setSearchHistoryJson(jsonEncode(_history.take(12).toList()));
+  }
+
   String _normalizeQuery(String raw) {
-    return raw.trim().toLowerCase().replaceFirst(RegExp(r'^@+'), '');
+    return raw.trim().toLowerCase().replaceFirst(RegExp(r'^[@#]+'), '');
   }
 
   void _onQueryChanged() {
@@ -59,7 +85,7 @@ class _SearchPageState extends State<SearchPage> {
     if (normalized.length < 2) {
       _debounce?.cancel();
       setState(() {
-        _results = [];
+        _results = SmartSearchResult.empty();
         _loading = false;
       });
       return;
@@ -67,7 +93,7 @@ class _SearchPageState extends State<SearchPage> {
 
     _debounce?.cancel();
     _debounce = Timer(
-      const Duration(milliseconds: 280),
+      const Duration(milliseconds: 260),
       () => _runSearch(normalized),
     );
   }
@@ -77,12 +103,17 @@ class _SearchPageState extends State<SearchPage> {
     setState(() => _loading = true);
 
     try {
-      final results = await _searchService.searchUsers(query);
+      final results = await _searchService.smartSearch(query);
       if (!mounted || token != _searchToken) return;
       setState(() {
         _results = results;
         _loading = false;
+        _history = [
+          query,
+          ..._history.where((item) => item != query),
+        ].take(12).toList();
       });
+      unawaited(_saveHistory());
     } catch (_) {
       if (!mounted || token != _searchToken) return;
       setState(() => _loading = false);
@@ -96,15 +127,27 @@ class _SearchPageState extends State<SearchPage> {
 
   bool _isPending(String userId) => _pendingActions.contains(userId);
 
-  void _applySuggestion(String value) {
-    _controller.text = value;
-    _controller.selection =
-        TextSelection.fromPosition(TextPosition(offset: value.length));
+  void _applyQuery(String value) {
+    final cleaned = value.trim();
+    _controller.text = cleaned;
+    _controller.selection = TextSelection.collapsed(offset: cleaned.length);
+  }
+
+  Future<void> _removeHistory(String value) async {
+    HapticFeedback.selectionClick();
+    setState(() => _history = _history.where((item) => item != value).toList());
+    await _saveHistory();
+  }
+
+  Future<void> _clearHistory() async {
+    HapticFeedback.selectionClick();
+    setState(() => _history = <String>[]);
+    await _saveHistory();
   }
 
   Future<void> _toggleFollow(UserSearchResult user) async {
-    HapticFeedback.selectionClick();
     if (_isPending(user.id)) return;
+    HapticFeedback.selectionClick();
     setState(() => _pendingActions.add(user.id));
 
     try {
@@ -112,9 +155,14 @@ class _SearchPageState extends State<SearchPage> {
       if (!mounted) return;
       setState(() {
         _pendingActions.remove(user.id);
-        _updateResult(
-          user.id,
-          (item) => item.copyWith(isFollowing: following),
+        _results = SmartSearchResult(
+          accounts: _results.accounts.map((item) {
+            return item.id == user.id
+                ? item.copyWith(isFollowing: following)
+                : item;
+          }).toList(),
+          hashtags: _results.hashtags,
+          posts: _results.posts,
         );
       });
     } catch (_) {
@@ -128,17 +176,6 @@ class _SearchPageState extends State<SearchPage> {
     }
   }
 
-  void _updateResult(
-    String userId,
-    UserSearchResult Function(UserSearchResult) update,
-  ) {
-    final index = _results.indexWhere((item) => item.id == userId);
-    if (index == -1) return;
-    final updated = update(_results[index]);
-    _results = List<UserSearchResult>.from(_results);
-    _results[index] = updated;
-  }
-
   void _openProfile(UserSearchResult user) {
     PravaNavigator.push(
       context,
@@ -150,110 +187,113 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
+  void _openAuthor(SmartPostAuthor author) {
+    if (author.id.isEmpty) return;
+    PravaNavigator.push(context, PublicProfilePage(userId: author.id));
+  }
+
+  void _openHashtag(String tag) {
+    final normalized = tag.trim().replaceFirst('#', '');
+    if (normalized.isEmpty) return;
+    PravaNavigator.push(
+      context,
+      HashtagFeedPage(tag: normalized),
+      fullscreenDialog: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final surface = isDark
+        ? PravaColors.darkBgSurface
+        : PravaColors.lightBgSurface;
     final hasQuery = _query.length >= 2;
 
     return Scaffold(
       body: Stack(
         children: [
-          _SearchBackdrop(isDark: isDark),
+          PravaBackground(isDark: isDark),
           SafeArea(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: () => FocusScope.of(context).unfocus(),
               child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Search',
-                        style: PravaTypography.h2.copyWith(
-                          color: primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const Spacer(),
-                      _LivePill(loading: _loading),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: _SearchField(
-                    controller: _controller,
-                    border: border,
-                    isDark: isDark,
-                  ),
-                ),
-                if (hasQuery)
+                children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                    padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
                     child: Row(
                       children: [
-                        Text(
-                          _loading
-                              ? 'Searching...'
-                              : '${_results.length} results',
-                          style:
-                              PravaTypography.caption.copyWith(color: secondary),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 38,
+                            height: 38,
+                          ),
+                          padding: EdgeInsets.zero,
+                          icon: Icon(
+                            CupertinoIcons.chevron_left,
+                            color: primary,
+                          ),
+                          onPressed: () => Navigator.of(context).pop(),
                         ),
-                        const Spacer(),
-                        if (_loading)
-                          const CupertinoActivityIndicator(radius: 8),
+                        Expanded(
+                          child: _SearchField(
+                            controller: _controller,
+                            border: border,
+                            isDark: isDark,
+                          ),
+                        ),
+                        if (_loading) ...[
+                          const SizedBox(width: 10),
+                          const CupertinoActivityIndicator(radius: 9),
+                        ],
                       ],
                     ),
                   ),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    child: hasQuery
-                        ? _results.isEmpty && !_loading
-                            ? _EmptyState(query: _query, primary: primary)
-                            : ListView.separated(
-                                key: const ValueKey('results'),
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                                physics: const BouncingScrollPhysics(
-                                  parent: AlwaysScrollableScrollPhysics(),
-                                ),
-                                itemCount: _results.length,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(height: 10),
-                                itemBuilder: (context, index) {
-                                  final user = _results[index];
-                                  final pending = _isPending(user.id);
-                                  return _UserResultTile(
-                                    user: user,
-                                    isDark: isDark,
-                                    primary: primary,
-                                    secondary: secondary,
-                                    border: border,
-                                    pending: pending,
-                                    onTap: () => _openProfile(user),
-                                    onAction: () => _toggleFollow(user),
-                                  );
-                                },
-                              )
-                        : _SearchTips(
-                            onSuggestion: _applySuggestion,
-                            primary: primary,
-                            secondary: secondary,
-                            isDark: isDark,
-                          ),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: hasQuery
+                          ? _SearchResultsView(
+                              key: const ValueKey('results'),
+                              result: _results,
+                              query: _query,
+                              loading: _loading,
+                              primary: primary,
+                              secondary: secondary,
+                              border: border,
+                              surface: surface,
+                              isDark: isDark,
+                              isPending: _isPending,
+                              onAccountTap: _openProfile,
+                              onAccountAction: _toggleFollow,
+                              onHashtagTap: _openHashtag,
+                              onAuthorTap: _openAuthor,
+                            )
+                          : _HistoryView(
+                              key: const ValueKey('history'),
+                              history: _history,
+                              primary: primary,
+                              secondary: secondary,
+                              border: border,
+                              surface: surface,
+                              onTap: _applyQuery,
+                              onRemove: _removeHistory,
+                              onClear: _clearHistory,
+                            ),
+                    ),
                   ),
-                ),
-              ],
+                ],
               ),
             ),
           ),
@@ -276,57 +316,334 @@ class _SearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-        child: Container(
-          decoration: BoxDecoration(
-            color: isDark ? Colors.white10 : Colors.white.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: border),
-          ),
-          child: CupertinoSearchTextField(
-            controller: controller,
-            autofocus: true,
-            placeholder: 'Search by username',
-            backgroundColor: Colors.transparent,
-          ),
+    return Container(
+      height: 42,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+        color: isDark ? Colors.white10 : Colors.white,
+      ),
+      child: CupertinoSearchTextField(
+        controller: controller,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        prefixInsets: const EdgeInsetsDirectional.only(start: 12),
+        suffixInsets: const EdgeInsetsDirectional.only(end: 10),
+        placeholder: 'Search Prava',
+        style: PravaTypography.body.copyWith(
+          color: isDark
+              ? PravaColors.darkTextPrimary
+              : PravaColors.lightTextPrimary,
         ),
       ),
     );
   }
 }
 
-class _LivePill extends StatelessWidget {
-  const _LivePill({required this.loading});
+class _HistoryView extends StatelessWidget {
+  const _HistoryView({
+    super.key,
+    required this.history,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.surface,
+    required this.onTap,
+    required this.onRemove,
+    required this.onClear,
+  });
 
-  final bool loading;
+  final List<String> history;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final Color surface;
+  final ValueChanged<String> onTap;
+  final ValueChanged<String> onRemove;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: PravaColors.accentPrimary.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
+    if (history.isEmpty) {
+      return Center(
+        child: Icon(CupertinoIcons.search, color: secondary, size: 34),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 22),
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 6,
-            height: 6,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Recent',
+              style: PravaTypography.h3.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onClear,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                child: Text(
+                  'Clear',
+                  style: PravaTypography.caption.copyWith(
+                    color: PravaColors.accentPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ...history.map((item) {
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
             decoration: BoxDecoration(
-              color: loading ? PravaColors.accentPrimary : PravaColors.success,
-              shape: BoxShape.circle,
+              color: surface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: border),
+            ),
+            child: ListTile(
+              dense: true,
+              leading: Icon(CupertinoIcons.clock, color: secondary, size: 19),
+              title: Text(
+                item,
+                style: PravaTypography.body.copyWith(
+                  color: primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              trailing: IconButton(
+                icon: Icon(CupertinoIcons.xmark, color: secondary, size: 16),
+                onPressed: () => onRemove(item),
+              ),
+              onTap: () => onTap(item),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}
+
+class _SearchResultsView extends StatelessWidget {
+  const _SearchResultsView({
+    super.key,
+    required this.result,
+    required this.query,
+    required this.loading,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.surface,
+    required this.isDark,
+    required this.isPending,
+    required this.onAccountTap,
+    required this.onAccountAction,
+    required this.onHashtagTap,
+    required this.onAuthorTap,
+  });
+
+  final SmartSearchResult result;
+  final String query;
+  final bool loading;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final Color surface;
+  final bool isDark;
+  final bool Function(String userId) isPending;
+  final ValueChanged<UserSearchResult> onAccountTap;
+  final ValueChanged<UserSearchResult> onAccountAction;
+  final ValueChanged<String> onHashtagTap;
+  final ValueChanged<SmartPostAuthor> onAuthorTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && result.isEmpty) {
+      return const Center(
+        child: CupertinoActivityIndicator(color: PravaColors.accentPrimary),
+      );
+    }
+    if (result.isEmpty) {
+      return Center(
+        child: Text(
+          'No results for "$query"',
+          style: PravaTypography.body.copyWith(color: secondary),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      children: [
+        _CategoryStrip(
+          accounts: result.accounts.length,
+          hashtags: result.hashtags.length,
+          posts: result.posts.length,
+          primary: primary,
+          secondary: secondary,
+          border: border,
+        ),
+        if (result.accounts.isNotEmpty)
+          _HorizontalSection(
+            title: 'Accounts',
+            height: 132,
+            primary: primary,
+            children: result.accounts.map((account) {
+              return _AccountCard(
+                user: account,
+                pending: isPending(account.id),
+                primary: primary,
+                secondary: secondary,
+                border: border,
+                surface: surface,
+                onTap: () => onAccountTap(account),
+                onAction: () => onAccountAction(account),
+              );
+            }).toList(),
+          ),
+        if (result.hashtags.isNotEmpty)
+          _HorizontalSection(
+            title: 'Hashtags',
+            height: 88,
+            primary: primary,
+            children: result.hashtags.map((tag) {
+              return _HashtagCard(
+                tag: tag,
+                primary: primary,
+                secondary: secondary,
+                border: border,
+                surface: surface,
+                onTap: () => onHashtagTap(tag.tag),
+              );
+            }).toList(),
+          ),
+        if (result.posts.isNotEmpty)
+          _HorizontalSection(
+            title: 'Posts',
+            height: 164,
+            primary: primary,
+            children: result.posts.map((post) {
+              return _PostResultCard(
+                post: post,
+                primary: primary,
+                secondary: secondary,
+                border: border,
+                surface: surface,
+                onAuthorTap: () => onAuthorTap(post.author),
+                onHashtagTap: onHashtagTap,
+              );
+            }).toList(),
+          ),
+      ],
+    );
+  }
+}
+
+class _CategoryStrip extends StatelessWidget {
+  const _CategoryStrip({
+    required this.accounts,
+    required this.hashtags,
+    required this.posts,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+  });
+
+  final int accounts;
+  final int hashtags;
+  final int posts;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      ('Accounts', accounts, CupertinoIcons.person_2_fill),
+      ('Hashtags', hashtags, CupertinoIcons.number_circle_fill),
+      ('Posts', posts, CupertinoIcons.news_solid),
+    ];
+    return SizedBox(
+      height: 42,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: border),
+            ),
+            child: Row(
+              children: [
+                Icon(item.$3, size: 15, color: PravaColors.accentPrimary),
+                const SizedBox(width: 6),
+                Text(
+                  '${item.$1} ${item.$2}',
+                  style: PravaTypography.caption.copyWith(
+                    color: item.$2 > 0 ? primary : secondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _HorizontalSection extends StatelessWidget {
+  const _HorizontalSection({
+    required this.title,
+    required this.height,
+    required this.primary,
+    required this.children,
+  });
+
+  final String title;
+  final double height;
+  final Color primary;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: PravaTypography.h3.copyWith(
+              color: primary,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(width: 6),
-          Text(
-            loading ? 'Searching' : 'Live',
-            style: PravaTypography.caption.copyWith(
-              color: PravaColors.accentPrimary,
-              fontWeight: FontWeight.w600,
+          const SizedBox(height: 10),
+          SizedBox(
+            height: height,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: children.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, index) => children[index],
             ),
           ),
         ],
@@ -335,224 +652,182 @@ class _LivePill extends StatelessWidget {
   }
 }
 
-class _UserResultTile extends StatelessWidget {
-  const _UserResultTile({
+class _AccountCard extends StatelessWidget {
+  const _AccountCard({
     required this.user,
-    required this.isDark,
+    required this.pending,
     required this.primary,
     required this.secondary,
     required this.border,
-    required this.pending,
+    required this.surface,
     required this.onTap,
     required this.onAction,
   });
 
   final UserSearchResult user;
-  final bool isDark;
+  final bool pending;
   final Color primary;
   final Color secondary;
   final Color border;
-  final bool pending;
+  final Color surface;
   final VoidCallback onTap;
   final VoidCallback onAction;
 
-  Color _avatarColor(String name) {
-    const palette = [
-      Color(0xFF5B8CFF),
-      Color(0xFF2EC4B6),
-      Color(0xFFFFB703),
-      Color(0xFFFF6B6B),
-      Color(0xFF845EC2),
-    ];
-    final hash = name.codeUnits.fold<int>(0, (acc, c) => acc + c);
-    return palette[hash % palette.length];
-  }
-
   @override
   Widget build(BuildContext context) {
-    final name =
-        user.displayName.isNotEmpty ? user.displayName : user.username;
-    final accent = _avatarColor(name);
-    final baseColor = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.white.withValues(alpha: 0.9);
-    final idSnippet =
-        user.id.length > 6 ? user.id.substring(0, 6).toUpperCase() : user.id;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: baseColor,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: border),
-          ),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: accent.withValues(alpha: 0.18),
-                child: Text(
-                  name.substring(0, 1).toUpperCase(),
-                  style: PravaTypography.h3.copyWith(
-                    color: accent,
-                    fontWeight: FontWeight.w700,
-                  ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 172,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 19,
+              backgroundColor: PravaColors.accentPrimary.withValues(
+                alpha: 0.14,
+              ),
+              child: Text(
+                user.username.isNotEmpty ? user.username[0].toUpperCase() : '@',
+                style: PravaTypography.body.copyWith(
+                  color: PravaColors.accentPrimary,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            user.displayName.isNotEmpty
-                                ? user.displayName
-                                : user.username,
-                            style: PravaTypography.body.copyWith(
-                              color: primary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (user.isVerified) ...[
-                          const SizedBox(width: 6),
-                          const Icon(
-                            CupertinoIcons.check_mark_circled_solid,
-                            size: 14,
-                            color: PravaColors.accentPrimary,
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      user.id.isEmpty
-                          ? user.handle
-                          : '${user.handle} - ID $idSnippet',
-                      style: PravaTypography.caption.copyWith(color: secondary),
-                    ),
-                  ],
-                ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              user.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.body.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w800,
               ),
-              _ActionButton(
-                user: user,
-                pending: pending,
-                onTap: onAction,
-              ),
-            ],
-          ),
+            ),
+            Text(
+              '@${user.username}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.caption.copyWith(color: secondary),
+            ),
+            const Spacer(),
+            _FollowMiniButton(
+              following: user.isFollowing,
+              pending: pending,
+              onTap: onAction,
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.user,
+class _FollowMiniButton extends StatelessWidget {
+  const _FollowMiniButton({
+    required this.following,
     required this.pending,
     required this.onTap,
   });
 
-  final UserSearchResult user;
+  final bool following;
   final bool pending;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    if (pending) {
-      return const SizedBox(
-        width: 36,
-        height: 36,
-        child: CupertinoActivityIndicator(radius: 10),
-      );
-    }
-
-    if (user.isFriend) {
-      return _TextActionButton(
-        label: 'Friends',
-        icon: CupertinoIcons.person_2_fill,
-        outlined: true,
-        onTap: onTap,
-      );
-    }
-
-    if (user.isRequested) {
-      return _TextActionButton(
-        label: 'Following',
-        icon: CupertinoIcons.check_mark,
-        outlined: true,
-        onTap: onTap,
-      );
-    }
-
-    if (user.isFollowedByOnly) {
-      return _TextActionButton(
-        label: 'Follow back',
-        icon: CupertinoIcons.person_add,
-        outlined: false,
-        onTap: onTap,
-      );
-    }
-
-    return _TextActionButton(
-      label: 'Follow',
-      icon: CupertinoIcons.person_add_solid,
-      outlined: false,
-      onTap: onTap,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: pending ? null : onTap,
+      child: Container(
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: following ? Colors.transparent : PravaColors.accentPrimary,
+          borderRadius: BorderRadius.circular(999),
+          border: following
+              ? Border.all(color: PravaColors.accentPrimary)
+              : null,
+        ),
+        child: pending
+            ? const CupertinoActivityIndicator(radius: 8)
+            : Text(
+                following ? 'Following' : 'Follow',
+                style: PravaTypography.caption.copyWith(
+                  color: following ? PravaColors.accentPrimary : Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+      ),
     );
   }
 }
 
-class _TextActionButton extends StatelessWidget {
-  const _TextActionButton({
-    required this.label,
-    required this.icon,
-    required this.outlined,
+class _HashtagCard extends StatelessWidget {
+  const _HashtagCard({
+    required this.tag,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.surface,
     required this.onTap,
   });
 
-  final String label;
-  final IconData icon;
-  final bool outlined;
+  final SmartHashtagResult tag;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final Color surface;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final border =
-        outlined ? Border.all(color: PravaColors.accentPrimary) : null;
-    final background =
-        outlined ? Colors.transparent : PravaColors.accentPrimary;
-    final color = outlined ? PravaColors.accentPrimary : Colors.white;
-
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        width: 160,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(14),
-          border: border,
+          color: surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: border),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: PravaTypography.caption.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
+            const Icon(
+              CupertinoIcons.number_circle_fill,
+              color: PravaColors.accentPrimary,
+              size: 26,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '#${tag.tag}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PravaTypography.body.copyWith(
+                      color: primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    '${tag.postCount} posts',
+                    style: PravaTypography.caption.copyWith(color: secondary),
+                  ),
+                ],
               ),
             ),
           ],
@@ -562,131 +837,108 @@ class _TextActionButton extends StatelessWidget {
   }
 }
 
-class _SearchTips extends StatelessWidget {
-  const _SearchTips({
-    required this.onSuggestion,
+class _PostResultCard extends StatelessWidget {
+  const _PostResultCard({
+    required this.post,
     required this.primary,
     required this.secondary,
-    required this.isDark,
+    required this.border,
+    required this.surface,
+    required this.onAuthorTap,
+    required this.onHashtagTap,
   });
 
-  final ValueChanged<String> onSuggestion;
+  final SmartPostResult post;
   final Color primary;
   final Color secondary;
-  final bool isDark;
+  final Color border;
+  final Color surface;
+  final VoidCallback onAuthorTap;
+  final ValueChanged<String> onHashtagTap;
 
   @override
   Widget build(BuildContext context) {
-    const suggestions = ['himan', 'creator', 'design', 'prava'];
-    final surface =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
-
-    return ListView(
-      key: const ValueKey('tips'),
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      children: [
-        Text(
-          'Find people instantly',
-          style: PravaTypography.h3.copyWith(
-            color: primary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Type a username to connect. We show results as you type.',
-          style: PravaTypography.bodySmall.copyWith(color: secondary),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Try searching',
-                style: PravaTypography.caption.copyWith(
-                  color: secondary,
-                  fontWeight: FontWeight.w600,
+    return Container(
+      width: 244,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onAuthorTap,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 13,
+                  backgroundColor: PravaColors.accentPrimary.withValues(
+                    alpha: 0.14,
+                  ),
+                  child: Text(
+                    post.author.username.isNotEmpty
+                        ? post.author.username[0].toUpperCase()
+                        : '@',
+                    style: PravaTypography.caption.copyWith(
+                      color: PravaColors.accentPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: suggestions
-                    .map(
-                      (value) => ActionChip(
-                        label: Text(
-                          value,
-                          style: PravaTypography.caption.copyWith(
-                            color: PravaColors.accentPrimary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        onPressed: () => onSuggestion(value),
-                        backgroundColor:
-                            PravaColors.accentPrimary.withValues(alpha: 0.12),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '@${post.author.username}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PravaTypography.caption.copyWith(
+                      color: secondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.query,
-    required this.primary,
-  });
-
-  final String query;
-  final Color primary;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      key: const ValueKey('empty'),
-      padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
-      children: [
-        Center(
-          child: Icon(
-            CupertinoIcons.person_2,
-            size: 40,
-            color: primary.withValues(alpha: 0.4),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Center(
-          child: Text(
-            'No matches for "${query}"',
-            style: PravaTypography.bodyLarge.copyWith(
+          const SizedBox(height: 8),
+          Text(
+            post.body,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: PravaTypography.body.copyWith(
               color: primary,
               fontWeight: FontWeight.w600,
             ),
           ),
-        ),
-      ],
+          const Spacer(),
+          if (post.hashtags.isNotEmpty)
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: post.hashtags.take(2).map((tag) {
+                return GestureDetector(
+                  onTap: () => onHashtagTap(tag),
+                  child: Text(
+                    '#$tag',
+                    style: PravaTypography.caption.copyWith(
+                      color: PravaColors.accentPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          const SizedBox(height: 8),
+          Text(
+            '${post.likeCount} likes - ${post.commentCount} comments',
+            style: PravaTypography.caption.copyWith(color: secondary),
+          ),
+        ],
+      ),
     );
-  }
-}
-
-class _SearchBackdrop extends StatelessWidget {
-  const _SearchBackdrop({required this.isDark});
-
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    return PravaBackground(isDark: isDark);
   }
 }

@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 
 import '../../../navigation/prava_navigator.dart';
 import '../../../services/notification_center.dart';
+import '../../../services/notification_permission_service.dart';
 import '../../../services/notification_service.dart';
+import '../../../services/settings_service.dart';
 import '../../../ui-system/background.dart';
 import '../../../ui-system/colors.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
@@ -14,12 +16,7 @@ import '../../../ui-system/feedback/toast_type.dart';
 import '../../../ui-system/typography.dart';
 import '../tabs/profile/public_profile_page.dart';
 
-enum NotificationFilter {
-  all,
-  mentions,
-  follows,
-  posts,
-}
+enum NotificationFilter { all, mentions, follows, posts }
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -30,6 +27,9 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   final NotificationService _service = NotificationService();
+  final NotificationPermissionService _permissionService =
+      NotificationPermissionService();
+  final SettingsService _settingsService = SettingsService();
   final NotificationCenter _center = NotificationCenter.instance;
   final ScrollController _controller = ScrollController();
 
@@ -40,8 +40,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
   bool _loading = true;
   bool _loadingMore = false;
   bool _markingAll = false;
+  bool _permissionLoading = false;
+  bool _settingsSaving = false;
   String? _cursor;
   NotificationFilter _filter = NotificationFilter.all;
+  SettingsState _settings = SettingsState.defaults();
+  NotificationPermissionSnapshot _nativePermission =
+      NotificationPermissionSnapshot.unavailable;
 
   @override
   void initState() {
@@ -49,6 +54,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     _center.ensureInitialized();
     _subscription = _center.stream.listen(_onRealtimeNotification);
     _controller.addListener(_onScroll);
+    _loadNotificationControls();
     _loadInitial();
   }
 
@@ -105,7 +111,82 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> _refresh() async {
-    await _loadInitial();
+    await Future.wait([_loadInitial(), _loadNotificationControls()]);
+  }
+
+  Future<void> _loadNotificationControls() async {
+    if (mounted) {
+      setState(() => _permissionLoading = true);
+    }
+
+    final localSettings = await _settingsService.loadLocal();
+    if (mounted) {
+      setState(() => _settings = localSettings);
+    }
+
+    var settings = localSettings;
+    try {
+      settings = await _settingsService.fetchRemote();
+      await _settingsService.saveLocal(settings);
+    } catch (_) {
+      // Local settings keep the controls responsive when remote settings fail.
+    }
+
+    final permission = await _permissionService.getStatus();
+    if (!mounted) return;
+    setState(() {
+      _settings = settings;
+      _nativePermission = permission;
+      _permissionLoading = false;
+    });
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    if (_permissionLoading) return;
+    HapticFeedback.selectionClick();
+    setState(() => _permissionLoading = true);
+    final permission = await _permissionService.requestPermission();
+    if (!mounted) return;
+    setState(() {
+      _nativePermission = permission;
+      _permissionLoading = false;
+    });
+    if (permission.canDeliver && !_settings.pushNotifications) {
+      await _updateNotificationSettings(
+        _settings.copyWith(pushNotifications: true),
+      );
+    }
+  }
+
+  Future<void> _updateNotificationSettings(SettingsState next) async {
+    if (_settingsSaving) return;
+    HapticFeedback.selectionClick();
+    final previous = _settings;
+    setState(() {
+      _settings = next;
+      _settingsSaving = true;
+    });
+    try {
+      await _settingsService.saveLocal(next);
+      final remote = await _settingsService.saveRemote(next);
+      await _settingsService.saveLocal(remote);
+      if (!mounted) return;
+      setState(() {
+        _settings = remote;
+        _settingsSaving = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _settings = previous;
+        _settingsSaving = false;
+      });
+      PravaToast.show(
+        context,
+        message: 'Unable to update notification settings',
+        type: PravaToastType.error,
+      );
+    }
   }
 
   void _onScroll() {
@@ -134,7 +215,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
             item.type == 'comment' ||
             item.type == 'share';
       case NotificationFilter.all:
-      default:
         return true;
     }
   }
@@ -171,8 +251,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     setState(() {
       final index = _items.indexWhere((it) => it.id == item.id);
       if (index != -1) {
-        _items[index] =
-            _items[index].copyWith(readAt: DateTime.now());
+        _items[index] = _items[index].copyWith(readAt: DateTime.now());
       }
     });
     _center.applyRead();
@@ -186,10 +265,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   void _openProfile(NotificationItem item) {
     final actor = item.actor;
     if (actor == null || actor.id.isEmpty) return;
-    PravaNavigator.push(
-      context,
-      PublicProfilePage(userId: actor.id),
-    );
+    PravaNavigator.push(context, PublicProfilePage(userId: actor.id));
   }
 
   String _formatTime(DateTime time) {
@@ -208,12 +284,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final surface = isDark
+        ? PravaColors.darkBgSurface
+        : PravaColors.lightBgSurface;
 
     final items = _visibleItems;
 
@@ -239,10 +321,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       ValueListenableBuilder<int>(
                         valueListenable: _center.unreadCount,
                         builder: (_, count, __) {
-                          return _UnreadPill(
-                            count: count,
-                            isDark: isDark,
-                          );
+                          return _UnreadPill(count: count, isDark: isDark);
                         },
                       ),
                       const SizedBox(width: 8),
@@ -261,9 +340,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                             border: Border.all(color: border),
                           ),
                           child: _markingAll
-                              ? const CupertinoActivityIndicator(
-                                  radius: 8,
-                                )
+                              ? const CupertinoActivityIndicator(radius: 8)
                               : Row(
                                   children: [
                                     const Icon(
@@ -288,6 +365,40 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _center.unreadCount,
+                    builder: (_, count, __) {
+                      return _NotificationControlPanel(
+                        permission: _nativePermission,
+                        settings: _settings,
+                        unreadCount: count,
+                        loading: _permissionLoading,
+                        saving: _settingsSaving,
+                        primary: primary,
+                        secondary: secondary,
+                        border: border,
+                        surface: surface,
+                        isDark: isDark,
+                        onRequestPermission: _requestNotificationPermission,
+                        onPushChanged: (value) => _updateNotificationSettings(
+                          _settings.copyWith(pushNotifications: value),
+                        ),
+                        onEmailChanged: (value) => _updateNotificationSettings(
+                          _settings.copyWith(emailNotifications: value),
+                        ),
+                        onSoundChanged: (value) => _updateNotificationSettings(
+                          _settings.copyWith(inAppSounds: value),
+                        ),
+                        onHapticsChanged: (value) =>
+                            _updateNotificationSettings(
+                              _settings.copyWith(inAppHaptics: value),
+                            ),
+                      );
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                   child: _FilterRow(
                     filter: _filter,
                     onChanged: (next) {
@@ -304,49 +415,42 @@ class _NotificationsPageState extends State<NotificationsPage> {
                             child: CupertinoActivityIndicator(radius: 12),
                           )
                         : items.isEmpty
-                            ? _EmptyState(primary: primary)
-                            : ListView.separated(
-                                controller: _controller,
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  0,
-                                  16,
-                                  16,
-                                ),
-                                physics: const BouncingScrollPhysics(
-                                  parent: AlwaysScrollableScrollPhysics(),
-                                ),
-                                itemCount:
-                                    items.length + (_loadingMore ? 1 : 0),
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(height: 10),
-                                itemBuilder: (context, index) {
-                                  if (index >= items.length) {
-                                    return const Padding(
-                                      padding:
-                                          EdgeInsets.symmetric(vertical: 12),
-                                      child: Center(
-                                        child: CupertinoActivityIndicator(
-                                          radius: 10,
-                                        ),
-                                      ),
-                                    );
-                                  }
+                        ? _EmptyState(primary: primary)
+                        : ListView.separated(
+                            controller: _controller,
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            physics: const BouncingScrollPhysics(
+                              parent: AlwaysScrollableScrollPhysics(),
+                            ),
+                            itemCount: items.length + (_loadingMore ? 1 : 0),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              if (index >= items.length) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 12),
+                                  child: Center(
+                                    child: CupertinoActivityIndicator(
+                                      radius: 10,
+                                    ),
+                                  ),
+                                );
+                              }
 
-                                  final item = items[index];
-                                  return _NotificationCard(
-                                    item: item,
-                                    primary: primary,
-                                    secondary: secondary,
-                                    isDark: isDark,
-                                    timeLabel: _formatTime(item.createdAt),
-                                    onTap: () {
-                                      _markRead(item);
-                                      _openProfile(item);
-                                    },
-                                  );
+                              final item = items[index];
+                              return _NotificationCard(
+                                item: item,
+                                primary: primary,
+                                secondary: secondary,
+                                isDark: isDark,
+                                timeLabel: _formatTime(item.createdAt),
+                                onTap: () {
+                                  _markRead(item);
+                                  _openProfile(item);
                                 },
-                              ),
+                              );
+                            },
+                          ),
                   ),
                 ),
               ],
@@ -358,11 +462,441 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 }
 
-class _FilterRow extends StatelessWidget {
-  const _FilterRow({
-    required this.filter,
+class _NotificationControlPanel extends StatelessWidget {
+  const _NotificationControlPanel({
+    required this.permission,
+    required this.settings,
+    required this.unreadCount,
+    required this.loading,
+    required this.saving,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.surface,
+    required this.isDark,
+    required this.onRequestPermission,
+    required this.onPushChanged,
+    required this.onEmailChanged,
+    required this.onSoundChanged,
+    required this.onHapticsChanged,
+  });
+
+  final NotificationPermissionSnapshot permission;
+  final SettingsState settings;
+  final int unreadCount;
+  final bool loading;
+  final bool saving;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final Color surface;
+  final bool isDark;
+  final VoidCallback onRequestPermission;
+  final ValueChanged<bool> onPushChanged;
+  final ValueChanged<bool> onEmailChanged;
+  final ValueChanged<bool> onSoundChanged;
+  final ValueChanged<bool> onHapticsChanged;
+
+  Color get _permissionColor {
+    if (permission.canDeliver) return PravaColors.success;
+    if (permission.permission == NativeNotificationPermission.denied) {
+      return PravaColors.error;
+    }
+    return PravaColors.warning;
+  }
+
+  String get _actionLabel {
+    if (permission.canDeliver) return 'Refresh';
+    if (permission.permission == NativeNotificationPermission.denied) {
+      return 'Retry';
+    }
+    return 'Allow';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _permissionColor;
+    final inactive = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.04);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(CupertinoIcons.bell_fill, color: accent, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Notification system',
+                      style: PravaTypography.body.copyWith(
+                        color: primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      permission.detail,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: PravaTypography.caption.copyWith(color: secondary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _StatusPill(label: permission.label, color: accent),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _PermissionRow(
+            loading: loading,
+            actionLabel: _actionLabel,
+            alert: permission.alert,
+            badge: permission.badge,
+            sound: permission.sound,
+            primary: primary,
+            secondary: secondary,
+            border: border,
+            fill: inactive,
+            onTap: onRequestPermission,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _NotificationSignal(
+                  icon: CupertinoIcons.bolt_fill,
+                  label: 'Realtime',
+                  value: settings.inAppSounds || settings.inAppHaptics
+                      ? 'Active'
+                      : 'Silent',
+                  primary: primary,
+                  secondary: secondary,
+                  border: border,
+                  fill: inactive,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _NotificationSignal(
+                  icon: CupertinoIcons.circle_grid_3x3_fill,
+                  label: 'Unread',
+                  value: unreadCount.toString(),
+                  primary: primary,
+                  secondary: secondary,
+                  border: border,
+                  fill: inactive,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _DeliveryToggle(
+            icon: CupertinoIcons.app_badge_fill,
+            title: 'Push',
+            subtitle: permission.canDeliver
+                ? 'Device alerts'
+                : 'Needs system permission',
+            value: settings.pushNotifications,
+            enabled: !saving,
+            primary: primary,
+            secondary: secondary,
+            onChanged: onPushChanged,
+          ),
+          _DeliveryToggle(
+            icon: CupertinoIcons.envelope_fill,
+            title: 'Email',
+            subtitle: 'Security and digest alerts',
+            value: settings.emailNotifications,
+            enabled: !saving,
+            primary: primary,
+            secondary: secondary,
+            onChanged: onEmailChanged,
+          ),
+          _DeliveryToggle(
+            icon: CupertinoIcons.speaker_2_fill,
+            title: 'Sound',
+            subtitle: 'In-app notification tone',
+            value: settings.inAppSounds,
+            enabled: !saving,
+            primary: primary,
+            secondary: secondary,
+            onChanged: onSoundChanged,
+          ),
+          _DeliveryToggle(
+            icon: CupertinoIcons.waveform,
+            title: 'Haptics',
+            subtitle: 'Vibration feedback',
+            value: settings.inAppHaptics,
+            enabled: !saving,
+            primary: primary,
+            secondary: secondary,
+            onChanged: onHapticsChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: PravaTypography.caption.copyWith(
+          color: color,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _PermissionRow extends StatelessWidget {
+  const _PermissionRow({
+    required this.loading,
+    required this.actionLabel,
+    required this.alert,
+    required this.badge,
+    required this.sound,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.fill,
+    required this.onTap,
+  });
+
+  final bool loading;
+  final String actionLabel;
+  final bool alert;
+  final bool badge;
+  final bool sound;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final Color fill;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabledCount = [alert, badge, sound].where((item) => item).length;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 9, 8, 9),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            CupertinoIcons.shield_lefthalf_fill,
+            color: PravaColors.accentPrimary,
+            size: 19,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              'Native permission: $enabledCount/3 channels',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.caption.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: loading ? null : onTap,
+            child: Container(
+              height: 30,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: PravaColors.accentPrimary,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: loading
+                  ? const CupertinoActivityIndicator(
+                      radius: 8,
+                      color: Colors.white,
+                    )
+                  : Text(
+                      actionLabel,
+                      style: PravaTypography.caption.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotificationSignal extends StatelessWidget {
+  const _NotificationSignal({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.fill,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final Color fill;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: PravaColors.accentPrimary, size: 17),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: PravaTypography.caption.copyWith(
+                    color: secondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.bodySmall.copyWith(
+                    color: primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeliveryToggle extends StatelessWidget {
+  const _DeliveryToggle({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.enabled,
+    required this.primary,
+    required this.secondary,
     required this.onChanged,
   });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final bool enabled;
+  final Color primary;
+  final Color secondary;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        children: [
+          Icon(icon, color: secondary, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: PravaTypography.bodySmall.copyWith(
+                    color: primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.caption.copyWith(color: secondary),
+                ),
+              ],
+            ),
+          ),
+          Transform.scale(
+            scale: 0.78,
+            child: CupertinoSwitch(
+              value: value,
+              onChanged: enabled ? onChanged : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterRow extends StatelessWidget {
+  const _FilterRow({required this.filter, required this.onChanged});
 
   final NotificationFilter filter;
   final ValueChanged<NotificationFilter> onChanged;
@@ -416,8 +950,9 @@ class _FilterChip extends StatelessWidget {
     final inactiveText = isDark
         ? PravaColors.darkTextTertiary
         : PravaColors.lightTextTertiary;
-    final inactiveFill =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.04);
+    final inactiveFill = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.04);
 
     return GestureDetector(
       onTap: onTap,
@@ -430,16 +965,13 @@ class _FilterChip extends StatelessWidget {
               : inactiveFill,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color:
-                active ? PravaColors.accentPrimary : Colors.transparent,
+            color: active ? PravaColors.accentPrimary : Colors.transparent,
           ),
         ),
         child: Text(
           label,
           style: PravaTypography.caption.copyWith(
-            color: active
-                ? PravaColors.accentPrimary
-                : inactiveText,
+            color: active ? PravaColors.accentPrimary : inactiveText,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -449,10 +981,7 @@ class _FilterChip extends StatelessWidget {
 }
 
 class _UnreadPill extends StatelessWidget {
-  const _UnreadPill({
-    required this.count,
-    required this.isDark,
-  });
+  const _UnreadPill({required this.count, required this.isDark});
 
   final int count;
   final bool isDark;
@@ -558,8 +1087,8 @@ class _NotificationCard extends StatelessWidget {
     final avatarLabel = actor?.displayName.isNotEmpty == true
         ? actor!.displayName.substring(0, 1).toUpperCase()
         : actor?.username.isNotEmpty == true
-            ? actor!.username.substring(0, 1).toUpperCase()
-            : 'N';
+        ? actor!.username.substring(0, 1).toUpperCase()
+        : 'N';
 
     return Material(
       color: Colors.transparent,
@@ -593,8 +1122,7 @@ class _NotificationCard extends StatelessWidget {
                       right: -2,
                       child: CircleAvatar(
                         radius: 10,
-                        backgroundColor:
-                            isDark ? Colors.black : Colors.white,
+                        backgroundColor: isDark ? Colors.black : Colors.white,
                         child: CircleAvatar(
                           radius: 8,
                           backgroundColor: accent.withValues(alpha: 0.2),

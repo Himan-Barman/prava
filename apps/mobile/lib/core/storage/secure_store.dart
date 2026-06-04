@@ -8,12 +8,12 @@ class SecureStore {
   static const _settingsKey = 'userSettings';
   static const _chatSyncStateKey = 'chatSyncState';
   static const _recentEmojisKey = 'recentEmojis';
+  static const _searchHistoryKey = 'searchHistory';
   static const _localTimeZoneKey = 'localTimeZone';
   static const _e2eeIdentityXPublicKey = 'e2eeIdentityXPublicKey';
   static const _e2eeIdentityXPrivateKey = 'e2eeIdentityXPrivateKey';
 
-  final FlutterSecureStorage _storage =
-      const FlutterSecureStorage();
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   Future<void> setAccessToken(String token) {
     return _storage.write(key: _accessTokenKey, value: token);
@@ -75,6 +75,14 @@ class SecureStore {
     return _storage.read(key: _recentEmojisKey);
   }
 
+  Future<void> setSearchHistoryJson(String history) {
+    return _storage.write(key: _searchHistoryKey, value: history);
+  }
+
+  Future<String?> getSearchHistoryJson() {
+    return _storage.read(key: _searchHistoryKey);
+  }
+
   Future<void> setLocalTimeZoneJson(String timezone) {
     return _storage.write(key: _localTimeZoneKey, value: timezone);
   }
@@ -115,6 +123,7 @@ class SecureStore {
     await _storage.delete(key: _settingsKey);
     await _storage.delete(key: _chatSyncStateKey);
     await _storage.delete(key: _recentEmojisKey);
+    await _storage.delete(key: _searchHistoryKey);
     await _storage.delete(key: _localTimeZoneKey);
     await _storage.delete(key: _e2eeIdentityXPublicKey);
     await _storage.delete(key: _e2eeIdentityXPrivateKey);

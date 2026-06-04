@@ -47,9 +47,9 @@ class HomeBottomBar extends StatelessWidget {
 
     return SafeArea(
       top: false,
-      minimum: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+      minimum: const EdgeInsets.fromLTRB(16, 2, 16, 6),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         child: Row(
           children: List.generate(_items.length, (i) {
             final item = _items[i];
@@ -102,9 +102,6 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final highlight = active
-        ? activeColor.withValues(alpha: isDark ? 0.18 : 0.12)
-        : Colors.transparent;
     final iconColor = active ? activeColor : inactiveColor;
 
     return Expanded(
@@ -114,31 +111,40 @@ class _NavItem extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: highlight,
-            borderRadius: BorderRadius.circular(18),
-          ),
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedScale(
-                scale: active ? 1.06 : 1,
+              AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOutCubic,
-                child: Icon(
-                  active ? item.activeIcon : item.icon,
-                  size: 22,
-                  color: iconColor,
+                width: active ? 48 : 38,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: active
+                      ? activeColor.withValues(alpha: isDark ? 0.18 : 0.12)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: AnimatedScale(
+                  scale: active ? 1.06 : 1,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  child: Icon(
+                    active ? item.activeIcon : item.icon,
+                    size: 22,
+                    color: iconColor,
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOutCubic,
                 style: PravaTypography.caption.copyWith(
                   color: iconColor,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 11,
                 ),
                 child: Text(item.label),
               ),

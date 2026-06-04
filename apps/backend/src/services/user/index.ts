@@ -952,6 +952,134 @@ export default async function userService(app: any) {
     };
   });
 
+  app.get("/smart-search", { preHandler: requireAuth }, async (request: any) => {
+    const raw = String(request.query?.query || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    const search = raw.replace(/^[@#]+/, "");
+    if (search.length < 2) {
+      return { accounts: [], hashtags: [], posts: [] };
+    }
+
+    const limit = parseLimit(request.query?.limit, 8, 1, 12);
+    const handleSearch = search.replace(/\s+/g, "");
+    const canSearchHandles = /^[a-z0-9_.]+$/.test(handleSearch);
+    const tagSearch = search.split(" ")[0].replace(/[^a-z0-9_]/g, "");
+    const postContains = `%${escapeLike(search)}%`;
+    const accountPrefix = `${escapeLike(handleSearch)}%`;
+    const accountContains = `%${escapeLike(search)}%`;
+    const tagPrefix = `${escapeLike(tagSearch)}%`;
+    const tagContains = `%${escapeLike(tagSearch)}%`;
+
+    const accountRows = canSearchHandles
+      ? await queryMany(
+          `SELECT user_id, username, display_name, is_verified
+           FROM users
+           WHERE user_id <> $1
+             AND deleted_at IS NULL
+             AND (username_lower LIKE $2 ESCAPE '\\' OR display_name_lower LIKE $3 ESCAPE '\\')
+           ORDER BY
+             CASE WHEN username_lower LIKE $2 ESCAPE '\\' THEN 0 ELSE 1 END,
+             username_lower ASC
+           LIMIT $4`,
+          [request.user.userId, accountPrefix, accountContains, limit]
+        )
+      : [];
+
+    const accountIds = accountRows.map((row) => row.user_id);
+    const [following, followedBy, hashtags, posts] = await Promise.all([
+      accountIds.length === 0
+        ? Promise.resolve([])
+        : queryMany(
+            `SELECT following_id
+             FROM follows
+             WHERE follower_id = $1 AND following_id = ANY($2::text[])`,
+            [request.user.userId, accountIds]
+          ),
+      accountIds.length === 0
+        ? Promise.resolve([])
+        : queryMany(
+            `SELECT follower_id
+             FROM follows
+             WHERE follower_id = ANY($1::text[]) AND following_id = $2`,
+            [accountIds, request.user.userId]
+          ),
+        tagSearch.length < 2
+          ? Promise.resolve([])
+          : queryMany(
+              `SELECT tag, post_count, last_post_at, (post_count * 10) AS rank_score
+               FROM tag_stats
+               WHERE tag LIKE $1 ESCAPE '\\'
+               ORDER BY
+                 CASE WHEN tag LIKE $2 ESCAPE '\\' THEN 0 ELSE 1 END,
+                 post_count DESC,
+                 last_post_at DESC
+               LIMIT $3`,
+              [tagContains, tagPrefix, limit]
+            ),
+        queryMany(
+          `SELECT p.post_id,
+                  p.body,
+                p.created_at,
+                p.like_count,
+                p.comment_count,
+                p.share_count,
+                p.hashtags,
+                u.user_id,
+                u.username,
+                u.display_name,
+                u.avatar_url,
+                u.is_verified
+         FROM posts p
+         JOIN users u ON u.user_id = p.author_id
+           WHERE u.deleted_at IS NULL
+             AND p.body ILIKE $1 ESCAPE '\\'
+           ORDER BY
+             LEAST(p.like_count * 3 + p.comment_count * 4 + p.share_count * 5, 120) DESC,
+             p.created_at DESC
+           LIMIT $2`,
+          [postContains, limit]
+        ),
+    ]);
+
+    const followingSet = new Set(following.map((item: any) => item.following_id));
+    const followedBySet = new Set(followedBy.map((item: any) => item.follower_id));
+
+    return {
+      accounts: accountRows.map((row) => ({
+        id: row.user_id,
+        username: row.username,
+        displayName: row.display_name || row.username,
+        isVerified: row.is_verified === true,
+        isFollowing: followingSet.has(row.user_id),
+        isFollowedBy: followedBySet.has(row.user_id),
+      })),
+      hashtags: hashtags.map((row) => ({
+        tag: row.tag,
+        postCount: Number(row.post_count || 0),
+        rankScore: Number(row.rank_score || 0),
+        lastPostAt: toIso(row.last_post_at),
+      })),
+      posts: posts.map((row) => ({
+        id: row.post_id,
+        body: row.body,
+        createdAt: toIso(row.created_at),
+        likeCount: Number(row.like_count || 0),
+        commentCount: Number(row.comment_count || 0),
+        shareCount: Number(row.share_count || 0),
+        hashtags: Array.isArray(row.hashtags) ? row.hashtags : [],
+        author: {
+          id: row.user_id,
+          username: row.username,
+          displayName: row.display_name || row.username,
+          avatarUrl: row.avatar_url || "",
+          isVerified: row.is_verified === true,
+        },
+      })),
+    };
+  });
+
   app.get("/location-suggestions", { preHandler: requireAuth }, async (request: any) => {
     const query = String(request.query?.query || request.query?.q || "").trim();
     const limit = parseLimit(request.query?.limit, 8, 1, 10);

@@ -823,7 +823,20 @@ class _FeedPageState extends State<FeedPage> {
         Positioned(
           right: 18,
           bottom: 18,
-          child: _ComposeFab(onTap: _openComposer),
+          child: IgnorePointer(
+            ignoring: !_feedControlsVisible,
+            child: AnimatedOpacity(
+              opacity: _feedControlsVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 120),
+              curve: Curves.easeOutCubic,
+              child: AnimatedScale(
+                scale: _feedControlsVisible ? 1 : 0.86,
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOutCubic,
+                child: _ComposeFab(onTap: _openComposer),
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -1598,7 +1611,6 @@ class _ComposeFab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1607,21 +1619,9 @@ class _ComposeFab extends StatelessWidget {
         child: Container(
           width: 62,
           height: 62,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
             color: PravaColors.accentPrimary,
-            boxShadow: [
-              BoxShadow(
-                color: PravaColors.accentPrimary.withValues(alpha: 0.36),
-                blurRadius: 22,
-                offset: const Offset(0, 10),
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.38 : 0.14),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
           ),
           child: const Icon(
             Icons.edit_note_rounded,

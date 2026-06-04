@@ -8,7 +8,7 @@ import '../../../navigation/prava_navigator.dart';
 import '../../../services/notification_center.dart';
 import '../pages/notifications_page.dart';
 import '../pages/search_page.dart';
-import 'home_overflow_menu.dart';
+import '../pages/settings_page.dart';
 
 class HomeTopBar extends StatelessWidget {
   const HomeTopBar({
@@ -38,7 +38,7 @@ class HomeTopBar extends StatelessWidget {
         : 'Prava';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 10, 4),
       child: Row(
         children: [
           /// Brand / tab title
@@ -67,8 +67,8 @@ class HomeTopBar extends StatelessWidget {
           ] else if (tabIndex == 2) ...[
             const SizedBox.shrink(),
           ] else if (tabIndex == 3) ...[
-            IconButton(
-              icon: const Icon(CupertinoIcons.pencil),
+            _TopIconButton(
+              icon: CupertinoIcons.pencil_circle_fill,
               onPressed: () {
                 HapticFeedback.selectionClick();
                 onProfileEdit?.call();
@@ -76,8 +76,8 @@ class HomeTopBar extends StatelessWidget {
             ),
           ] else ...[
             /// Search
-            IconButton(
-              icon: const Icon(CupertinoIcons.search),
+            _TopIconButton(
+              icon: CupertinoIcons.search_circle_fill,
               onPressed: () {
                 HapticFeedback.selectionClick();
                 PravaNavigator.push(
@@ -107,15 +107,38 @@ class HomeTopBar extends StatelessWidget {
             ),
 
             /// Overflow menu
-            IconButton(
-              icon: const Icon(CupertinoIcons.ellipsis_vertical),
+            _TopIconButton(
+              icon: CupertinoIcons.line_horizontal_3,
               onPressed: () {
-                HomeOverflowMenu.show(context);
+                HapticFeedback.selectionClick();
+                PravaNavigator.push(
+                  context,
+                  const SettingsPage(),
+                  fullscreenDialog: true,
+                );
               },
             ),
           ],
         ],
       ),
+    );
+  }
+}
+
+class _TopIconButton extends StatelessWidget {
+  const _TopIconButton({required this.icon, required this.onPressed});
+
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+      padding: EdgeInsets.zero,
+      icon: Icon(icon, size: 22),
+      onPressed: onPressed,
     );
   }
 }
@@ -170,14 +193,14 @@ class _ChatTopMenuButton extends StatelessWidget {
         ),
       ],
       child: SizedBox(
-        width: 44,
-        height: 44,
+        width: 38,
+        height: 38,
         child: Stack(
           alignment: Alignment.center,
           clipBehavior: Clip.none,
           children: [
             Icon(
-              CupertinoIcons.ellipsis_vertical,
+              CupertinoIcons.ellipsis_vertical_circle_fill,
               size: 22,
               color: primary,
             ),
@@ -199,10 +222,7 @@ class _ChatTopMenuButton extends StatelessWidget {
         children: [
           Icon(icon, size: 18, color: PravaColors.accentPrimary),
           const SizedBox(width: 10),
-          Text(
-            label,
-            style: PravaTypography.body.copyWith(color: primary),
-          ),
+          Text(label, style: PravaTypography.body.copyWith(color: primary)),
         ],
       ),
     );
@@ -212,10 +232,7 @@ class _ChatTopMenuButton extends StatelessWidget {
 enum ChatTopMenuAction { newGroup, broadcasts, starred, messageRequests }
 
 class _NotificationBell extends StatelessWidget {
-  const _NotificationBell({
-    required this.count,
-    required this.onTap,
-  });
+  const _NotificationBell({required this.count, required this.onTap});
 
   final int count;
   final VoidCallback onTap;
@@ -228,7 +245,10 @@ class _NotificationBell extends StatelessWidget {
       clipBehavior: Clip.none,
       children: [
         IconButton(
-          icon: const Icon(CupertinoIcons.bell),
+          visualDensity: VisualDensity.compact,
+          constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+          padding: EdgeInsets.zero,
+          icon: const Icon(CupertinoIcons.bell_fill, size: 21),
           onPressed: onTap,
         ),
         if (count > 0)
@@ -236,10 +256,7 @@ class _NotificationBell extends StatelessWidget {
             right: 6,
             top: 6,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 6,
-                vertical: 2,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: PravaColors.accentPrimary,
                 borderRadius: BorderRadius.circular(999),
