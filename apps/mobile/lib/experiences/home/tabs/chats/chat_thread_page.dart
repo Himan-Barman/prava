@@ -75,6 +75,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   ChatMessage? _editingMessage;
   bool _peerOnline = false;
   bool _groupReady = false;
+  bool _usingPlaintextFallback = false;
   List<String> _groupMemberIds = <String>[];
   final Set<String> _hiddenMessageIds = <String>{};
 
@@ -397,32 +398,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       }
       outboundBody = encrypted;
     } else if (_isDmChat) {
-      if (_peerUserId == null) {
-        await _resolvePeerUserId();
-      }
-      await _ensureE2eeReady();
-      if (!_e2eeReady || _peerUserId == null || _peerUserId!.isEmpty) {
+      final prepared = await _prepareDmOutboundMessage(tempId, text);
+      if (prepared == null || prepared.isEmpty) {
         _markFailed(tempId);
         return;
       }
-      try {
-        final encrypted = await _e2ee.encryptBody(
-          peerUserId: _peerUserId!,
-          plaintext: text,
-        );
-        if (encrypted == null || encrypted.isEmpty) {
-          _markFailed(tempId);
-          return;
-        }
-        outboundBody = encrypted;
-        _updateMessage(
-          tempId,
-          (m) => m.copyWith(encryptedBody: encrypted),
-        );
-      } catch (_) {
-        _markFailed(tempId);
-        return;
-      }
+      outboundBody = prepared;
     }
 
     try {
@@ -498,33 +479,16 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         outboundBody = encrypted;
       }
     } else if (_isDmChat) {
-      if (_peerUserId == null) {
-        await _resolvePeerUserId();
-      }
-      await _ensureE2eeReady();
-      if (!_e2eeReady || _peerUserId == null || _peerUserId!.isEmpty) {
-        _markFailed(tempId);
-        return;
-      }
       if (message.encryptedBody == null) {
-        try {
-          final encrypted = await _e2ee.encryptBody(
-            peerUserId: _peerUserId!,
-            plaintext: message.body,
-          );
-          if (encrypted == null || encrypted.isEmpty) {
-            _markFailed(tempId);
-            return;
-          }
-          outboundBody = encrypted;
-          _updateMessage(
-            message.id,
-            (m) => m.copyWith(encryptedBody: encrypted),
-          );
-        } catch (_) {
+        final prepared = await _prepareDmOutboundMessage(
+          message.id,
+          message.body,
+        );
+        if (prepared == null || prepared.isEmpty) {
           _markFailed(tempId);
           return;
         }
+        outboundBody = prepared;
       }
     }
 
@@ -574,6 +538,51 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     );
 
     return result.body;
+  }
+
+  Future<String?> _prepareDmOutboundMessage(
+    String messageId,
+    String plaintext,
+  ) async {
+    if (_peerUserId == null) {
+      await _resolvePeerUserId();
+    }
+    await _ensureE2eeReady();
+
+    final peerUserId = _peerUserId;
+    if (!_e2eeReady || peerUserId == null || peerUserId.isEmpty) {
+      _setPlaintextFallback(true);
+      return plaintext;
+    }
+
+    try {
+      final encrypted = await _e2ee.encryptBody(
+        peerUserId: peerUserId,
+        plaintext: plaintext,
+      );
+      if (encrypted == null || encrypted.isEmpty) {
+        _setPlaintextFallback(true);
+        return plaintext;
+      }
+      _setPlaintextFallback(false);
+      _updateMessage(
+        messageId,
+        (m) => m.copyWith(encryptedBody: encrypted),
+      );
+      return encrypted;
+    } catch (_) {
+      _setPlaintextFallback(true);
+      return plaintext;
+    }
+  }
+
+  void _setPlaintextFallback(bool value) {
+    if (_usingPlaintextFallback == value) return;
+    if (!mounted) {
+      _usingPlaintextFallback = value;
+      return;
+    }
+    setState(() => _usingPlaintextFallback = value);
   }
 
   Future<void> _sendSenderKeyDistribution({
@@ -1477,6 +1486,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
             : (_peerOnline ? 'Online' : 'Active recently'));
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor:
           isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain,
       body: GestureDetector(
@@ -1530,7 +1540,9 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                                       ),
                                     );
                                   case _ChatEntryType.banner:
-                                    return const _EncryptionBanner();
+                                    return _EncryptionBanner(
+                                      fallback: _usingPlaintextFallback,
+                                    );
                                   case _ChatEntryType.date:
                                     return _DateChip(
                                       label: _formatDate(entry.date!),
@@ -1672,9 +1684,6 @@ class _ChatHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark
-        ? Colors.black.withValues(alpha: 0.35)
-        : Colors.white.withValues(alpha: 0.72);
     final border =
         isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
     final primary =
@@ -1683,78 +1692,75 @@ class _ChatHeader extends StatelessWidget {
         isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: border),
-            ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 46,
-                  height: 46,
-                  child: ClipOval(
-                    child: avatarUrl.trim().isNotEmpty
-                        ? Image.network(avatarUrl, fit: BoxFit.cover)
-                        : Container(
-                            color: PravaColors.accentPrimary
-                                .withValues(alpha: 0.18),
-                            child: Center(
-                              child: Text(
-                                initial,
-                                style: PravaTypography.h3.copyWith(
-                                  color: PravaColors.accentPrimary,
-                                  fontWeight: FontWeight.w800,
-                                ),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: ClipOval(
+                  child: avatarUrl.trim().isNotEmpty
+                      ? Image.network(avatarUrl, fit: BoxFit.cover)
+                      : Container(
+                          color: PravaColors.accentPrimary
+                              .withValues(alpha: 0.18),
+                          child: Center(
+                            child: Text(
+                              initial,
+                              style: PravaTypography.h3.copyWith(
+                                color: PravaColors.accentPrimary,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: PravaTypography.body.copyWith(
-                          color: primary,
-                          fontWeight: FontWeight.w600,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: PravaTypography.caption.copyWith(
-                          color: secondary,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: PravaTypography.body.copyWith(
+                        color: primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: PravaTypography.caption.copyWith(
+                        color: secondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ),
+          const SizedBox(height: 12),
+          Container(
+            height: 1,
+            color: border,
+          ),
+        ],
       ),
     );
   }
 }
 
 class _EncryptionBanner extends StatelessWidget {
-  const _EncryptionBanner();
+  const _EncryptionBanner({required this.fallback});
+
+  final bool fallback;
 
   @override
   Widget build(BuildContext context) {
@@ -1769,6 +1775,9 @@ class _EncryptionBanner extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: Center(
         child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width - 48,
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: surface,
@@ -1783,9 +1792,15 @@ class _EncryptionBanner extends StatelessWidget {
                 color: secondary,
               ),
               const SizedBox(width: 8),
-              Text(
-                'Messages are end-to-end encrypted',
-                style: PravaTypography.caption.copyWith(color: secondary),
+              Flexible(
+                child: Text(
+                  fallback
+                      ? 'Encryption will start when device keys are available'
+                      : 'Messages are end-to-end encrypted',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.caption.copyWith(color: secondary),
+                ),
               ),
             ],
           ),
