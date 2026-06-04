@@ -52,6 +52,93 @@ const DEFAULT_SETTINGS = {
   languageLabel: "English",
 };
 
+const FALLBACK_LOCATIONS = [
+  { city: "Kolkata", state: "West Bengal", country: "India" },
+  { city: "Dinhata", state: "West Bengal", country: "India" },
+  { city: "Siliguri", state: "West Bengal", country: "India" },
+  { city: "Guwahati", state: "Assam", country: "India" },
+  { city: "Bengaluru", state: "Karnataka", country: "India" },
+  { city: "Mumbai", state: "Maharashtra", country: "India" },
+  { city: "Delhi", state: "Delhi", country: "India" },
+  { city: "Hyderabad", state: "Telangana", country: "India" },
+  { city: "Chennai", state: "Tamil Nadu", country: "India" },
+  { city: "Pune", state: "Maharashtra", country: "India" },
+  { city: "London", state: "England", country: "United Kingdom" },
+  { city: "New York", state: "New York", country: "United States" },
+];
+
+function mapLocationSuggestion(city: string, state: string, country: string) {
+  const parts = [city, state, country].filter(Boolean);
+  return {
+    city,
+    state,
+    country,
+    label: parts.join(", "),
+  };
+}
+
+function fallbackLocationSuggestions(query: string, limit: number) {
+  const q = query.trim().toLowerCase();
+  const items = q.length < 2
+    ? FALLBACK_LOCATIONS
+    : FALLBACK_LOCATIONS.filter((item) =>
+        [item.city, item.state, item.country]
+          .join(" ")
+          .toLowerCase()
+          .includes(q)
+      );
+  return items
+    .slice(0, limit)
+    .map((item) => mapLocationSuggestion(item.city, item.state, item.country));
+}
+
+async function externalLocationSuggestions(query: string, limit: number) {
+  if (query.trim().length < 2) return [];
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2500);
+  try {
+    const url = new URL("https://nominatim.openstreetmap.org/search");
+    url.searchParams.set("format", "jsonv2");
+    url.searchParams.set("addressdetails", "1");
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("q", query);
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Prava/1.0 location suggestions",
+      },
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .map((item: any) => {
+        const address = item?.address || {};
+        const city = String(
+          address.city ||
+            address.town ||
+            address.village ||
+            address.hamlet ||
+            address.municipality ||
+            ""
+        ).trim();
+        const state = String(address.state || address.region || "").trim();
+        const country = String(address.country || "").trim();
+        if (!city && !state && !country) return null;
+        return mapLocationSuggestion(city || String(item.name || "").trim(), state, country);
+      })
+      .filter(Boolean)
+      .slice(0, limit);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function normalizeVisibilityValue(
   value: unknown,
   fallback: ProfileVisibility
@@ -780,6 +867,25 @@ export default async function userService(app: any) {
         isFollowedBy: followedBySet.has(row.user_id),
       })),
     };
+  });
+
+  app.get("/location-suggestions", { preHandler: requireAuth }, async (request: any) => {
+    const query = String(request.query?.query || request.query?.q || "").trim();
+    const limit = parseLimit(request.query?.limit, 8, 1, 10);
+    const [external, fallback] = await Promise.all([
+      externalLocationSuggestions(query, limit),
+      Promise.resolve(fallbackLocationSuggestions(query, limit)),
+    ]);
+
+    const seen = new Set<string>();
+    const results = [...external, ...fallback].filter((item: any) => {
+      const key = String(item?.label || "").toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return { results: results.slice(0, limit) };
   });
 
   app.get("/me/connections", { preHandler: requireAuth }, async (request: any) => {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -9,6 +10,7 @@ import 'package:image/image.dart' as image_lib;
 import 'package:image_picker/image_picker.dart';
 
 import '../../../../services/account_service.dart';
+import '../../../../services/location_suggestion_service.dart';
 import '../../../../services/media_service.dart';
 import '../../../../services/profile_service.dart';
 import '../../../../services/profile_visibility.dart';
@@ -61,6 +63,8 @@ class _ProfilePageState extends State<ProfilePage> {
 
   ProfileSummary? _profile;
   bool _loading = true;
+  _ProfileContentTab _contentTab = _ProfileContentTab.all;
+  final Set<String> _collapsedSections = {};
 
   @override
   void initState() {
@@ -170,9 +174,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
     final user = profile.user;
     final displayName = _displayName(user);
-    final pinned = user.pinnedDetails.trim().isNotEmpty
-        ? user.pinnedDetails.trim()
-        : 'HUMANITY IS THE BEST RELIGION';
 
     return RefreshIndicator(
       color: PravaColors.accentPrimary,
@@ -188,9 +189,6 @@ class _ProfilePageState extends State<ProfilePage> {
               username: user.username,
               initials: _initials(displayName),
               avatarUrl: user.avatarUrl,
-              coverUrl: user.coverUrl,
-              bio: user.bio,
-              pinnedDetails: pinned,
               verified: user.isVerified,
               posts: _formatCount(profile.stats.posts),
               followers: _formatCount(profile.stats.followers),
@@ -201,102 +199,128 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-              child: _ProfileSection(
-                title: 'Intro',
-                primary: primary,
-                children: [
-                  _ProfileInfoRow(
-                    icon: CupertinoIcons.hand_raised_fill,
-                    title: 'Bio',
-                    value: user.bio.trim().isEmpty
-                        ? 'No bio added'
-                        : user.bio.trim(),
-                    primary: primary,
-                    secondary: secondary,
-                  ),
-                  _ProfileInfoRow(
-                    icon: CupertinoIcons.pin,
-                    title: 'Pinned details',
-                    value: pinned,
-                    primary: primary,
-                    secondary: secondary,
-                  ),
-                ],
-              ),
+            child: _ProfileTabBar(
+              value: _contentTab,
+              primary: primary,
+              secondary: secondary,
+              border: border,
+              onChanged: (value) {
+                if (_contentTab == value) return;
+                HapticFeedback.selectionClick();
+                setState(() => _contentTab = value);
+              },
             ),
           ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-              child: _ProfileSection(
-                title: 'Category',
-                primary: primary,
-                children: [
-                  _ProfileInfoRow(
-                    icon: Icons.category_rounded,
-                    title: user.category.trim().isEmpty
-                        ? 'Creator'
-                        : user.category.trim(),
-                    value: '',
-                    primary: primary,
-                    secondary: secondary,
-                  ),
-                  _ProfileInfoRow(
-                    icon: CupertinoIcons.sparkles,
-                    title: 'AI creator',
-                    value: user.aiCreator ? 'Yes' : 'No',
-                    primary: primary,
-                    secondary: secondary,
-                  ),
-                ],
+          if (_contentTab == _ProfileContentTab.all) ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                child: _ProfileSection(
+                  title: 'Category',
+                  primary: primary,
+                  collapsed: _collapsedSections.contains('category'),
+                  onToggle: () => _toggleSection('category'),
+                  children: [
+                    _ProfileInfoRow(
+                      icon: Icons.category_rounded,
+                      title: user.category.trim().isEmpty
+                          ? 'Creator'
+                          : user.category.trim(),
+                      value: '',
+                      primary: primary,
+                      secondary: secondary,
+                    ),
+                    _ProfileInfoRow(
+                      icon: CupertinoIcons.sparkles,
+                      title: 'AI creator',
+                      value: user.aiCreator ? 'Yes' : 'No',
+                      primary: primary,
+                      secondary: secondary,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-              child: _ProfileSection(
-                title: 'Personal details',
-                primary: primary,
-                children: [
-                  _ProfileInfoRow(
-                    icon: CupertinoIcons.location,
-                    title: user.location.trim().isEmpty
-                        ? 'Location'
-                        : user.location.trim(),
-                    value: user.location.trim().isEmpty ? '-' : 'Public',
-                    primary: primary,
-                    secondary: secondary,
-                  ),
-                  _ProfileInfoRow(
-                    icon: CupertinoIcons.house,
-                    title: user.hometown.trim().isEmpty
-                        ? 'Hometown'
-                        : user.hometown.trim(),
-                    value: user.hometown.trim().isEmpty ? '-' : '',
-                    primary: primary,
-                    secondary: secondary,
-                  ),
-                  _ProfileInfoRow(
-                    icon: CupertinoIcons.link,
-                    title: user.website.trim().isEmpty
-                        ? 'Website'
-                        : user.website.trim(),
-                    value: user.website.trim().isEmpty ? '-' : '',
-                    primary: primary,
-                    secondary: secondary,
-                  ),
-                ],
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                child: _ProfileSection(
+                  title: 'Personal details',
+                  primary: primary,
+                  collapsed: _collapsedSections.contains('personal'),
+                  onToggle: () => _toggleSection('personal'),
+                  children: [
+                    _ProfileInfoRow(
+                      icon: CupertinoIcons.location,
+                      title: user.location.trim().isEmpty
+                          ? 'Location'
+                          : user.location.trim(),
+                      value: user.location.trim().isEmpty ? '-' : '',
+                      primary: primary,
+                      secondary: secondary,
+                    ),
+                    _ProfileInfoRow(
+                      icon: CupertinoIcons.house,
+                      title: user.hometown.trim().isEmpty
+                          ? 'Hometown'
+                          : user.hometown.trim(),
+                      value: user.hometown.trim().isEmpty ? '-' : '',
+                      primary: primary,
+                      secondary: secondary,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                child: _ProfileSection(
+                  title: 'Links',
+                  primary: primary,
+                  collapsed: _collapsedSections.contains('links'),
+                  onToggle: () => _toggleSection('links'),
+                  children: [
+                    _ProfileInfoRow(
+                      icon: CupertinoIcons.link,
+                      title: user.website.trim().isEmpty
+                          ? 'Website'
+                          : user.website.trim(),
+                      value: user.website.trim().isEmpty ? '-' : '',
+                      primary: primary,
+                      secondary: secondary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ] else
+            SliverToBoxAdapter(
+              child: _ProfilePostsList(
+                posts: profile.posts,
+                primary: primary,
+                secondary: secondary,
+                border: border,
+              ),
+            ),
         ],
       ),
     );
   }
+
+  void _toggleSection(String key) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_collapsedSections.contains(key)) {
+        _collapsedSections.remove(key);
+      } else {
+        _collapsedSections.add(key);
+      }
+    });
+  }
 }
+
+enum _ProfileContentTab { all, posts }
 
 class _ProfileHero extends StatelessWidget {
   const _ProfileHero({
@@ -304,9 +328,6 @@ class _ProfileHero extends StatelessWidget {
     required this.username,
     required this.initials,
     required this.avatarUrl,
-    required this.coverUrl,
-    required this.bio,
-    required this.pinnedDetails,
     required this.verified,
     required this.posts,
     required this.followers,
@@ -320,9 +341,6 @@ class _ProfileHero extends StatelessWidget {
   final String username;
   final String initials;
   final String avatarUrl;
-  final String coverUrl;
-  final String bio;
-  final String pinnedDetails;
   final bool verified;
   final String posts;
   final String followers;
@@ -335,110 +353,128 @@ class _ProfileHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface =
-        isDark ? PravaColors.darkBgElevated : PravaColors.lightBgElevated;
+        isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: SizedBox(
-                  height: 154,
-                  width: double.infinity,
-                  child: coverUrl.trim().isEmpty
-                      ? _CoverFallback(isDark: isDark)
-                      : Image.network(coverUrl, fit: BoxFit.cover),
-                ),
-              ),
-              Positioned(
-                left: 18,
-                bottom: -46,
-                child: _ProfileAvatar(
-                  initials: initials,
-                  url: avatarUrl,
-                  size: 104,
-                  borderColor: surface,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 56),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              _ProfileAvatar(
+                initials: initials,
+                url: avatarUrl,
+                size: 92,
+                borderColor: surface,
+              ),
+              const SizedBox(width: 16),
               Expanded(
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Flexible(
-                      child: Text(
-                        displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: PravaTypography.h1.copyWith(
-                          color: primary,
-                          letterSpacing: 0,
-                          fontWeight: FontWeight.w800,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PravaTypography.h2.copyWith(
+                              color: primary,
+                              letterSpacing: 0,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
-                      ),
+                        if (verified) ...[
+                          const SizedBox(width: 6),
+                          const Icon(
+                            CupertinoIcons.check_mark_circled_solid,
+                            color: PravaColors.accentPrimary,
+                            size: 17,
+                          ),
+                        ],
+                      ],
                     ),
-                    if (verified) ...[
-                      const SizedBox(width: 6),
-                      const Icon(
-                        CupertinoIcons.check_mark_circled_solid,
-                        color: PravaColors.accentPrimary,
-                        size: 18,
-                      ),
-                    ],
+                    const SizedBox(height: 2),
+                    Text(
+                      '@$username',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PravaTypography.body.copyWith(color: secondary),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _ProfileCount(
+                          label: 'posts',
+                          value: posts,
+                          primary: primary,
+                        ),
+                        _ProfileCount(
+                          label: 'followers',
+                          value: followers,
+                          primary: primary,
+                        ),
+                        _ProfileCount(
+                          label: 'following',
+                          value: following,
+                          primary: primary,
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            '@$username',
-            style: PravaTypography.body.copyWith(color: secondary),
-          ),
-          if (bio.trim().isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              bio.trim(),
-              style: PravaTypography.bodyLarge.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-          Text(
-            pinnedDetails,
-            style: PravaTypography.body.copyWith(
-              color: primary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           _DashboardButton(primary: primary, border: border),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _ProfileCount(label: 'Posts', value: posts, primary: primary),
-              _ProfileCount(
-                label: 'Followers',
-                value: followers,
-                primary: primary,
-              ),
-              _ProfileCount(
-                label: 'Following',
-                value: following,
-                primary: primary,
-              ),
-            ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileTabBar extends StatelessWidget {
+  const _ProfileTabBar({
+    required this.value,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.onChanged,
+  });
+
+  final _ProfileContentTab value;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final ValueChanged<_ProfileContentTab> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 6, 18, 8),
+      child: Row(
+        children: [
+          _ProfileTabButton(
+            label: 'All',
+            selected: value == _ProfileContentTab.all,
+            primary: primary,
+            secondary: secondary,
+            border: border,
+            onTap: () => onChanged(_ProfileContentTab.all),
+          ),
+          const SizedBox(width: 10),
+          _ProfileTabButton(
+            label: 'Posts',
+            selected: value == _ProfileContentTab.posts,
+            primary: primary,
+            secondary: secondary,
+            border: border,
+            onTap: () => onChanged(_ProfileContentTab.posts),
           ),
         ],
       ),
@@ -446,45 +482,154 @@ class _ProfileHero extends StatelessWidget {
   }
 }
 
-class _CoverFallback extends StatelessWidget {
-  const _CoverFallback({required this.isDark});
+class _ProfileTabButton extends StatelessWidget {
+  const _ProfileTabButton({
+    required this.label,
+    required this.selected,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.onTap,
+  });
 
-  final bool isDark;
+  final String label;
+  final bool selected;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: isDark ? PravaColors.darkBgElevated : PravaColors.lightBgSurface,
-      child: CustomPaint(
-        painter: _CoverPatternPainter(isDark: isDark),
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: 40,
+          decoration: BoxDecoration(
+            color: selected
+                ? PravaColors.accentPrimary.withValues(alpha: 0.16)
+                : Colors.transparent,
+            border: Border.all(
+              color: selected ? PravaColors.accentPrimary : border,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: PravaTypography.button.copyWith(
+                color: selected ? PravaColors.accentPrimary : secondary,
+                letterSpacing: 0,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
-class _CoverPatternPainter extends CustomPainter {
-  _CoverPatternPainter({required this.isDark});
+class _ProfilePostsList extends StatelessWidget {
+  const _ProfilePostsList({
+    required this.posts,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+  });
 
-  final bool isDark;
+  final List<ProfileFeedPost> posts;
+  final Color primary;
+  final Color secondary;
+  final Color border;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08)
-      ..strokeWidth = 1.2;
-    for (var i = 0; i < 9; i++) {
-      final y = size.height * (0.2 + i * 0.08);
-      canvas.drawLine(Offset(0, y), Offset(size.width, y + 34), paint);
+  Widget build(BuildContext context) {
+    if (posts.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(24, 42, 24, 28),
+        child: Column(
+          children: [
+            Icon(CupertinoIcons.text_bubble, size: 34, color: secondary),
+            const SizedBox(height: 12),
+            Text(
+              'No posts yet',
+              style: PravaTypography.h3.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Text and emoji posts from your feed will show here.',
+              textAlign: TextAlign.center,
+              style: PravaTypography.body.copyWith(color: secondary),
+            ),
+          ],
+        ),
+      );
     }
-    for (var i = 0; i < 6; i++) {
-      final x = size.width * (0.1 + i * 0.17);
-      canvas.drawCircle(Offset(x, size.height * 0.58), 38 + i * 5, paint);
-    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      child: Column(
+        children: posts
+            .map(
+              (post) => _ProfilePostRow(
+                post: post,
+                primary: primary,
+                secondary: secondary,
+                border: border,
+              ),
+            )
+            .toList(),
+      ),
+    );
   }
+}
+
+class _ProfilePostRow extends StatelessWidget {
+  const _ProfilePostRow({
+    required this.post,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+  });
+
+  final ProfileFeedPost post;
+  final Color primary;
+  final Color secondary;
+  final Color border;
 
   @override
-  bool shouldRepaint(covariant _CoverPatternPainter oldDelegate) {
-    return oldDelegate.isDark != isDark;
+  Widget build(BuildContext context) {
+    final body = post.body.trim().isEmpty ? 'Text post' : post.body.trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: border)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            body,
+            style: PravaTypography.bodyLarge.copyWith(
+              color: primary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${post.likeCount} likes - ${post.commentCount} comments',
+            style: PravaTypography.bodySmall.copyWith(color: secondary),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -517,7 +662,7 @@ class _ProfileAvatar extends StatelessWidget {
                 child: Center(
                   child: Text(
                     initials,
-                    style: PravaTypography.h1.copyWith(
+                    style: PravaTypography.h2.copyWith(
                       color: PravaColors.accentPrimary,
                       letterSpacing: 0,
                       fontWeight: FontWeight.w800,
@@ -598,34 +743,58 @@ class _ProfileSection extends StatelessWidget {
     required this.title,
     required this.children,
     required this.primary,
+    required this.collapsed,
+    required this.onToggle,
   });
 
   final String title;
   final List<Widget> children;
   final Color primary;
+  final bool collapsed;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: PravaTypography.h2.copyWith(
-                  color: primary,
-                  letterSpacing: 0,
-                  fontWeight: FontWeight.w800,
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: PravaTypography.h3.copyWith(
+                      color: primary,
+                      letterSpacing: 0,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
-              ),
+                AnimatedRotation(
+                  turns: collapsed ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: Icon(
+                    CupertinoIcons.chevron_up,
+                    color: primary,
+                    size: 20,
+                  ),
+                ),
+              ],
             ),
-            Icon(CupertinoIcons.chevron_up, color: primary, size: 22),
-          ],
+          ),
         ),
-        const SizedBox(height: 10),
-        ...children,
+        AnimatedCrossFade(
+          firstChild: Column(children: children),
+          secondChild: const SizedBox.shrink(),
+          crossFadeState:
+              collapsed ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 180),
+        ),
       ],
     );
   }
@@ -649,15 +818,15 @@ class _ProfileInfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 9),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 46,
-            child: Icon(icon, size: 32, color: primary),
+            width: 38,
+            child: Icon(icon, size: 24, color: primary),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -666,7 +835,7 @@ class _ProfileInfoRow extends StatelessWidget {
                   title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: PravaTypography.h3.copyWith(
+                  style: PravaTypography.bodyLarge.copyWith(
                     color: primary,
                     fontWeight: FontWeight.w800,
                   ),
@@ -744,6 +913,7 @@ class _ProfileEditPageState extends State<_ProfileEditPage> {
         source: ImageSource.gallery,
         maxWidth: 2400,
         imageQuality: 95,
+        requestFullMetadata: false,
       );
       if (picked == null) return;
       final bytes = await picked.readAsBytes();
@@ -760,6 +930,9 @@ class _ProfileEditPageState extends State<_ProfileEditPage> {
       setState(() => _uploadingAvatar = true);
       final dataUri = 'data:image/jpeg;base64,${base64Encode(cropped)}';
       final asset = await _mediaService.uploadProfileImage(dataUri: dataUri);
+      if (asset.secureUrl.trim().isEmpty) {
+        throw Exception('Missing uploaded image URL');
+      }
       final updated = await _accountService.updateProfileMedia(
         avatarUrl: asset.secureUrl,
       );
@@ -829,24 +1002,22 @@ class _ProfileEditPageState extends State<_ProfileEditPage> {
                     children: [
                       _FullscreenHeader(
                         title: 'Edit profile',
-                        leadingIcon: CupertinoIcons.back,
+                        leadingIcon: CupertinoIcons.xmark,
                         onClose: _close,
                         primary: primary,
                       ),
                       Expanded(
                         child: ListView(
                           physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
                           children: [
-                            _EditMediaHeader(
+                            _EditAvatarHeader(
                               account: account,
                               uploading: _uploadingAvatar,
                               primary: primary,
-                              secondary: secondary,
-                              border: border,
                               onAvatarTap: _pickAvatar,
                             ),
-                            const SizedBox(height: 34),
+                            const SizedBox(height: 20),
                             _EditSection(
                               title: 'Intro',
                               primary: primary,
@@ -860,17 +1031,6 @@ class _ProfileEditPageState extends State<_ProfileEditPage> {
                                   secondary: secondary,
                                   onTap: () => _openField(
                                     _ProfileEditField.bio(),
-                                  ),
-                                ),
-                                _EditableRow(
-                                  icon: CupertinoIcons.pin,
-                                  title: 'Pinned details',
-                                  value: account.pinnedDetails,
-                                  placeholder: 'Add pinned details',
-                                  primary: primary,
-                                  secondary: secondary,
-                                  onTap: () => _openField(
-                                    _ProfileEditField.pinnedDetails(),
                                   ),
                                 ),
                               ],
@@ -930,17 +1090,6 @@ class _ProfileEditPageState extends State<_ProfileEditPage> {
                                   ),
                                 ),
                                 _EditableRow(
-                                  icon: CupertinoIcons.link,
-                                  title: 'Website',
-                                  value: account.website,
-                                  placeholder: 'Add website',
-                                  primary: primary,
-                                  secondary: secondary,
-                                  onTap: () => _openField(
-                                    _ProfileEditField.website(),
-                                  ),
-                                ),
-                                _EditableRow(
                                   icon: CupertinoIcons.phone,
                                   title: 'Phone',
                                   value: [
@@ -952,6 +1101,23 @@ class _ProfileEditPageState extends State<_ProfileEditPage> {
                                   secondary: secondary,
                                   onTap: () => _openField(
                                     _ProfileEditField.phone(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            _EditSection(
+                              title: 'Links',
+                              primary: primary,
+                              children: [
+                                _EditableRow(
+                                  icon: CupertinoIcons.link,
+                                  title: 'Website',
+                                  value: account.website,
+                                  placeholder: 'Add website',
+                                  primary: primary,
+                                  secondary: secondary,
+                                  onTap: () => _openField(
+                                    _ProfileEditField.website(),
                                   ),
                                 ),
                               ],
@@ -982,46 +1148,47 @@ class _FullscreenHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 64,
-      child: Stack(
-        alignment: Alignment.center,
+      height: 58,
+      child: Row(
         children: [
-          Positioned(
-            left: 8,
+          SizedBox(
+            width: 56,
             child: IconButton(
-              icon: Icon(leadingIcon, color: primary, size: 34),
+              icon: Icon(leadingIcon, color: primary, size: 28),
               onPressed: onClose,
             ),
           ),
-          Text(
-            title,
-            style: PravaTypography.h1.copyWith(
-              color: primary,
-              letterSpacing: 0,
-              fontWeight: FontWeight.w800,
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: PravaTypography.h2.copyWith(
+                color: primary,
+                letterSpacing: 0,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
+          const SizedBox(width: 56),
         ],
       ),
     );
   }
 }
 
-class _EditMediaHeader extends StatelessWidget {
-  const _EditMediaHeader({
+class _EditAvatarHeader extends StatelessWidget {
+  const _EditAvatarHeader({
     required this.account,
     required this.uploading,
     required this.primary,
-    required this.secondary,
-    required this.border,
     required this.onAvatarTap,
   });
 
   final AccountInfo account;
   final bool uploading;
   final Color primary;
-  final Color secondary;
-  final Color border;
   final VoidCallback onAvatarTap;
 
   @override
@@ -1034,51 +1201,35 @@ class _EditMediaHeader extends StatelessWidget {
         : account.username;
     final initials = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
 
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: SizedBox(
-            height: 166,
-            width: double.infinity,
-            child: account.coverUrl.trim().isEmpty
-                ? _CoverFallback(isDark: isDark)
-                : Image.network(account.coverUrl, fit: BoxFit.cover),
-          ),
-        ),
-        Positioned.fill(
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.28),
-              borderRadius: BorderRadius.circular(18),
+    return Center(
+      child: GestureDetector(
+        onTap: uploading ? null : onAvatarTap,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            _ProfileAvatar(
+              initials: initials,
+              url: account.avatarUrl,
+              size: 112,
+              borderColor: surface,
             ),
-          ),
-        ),
-        Positioned(
-          left: 22,
-          bottom: -48,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              _ProfileAvatar(
-                initials: initials,
-                url: account.avatarUrl,
-                size: 112,
-                borderColor: surface,
-              ),
-              Positioned(
-                right: 0,
-                bottom: 2,
-                child: GestureDetector(
-                  onTap: uploading ? null : onAvatarTap,
-                  child: _CameraBadge(uploading: uploading),
+            Positioned(
+              right: 2,
+              bottom: 4,
+              child: _CameraBadge(uploading: uploading),
+            ),
+            if (uploading)
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -1111,7 +1262,7 @@ class _CameraBadge extends StatelessWidget {
   }
 }
 
-class _EditSection extends StatelessWidget {
+class _EditSection extends StatefulWidget {
   const _EditSection({
     required this.title,
     required this.children,
@@ -1123,29 +1274,59 @@ class _EditSection extends StatelessWidget {
   final Color primary;
 
   @override
+  State<_EditSection> createState() => _EditSectionState();
+}
+
+class _EditSectionState extends State<_EditSection> {
+  bool _collapsed = false;
+
+  @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 28),
+      padding: const EdgeInsets.only(top: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: PravaTypography.h2.copyWith(
-                    color: primary,
-                    letterSpacing: 0,
-                    fontWeight: FontWeight.w800,
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() => _collapsed = !_collapsed);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: PravaTypography.h3.copyWith(
+                        color: widget.primary,
+                        letterSpacing: 0,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
-                ),
+                  AnimatedRotation(
+                    turns: _collapsed ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: Icon(
+                      CupertinoIcons.chevron_up,
+                      color: widget.primary,
+                      size: 20,
+                    ),
+                  ),
+                ],
               ),
-              Icon(CupertinoIcons.chevron_up, color: primary, size: 22),
-            ],
+            ),
           ),
-          const SizedBox(height: 10),
-          ...children,
+          AnimatedCrossFade(
+            firstChild: Column(children: widget.children),
+            secondChild: const SizedBox.shrink(),
+            crossFadeState:
+                _collapsed ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 180),
+          ),
         ],
       ),
     );
@@ -1178,19 +1359,19 @@ class _EditableRow extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(width: 46, child: Icon(icon, color: primary, size: 32)),
-            const SizedBox(width: 8),
+            SizedBox(width: 38, child: Icon(icon, color: primary, size: 24)),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: PravaTypography.h3.copyWith(
+                    style: PravaTypography.bodyLarge.copyWith(
                       color: primary,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1200,7 +1381,7 @@ class _EditableRow extends StatelessWidget {
                     shown,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: PravaTypography.bodyLarge.copyWith(
+                    style: PravaTypography.body.copyWith(
                       color: value.trim().isEmpty ? secondary : primary,
                     ),
                   ),
@@ -1208,7 +1389,7 @@ class _EditableRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            Icon(CupertinoIcons.pencil, color: secondary, size: 28),
+            Icon(CupertinoIcons.pencil, color: secondary, size: 22),
           ],
         ),
       ),
@@ -1249,14 +1430,6 @@ class _ProfileEditField {
         multiline: true,
       );
 
-  factory _ProfileEditField.pinnedDetails() => const _ProfileEditField(
-        id: 'pinnedDetails',
-        sectionTitle: 'Intro',
-        heading: 'Pinned details',
-        placeholder: 'Add pinned details',
-        maxLength: 240,
-      );
-
   factory _ProfileEditField.category() => const _ProfileEditField(
         id: 'category',
         sectionTitle: 'Category',
@@ -1277,8 +1450,8 @@ class _ProfileEditField {
   factory _ProfileEditField.location() => const _ProfileEditField(
         id: 'location',
         sectionTitle: 'Personal details',
-        heading: 'Current city',
-        placeholder: 'Add current city',
+        heading: 'Location',
+        placeholder: 'Search city, state or country',
         maxLength: 120,
         visibilityKey: 'location',
       );
@@ -1287,7 +1460,7 @@ class _ProfileEditField {
         id: 'hometown',
         sectionTitle: 'Personal details',
         heading: 'Hometown',
-        placeholder: 'Add hometown',
+        placeholder: 'Search hometown',
         maxLength: 120,
         visibilityKey: 'location',
       );
@@ -1326,6 +1499,7 @@ class _ProfileFieldEditPage extends StatefulWidget {
 
 class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
   final AccountService _accountService = AccountService();
+  final LocationSuggestionService _locationService = LocationSuggestionService();
   final ProfileService _profileService = ProfileService();
   late final TextEditingController _controller;
   late final TextEditingController _countryController;
@@ -1333,6 +1507,9 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
   late bool _booleanValue;
   ProfileVisibility? _visibility;
   String? _visibilityLevel;
+  Timer? _locationDebounce;
+  List<LocationSuggestion> _locationSuggestions = [];
+  bool _loadingLocationSuggestions = false;
   bool _saving = false;
 
   @override
@@ -1350,6 +1527,9 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
     _countryController.addListener(_onChanged);
     _phoneController.addListener(_onChanged);
     _loadVisibility();
+    if (_usesLocationSuggestions) {
+      _loadLocationSuggestions();
+    }
   }
 
   @override
@@ -1357,15 +1537,18 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
     _controller.dispose();
     _countryController.dispose();
     _phoneController.dispose();
+    _locationDebounce?.cancel();
     super.dispose();
+  }
+
+  bool get _usesLocationSuggestions {
+    return widget.field.id == 'location' || widget.field.id == 'hometown';
   }
 
   String _initialText() {
     switch (widget.field.id) {
       case 'bio':
         return widget.account.bio;
-      case 'pinnedDetails':
-        return widget.account.pinnedDetails;
       case 'category':
         return widget.account.category;
       case 'location':
@@ -1397,6 +1580,41 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
 
   void _onChanged() {
     if (mounted) setState(() {});
+    if (!_usesLocationSuggestions) return;
+    _locationDebounce?.cancel();
+    _locationDebounce = Timer(
+      const Duration(milliseconds: 280),
+      _loadLocationSuggestions,
+    );
+  }
+
+  Future<void> _loadLocationSuggestions() async {
+    if (!_usesLocationSuggestions) return;
+    final query = _controller.text.trim();
+    setState(() => _loadingLocationSuggestions = true);
+    try {
+      final suggestions = await _locationService.search(query);
+      if (!mounted) return;
+      setState(() {
+        _locationSuggestions = suggestions;
+        _loadingLocationSuggestions = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _locationSuggestions = [];
+        _loadingLocationSuggestions = false;
+      });
+    }
+  }
+
+  void _selectLocation(LocationSuggestion suggestion) {
+    HapticFeedback.selectionClick();
+    _controller.text = suggestion.label;
+    _controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: _controller.text.length),
+    );
+    setState(() => _locationSuggestions = [suggestion]);
   }
 
   Future<void> _loadVisibility() async {
@@ -1448,11 +1666,6 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
         case 'bio':
           await _accountService.updateProfileDetails(
             bio: _controller.text.trim(),
-          );
-          break;
-        case 'pinnedDetails':
-          await _accountService.updateProfileDetails(
-            pinnedDetails: _controller.text.trim(),
           );
           break;
         case 'category':
@@ -1539,7 +1752,7 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
                 children: [
                   Text(
                     widget.field.heading,
-                    style: PravaTypography.h1.copyWith(
+                    style: PravaTypography.h2.copyWith(
                       color: primary,
                       letterSpacing: 0,
                       fontWeight: FontWeight.w800,
@@ -1562,6 +1775,18 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
                       primary: primary,
                       secondary: secondary,
                       border: border,
+                    )
+                  else if (_usesLocationSuggestions)
+                    _LocationEditor(
+                      controller: _controller,
+                      placeholder: widget.field.placeholder,
+                      maxLength: widget.field.maxLength,
+                      suggestions: _locationSuggestions,
+                      loading: _loadingLocationSuggestions,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                      onSelect: _selectLocation,
                     )
                   else
                     _TextEditorBox(
@@ -1634,6 +1859,147 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
   }
 }
 
+class _LocationEditor extends StatelessWidget {
+  const _LocationEditor({
+    required this.controller,
+    required this.placeholder,
+    required this.maxLength,
+    required this.suggestions,
+    required this.loading,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.onSelect,
+  });
+
+  final TextEditingController controller;
+  final String placeholder;
+  final int maxLength;
+  final List<LocationSuggestion> suggestions;
+  final bool loading;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final ValueChanged<LocationSuggestion> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _TextEditorBox(
+          controller: controller,
+          placeholder: placeholder,
+          maxLength: maxLength,
+          multiline: false,
+          primary: primary,
+          secondary: secondary,
+          border: border,
+        ),
+        const SizedBox(height: 14),
+        if (loading)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                const CupertinoActivityIndicator(radius: 8),
+                const SizedBox(width: 10),
+                Text(
+                  'Searching locations',
+                  style: PravaTypography.body.copyWith(color: secondary),
+                ),
+              ],
+            ),
+          )
+        else if (suggestions.isNotEmpty)
+          Column(
+            children: suggestions
+                .map(
+                  (suggestion) => _LocationSuggestionRow(
+                    suggestion: suggestion,
+                    primary: primary,
+                    secondary: secondary,
+                    border: border,
+                    onTap: () => onSelect(suggestion),
+                  ),
+                )
+                .toList(),
+          ),
+      ],
+    );
+  }
+}
+
+class _LocationSuggestionRow extends StatelessWidget {
+  const _LocationSuggestionRow({
+    required this.suggestion,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.onTap,
+  });
+
+  final LocationSuggestion suggestion;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final meta = [
+      suggestion.city,
+      suggestion.state,
+      suggestion.country,
+    ].where((value) => value.trim().isNotEmpty).join(' - ');
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: border)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(CupertinoIcons.location, color: primary, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    suggestion.label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: PravaTypography.bodyLarge.copyWith(
+                      color: primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (meta.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      meta,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PravaTypography.bodySmall.copyWith(
+                        color: secondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _TextEditorBox extends StatelessWidget {
   const _TextEditorBox({
     required this.controller,
@@ -1666,14 +2032,14 @@ class _TextEditorBox extends StatelessWidget {
         maxLength: maxLength,
         maxLines: multiline ? 5 : 1,
         minLines: multiline ? 4 : 1,
-        style: PravaTypography.h2.copyWith(
+        style: PravaTypography.bodyLarge.copyWith(
           color: primary,
           letterSpacing: 0,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
         ),
         decoration: InputDecoration(
           hintText: placeholder,
-          hintStyle: PravaTypography.h2.copyWith(
+          hintStyle: PravaTypography.bodyLarge.copyWith(
             color: secondary,
             letterSpacing: 0,
           ),
@@ -1716,7 +2082,7 @@ class _BooleanEditor extends StatelessWidget {
               children: [
                 Text(
                   value ? 'Yes' : 'No',
-                  style: PravaTypography.h2.copyWith(
+                  style: PravaTypography.bodyLarge.copyWith(
                     color: primary,
                     letterSpacing: 0,
                     fontWeight: FontWeight.w800,
@@ -1811,9 +2177,9 @@ class _PlainField extends StatelessWidget {
       child: TextField(
         controller: controller,
         keyboardType: keyboardType,
-        style: PravaTypography.h3.copyWith(
+        style: PravaTypography.bodyLarge.copyWith(
           color: primary,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
         ),
         decoration: InputDecoration(
           hintText: placeholder,
