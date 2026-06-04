@@ -200,6 +200,7 @@ function mapConnectionItem(user: any, rel: any) {
     displayName: user.display_name || user.username,
     bio: user.bio || "",
     location: user.location || "",
+    avatarUrl: user.avatar_url || "",
     isVerified: user.is_verified === true,
     isOnline: false,
     createdAt: toIso(user.created_at),
@@ -215,7 +216,7 @@ async function loadUsersByIds(ids: string[]): Promise<any[]> {
   }
 
   return queryMany(
-    `SELECT user_id, username, display_name, bio, location, is_verified, created_at
+    `SELECT user_id, username, display_name, bio, location, avatar_url, is_verified, created_at
      FROM users
      WHERE user_id = ANY($1::text[]) AND deleted_at IS NULL`,
     [ids]
@@ -279,6 +280,7 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
   const settings = mergeSettings(settingsDoc?.settings || {});
   const visibility = buildProfileVisibility(settings, relationship);
   const visible = visibility.visible as Record<string, boolean>;
+  const details = user.details || {};
 
   const [stats, posts] = await Promise.all([
     buildStats(targetUserId),
@@ -302,6 +304,14 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
       bio: visible.bio ? (user.bio || "") : "",
       location: visible.location ? (user.location || "") : "",
       website: visible.website ? (user.website || "") : "",
+      avatarUrl: user.avatar_url || "",
+      coverUrl: user.cover_url || "",
+      pinnedDetails: details.pinnedDetails || "",
+      category: details.category || "",
+      aiCreator: details.aiCreator === true,
+      hometown: visible.location ? (details.hometown || "") : "",
+      phoneCountryCode: isSelf ? (details.phoneCountryCode || "") : "",
+      phoneNumber: isSelf ? (details.phoneNumber || "") : "",
       isVerified: user.is_verified === true,
       createdAt: visible.joined ? toIso(user.created_at) : null,
     },
@@ -352,6 +362,12 @@ function accountPayload(user: any) {
     bio: user.bio || "",
     location: user.location || "",
     website: user.website || "",
+    avatarUrl: user.avatar_url || "",
+    coverUrl: user.cover_url || "",
+    pinnedDetails: details.pinnedDetails || "",
+    category: details.category || "",
+    aiCreator: details.aiCreator === true,
+    hometown: details.hometown || "",
     isVerified: user.is_verified === true,
     emailVerifiedAt: toIso(user.email_verified_at),
     createdAt: toIso(user.created_at),
@@ -432,6 +448,22 @@ export default async function userService(app: any) {
     const ts = now();
     const displayName = `${firstName} ${lastName}`.trim();
 
+    const existing = await queryOne(
+      `SELECT details FROM users WHERE user_id = $1`,
+      [request.user.userId]
+    );
+    if (!existing) {
+      throw new HttpError(404, "User not found");
+    }
+
+    const nextDetails = {
+      ...(existing.details || {}),
+      firstName,
+      lastName,
+      phoneCountryCode,
+      phoneNumber,
+    };
+
     await query(
       `UPDATE users
        SET details = $2,
@@ -441,12 +473,7 @@ export default async function userService(app: any) {
        WHERE user_id = $1`,
       [
         request.user.userId,
-        JSON.stringify({
-          firstName,
-          lastName,
-          phoneCountryCode,
-          phoneNumber,
-        }),
+        JSON.stringify(nextDetails),
         displayName,
         displayName.toLowerCase(),
         ts,
@@ -454,6 +481,120 @@ export default async function userService(app: any) {
     );
 
     return { success: true };
+  });
+
+  app.put("/me/profile-details", { preHandler: requireAuth }, async (request: any) => {
+    const body = request.body || {};
+    const profileDetails: Record<string, unknown> = {};
+    const fields: string[] = [];
+    const params: unknown[] = [request.user.userId];
+
+    const setField = (column: string, value: unknown) => {
+      params.push(value);
+      fields.push(`${column} = $${params.length}`);
+    };
+
+    if (body.bio !== undefined) {
+      setField("bio", String(body.bio || "").trim().slice(0, 2000));
+    }
+
+    if (body.location !== undefined) {
+      setField("location", String(body.location || "").trim().slice(0, 120));
+    }
+
+    if (body.website !== undefined) {
+      setField("website", String(body.website || "").trim().slice(0, 240));
+    }
+
+    if (body.pinnedDetails !== undefined) {
+      profileDetails.pinnedDetails = String(body.pinnedDetails || "").trim().slice(0, 240);
+    }
+
+    if (body.category !== undefined) {
+      profileDetails.category = String(body.category || "").trim().slice(0, 80);
+    }
+
+    if (body.aiCreator !== undefined) {
+      profileDetails.aiCreator = body.aiCreator === true;
+    }
+
+    if (body.hometown !== undefined) {
+      profileDetails.hometown = String(body.hometown || "").trim().slice(0, 120);
+    }
+
+    if (body.phoneCountryCode !== undefined) {
+      profileDetails.phoneCountryCode = String(body.phoneCountryCode || "").trim().slice(0, 8);
+    }
+
+    if (body.phoneNumber !== undefined) {
+      profileDetails.phoneNumber = String(body.phoneNumber || "").trim().slice(0, 32);
+    }
+
+    if (Object.keys(profileDetails).length > 0) {
+      const existing = await queryOne(
+        `SELECT details FROM users WHERE user_id = $1`,
+        [request.user.userId]
+      );
+      if (!existing) {
+        throw new HttpError(404, "User not found");
+      }
+      setField("details", JSON.stringify({
+        ...(existing.details || {}),
+        ...profileDetails,
+      }));
+    }
+
+    ensure(fields.length > 0, 400, "No profile changes supplied");
+    setField("updated_at", now());
+
+    await query(
+      `UPDATE users SET ${fields.join(", ")} WHERE user_id = $1`,
+      params
+    );
+
+    const user = await queryOne(`SELECT * FROM users WHERE user_id = $1`, [request.user.userId]);
+    if (!user) {
+      throw new HttpError(404, "User not found");
+    }
+
+    return { profile: accountPayload(user) };
+  });
+
+  app.put("/me/profile-media", { preHandler: requireAuth }, async (request: any) => {
+    const body = request.body || {};
+    const avatarUrl = body.avatarUrl === undefined
+      ? undefined
+      : String(body.avatarUrl || "").trim().slice(0, 1000);
+    const coverUrl = body.coverUrl === undefined
+      ? undefined
+      : String(body.coverUrl || "").trim().slice(0, 1000);
+
+    ensure(avatarUrl !== undefined || coverUrl !== undefined, 400, "No media changes supplied");
+
+    const fields: string[] = [];
+    const params: unknown[] = [request.user.userId];
+    if (avatarUrl !== undefined) {
+      params.push(avatarUrl);
+      fields.push(`avatar_url = $${params.length}`);
+    }
+    if (coverUrl !== undefined) {
+      params.push(coverUrl);
+      fields.push(`cover_url = $${params.length}`);
+    }
+    params.push(now());
+    fields.push(`updated_at = $${params.length}`);
+
+    await query(
+      `UPDATE users SET ${fields.join(", ")} WHERE user_id = $1`,
+      params
+    );
+
+    const user = await queryOne(`SELECT * FROM users WHERE user_id = $1`, [request.user.userId]);
+    if (!user) {
+      throw new HttpError(404, "User not found");
+    }
+
+    return { profile: accountPayload(user) };
   });
 
   app.get("/me/account", { preHandler: requireAuth }, async (request: any) => {

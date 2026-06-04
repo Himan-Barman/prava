@@ -20,6 +20,8 @@ dependencies:
   web_socket_channel: ^3.0.1
   app_links: ^6.1.1
   country_picker: ^2.0.23
+  image_picker: ^1.1.2
+  image: ^4.2.0
 
   # =========================
   # CORE CRYPTOGRAPHY (Signal / WhatsApp grade)

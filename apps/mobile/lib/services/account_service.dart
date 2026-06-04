@@ -14,6 +14,12 @@ class AccountInfo {
     required this.bio,
     required this.location,
     required this.website,
+    required this.avatarUrl,
+    required this.coverUrl,
+    required this.pinnedDetails,
+    required this.category,
+    required this.aiCreator,
+    required this.hometown,
     required this.isVerified,
     required this.emailVerifiedAt,
     required this.createdAt,
@@ -31,6 +37,12 @@ class AccountInfo {
   final String bio;
   final String location;
   final String website;
+  final String avatarUrl;
+  final String coverUrl;
+  final String pinnedDetails;
+  final String category;
+  final bool aiCreator;
+  final String hometown;
   final bool isVerified;
   final DateTime? emailVerifiedAt;
   final DateTime? createdAt;
@@ -49,6 +61,12 @@ class AccountInfo {
       bio: json['bio']?.toString() ?? '',
       location: json['location']?.toString() ?? '',
       website: json['website']?.toString() ?? '',
+      avatarUrl: json['avatarUrl']?.toString() ?? '',
+      coverUrl: json['coverUrl']?.toString() ?? '',
+      pinnedDetails: json['pinnedDetails']?.toString() ?? '',
+      category: json['category']?.toString() ?? '',
+      aiCreator: json['aiCreator'] == true,
+      hometown: json['hometown']?.toString() ?? '',
       isVerified: json['isVerified'] == true,
       emailVerifiedAt: DateTime.tryParse(
         json['emailVerifiedAt']?.toString() ?? '',
@@ -123,6 +141,60 @@ class AccountService {
       body: body,
     );
     return fetchAccountInfo();
+  }
+
+  Future<AccountInfo> updateProfileDetails({
+    String? bio,
+    String? pinnedDetails,
+    String? category,
+    bool? aiCreator,
+    String? location,
+    String? hometown,
+    String? website,
+    String? phoneCountryCode,
+    String? phoneNumber,
+  }) async {
+    final body = <String, dynamic>{};
+    if (bio != null) body['bio'] = bio;
+    if (pinnedDetails != null) body['pinnedDetails'] = pinnedDetails;
+    if (category != null) body['category'] = category;
+    if (aiCreator != null) body['aiCreator'] = aiCreator;
+    if (location != null) body['location'] = location;
+    if (hometown != null) body['hometown'] = hometown;
+    if (website != null) body['website'] = website;
+    if (phoneCountryCode != null) {
+      body['phoneCountryCode'] = phoneCountryCode;
+    }
+    if (phoneNumber != null) body['phoneNumber'] = phoneNumber;
+
+    final data = await _client.put(
+      '/users/me/profile-details',
+      auth: true,
+      body: body,
+    );
+    final payload = data is Map<String, dynamic>
+        ? data['profile'] as Map<String, dynamic>? ?? {}
+        : <String, dynamic>{};
+    return AccountInfo.fromJson(payload);
+  }
+
+  Future<AccountInfo> updateProfileMedia({
+    String? avatarUrl,
+    String? coverUrl,
+  }) async {
+    final body = <String, dynamic>{};
+    if (avatarUrl != null) body['avatarUrl'] = avatarUrl;
+    if (coverUrl != null) body['coverUrl'] = coverUrl;
+
+    final data = await _client.put(
+      '/users/me/profile-media',
+      auth: true,
+      body: body,
+    );
+    final payload = data is Map<String, dynamic>
+        ? data['profile'] as Map<String, dynamic>? ?? {}
+        : <String, dynamic>{};
+    return AccountInfo.fromJson(payload);
   }
 
   Future<void> deleteAccount() async {

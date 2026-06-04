@@ -48,10 +48,41 @@ ChatMessageType _parseContentType(String? value) {
 
 enum _ChatListFilter { all, unread, favoriteGroups, groups, starred, broadcasts }
 
-enum _ChatsMenuAction { newGroup, broadcasts, starred, messageRequests }
+class ChatsPageController {
+  VoidCallback? _openNewGroup;
+  VoidCallback? _openMessageRequests;
+  VoidCallback? _showBroadcasts;
+  VoidCallback? _showStarred;
+
+  void openNewGroup() => _openNewGroup?.call();
+  void openMessageRequests() => _openMessageRequests?.call();
+  void showBroadcasts() => _showBroadcasts?.call();
+  void showStarred() => _showStarred?.call();
+
+  void _bind({
+    required VoidCallback openNewGroup,
+    required VoidCallback openMessageRequests,
+    required VoidCallback showBroadcasts,
+    required VoidCallback showStarred,
+  }) {
+    _openNewGroup = openNewGroup;
+    _openMessageRequests = openMessageRequests;
+    _showBroadcasts = showBroadcasts;
+    _showStarred = showStarred;
+  }
+
+  void _unbind() {
+    _openNewGroup = null;
+    _openMessageRequests = null;
+    _showBroadcasts = null;
+    _showStarred = null;
+  }
+}
 
 class ChatsPage extends StatefulWidget {
-  const ChatsPage({super.key});
+  const ChatsPage({super.key, this.controller});
+
+  final ChatsPageController? controller;
 
   @override
   State<ChatsPage> createState() => _ChatsPageState();
@@ -68,19 +99,29 @@ class _ChatsPageState extends State<ChatsPage> {
   bool _loading = true;
   String? _userId;
   _ChatListFilter _filter = _ChatListFilter.all;
-  int _messageRequestCount = 0;
   final Map<String, Set<String>> _onlineByConversation = {};
   final Map<String, Timer> _typingTimers = {};
 
   @override
   void initState() {
     super.initState();
+    _bindController(widget.controller);
     _searchController.addListener(_onSearchChange);
     _bootstrap();
   }
 
   @override
+  void didUpdateWidget(covariant ChatsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._unbind();
+      _bindController(widget.controller);
+    }
+  }
+
+  @override
   void dispose() {
+    widget.controller?._unbind();
     _searchController.removeListener(_onSearchChange);
     _searchController.dispose();
     for (final timer in _typingTimers.values) {
@@ -89,6 +130,19 @@ class _ChatsPageState extends State<ChatsPage> {
     _typingTimers.clear();
     _realtime.disconnect();
     super.dispose();
+  }
+
+  void _bindController(ChatsPageController? controller) {
+    controller?._bind(
+      openNewGroup: () {
+        _openNewGroup();
+      },
+      openMessageRequests: () {
+        _openMessageRequests();
+      },
+      showBroadcasts: _showBroadcasts,
+      showStarred: _showStarred,
+    );
   }
 
   void _onSearchChange() {
@@ -115,7 +169,6 @@ class _ChatsPageState extends State<ChatsPage> {
         _chats = data.map(_mapConversation).toList();
         _loading = false;
       });
-      _loadMessageRequestCount();
 
       for (final convo in data) {
         final seq = convo.lastMessageSeq;
@@ -130,14 +183,6 @@ class _ChatsPageState extends State<ChatsPage> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
-  }
-
-  Future<void> _loadMessageRequestCount() async {
-    try {
-      final requests = await _chatService.listMessageRequests();
-      if (!mounted) return;
-      setState(() => _messageRequestCount = requests.length);
-    } catch (_) {}
   }
 
   Future<void> _syncInit() async {
@@ -222,27 +267,17 @@ class _ChatsPageState extends State<ChatsPage> {
     );
     if (changed == true) {
       _loadChats(showLoading: false);
-    } else {
-      _loadMessageRequestCount();
     }
   }
 
-  void _handleMenuAction(_ChatsMenuAction action) {
-    HapticFeedback.selectionClick();
-    switch (action) {
-      case _ChatsMenuAction.newGroup:
-        _openNewGroup();
-        break;
-      case _ChatsMenuAction.broadcasts:
-        setState(() => _filter = _ChatListFilter.broadcasts);
-        break;
-      case _ChatsMenuAction.starred:
-        setState(() => _filter = _ChatListFilter.starred);
-        break;
-      case _ChatsMenuAction.messageRequests:
-        _openMessageRequests();
-        break;
-    }
+  void _showBroadcasts() {
+    if (!mounted) return;
+    setState(() => _filter = _ChatListFilter.broadcasts);
+  }
+
+  void _showStarred() {
+    if (!mounted) return;
+    setState(() => _filter = _ChatListFilter.starred);
   }
 
   String _filterEmptyTitle() {
@@ -309,7 +344,6 @@ class _ChatsPageState extends State<ChatsPage> {
         break;
       case 'MESSAGE_REQUEST_ACCEPTED':
         _loadChats(showLoading: false);
-        _loadMessageRequestCount();
         break;
       case 'MESSAGE_REQUEST_DECLINED':
         _handleMessageRequestDeclined(payload);
@@ -403,9 +437,6 @@ class _ChatsPageState extends State<ChatsPage> {
     final knownConversation =
         _chats.any((chat) => chat.id == conversationId);
     if (!knownConversation) {
-      if (!isFromMe) {
-        _loadMessageRequestCount();
-      }
       _loadChats(showLoading: false);
       return;
     }
@@ -448,7 +479,6 @@ class _ChatsPageState extends State<ChatsPage> {
     setState(() {
       _chats = _chats.where((chat) => chat.id != conversationId).toList();
     });
-    _loadMessageRequestCount();
   }
 
   void _handleMessageAck(Map<String, dynamic> payload) {
@@ -724,9 +754,6 @@ class _ChatsPageState extends State<ChatsPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
     final border = isDark
         ? PravaColors.darkBorderSubtle
         : PravaColors.lightBorderSubtle;
@@ -751,26 +778,7 @@ class _ChatsPageState extends State<ChatsPage> {
           Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-                child: Row(
-                  children: [
-                    Text(
-                      'Chats',
-                      style: PravaTypography.h2.copyWith(
-                        color: primary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const Spacer(),
-                    _ChatsMenuButton(
-                      requestCount: _messageRequestCount,
-                      onSelected: _handleMenuAction,
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(18),
                   child: BackdropFilter(
@@ -886,109 +894,6 @@ class _ChatsPageState extends State<ChatsPage> {
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ChatsMenuButton extends StatelessWidget {
-  const _ChatsMenuButton({
-    required this.requestCount,
-    required this.onSelected,
-  });
-
-  final int requestCount;
-  final ValueChanged<_ChatsMenuAction> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final surface = isDark
-        ? PravaColors.darkBgElevated
-        : PravaColors.lightBgElevated;
-
-    return PopupMenuButton<_ChatsMenuAction>(
-      onSelected: onSelected,
-      color: surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      itemBuilder: (context) => [
-        _menuItem(
-          value: _ChatsMenuAction.newGroup,
-          icon: CupertinoIcons.person_2_fill,
-          label: 'New group',
-          primary: primary,
-        ),
-        _menuItem(
-          value: _ChatsMenuAction.broadcasts,
-          icon: CupertinoIcons.speaker_2_fill,
-          label: 'Broadcasts',
-          primary: primary,
-        ),
-        _menuItem(
-          value: _ChatsMenuAction.starred,
-          icon: CupertinoIcons.star_fill,
-          label: 'Starred',
-          primary: primary,
-        ),
-        _menuItem(
-          value: _ChatsMenuAction.messageRequests,
-          icon: CupertinoIcons.tray_full_fill,
-          label: requestCount > 0
-              ? 'Message requests ($requestCount)'
-              : 'Message requests',
-          primary: primary,
-        ),
-      ],
-      child: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Icon(CupertinoIcons.ellipsis_vertical, size: 20, color: primary),
-            if (requestCount > 0)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: PravaColors.accentPrimary,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  PopupMenuItem<_ChatsMenuAction> _menuItem({
-    required _ChatsMenuAction value,
-    required IconData icon,
-    required String label,
-    required Color primary,
-  }) {
-    return PopupMenuItem(
-      value: value,
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: PravaColors.accentPrimary),
-          const SizedBox(width: 10),
-          Text(
-            label,
-            style: PravaTypography.body.copyWith(color: primary),
           ),
         ],
       ),

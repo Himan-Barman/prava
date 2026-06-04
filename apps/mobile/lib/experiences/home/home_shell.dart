@@ -27,6 +27,8 @@ class _HomeShellState extends State<HomeShell>
   late final PageController _pageController;
   late final E2eeKeyRefreshScheduler _keyRefreshScheduler =
       E2eeKeyRefreshScheduler();
+  final ChatsPageController _chatsController = ChatsPageController();
+  final ProfilePageController _profileController = ProfilePageController();
 
   final _keys = List.generate(
     4,
@@ -78,6 +80,23 @@ class _HomeShellState extends State<HomeShell>
     }
   }
 
+  void _handleChatMenu(ChatTopMenuAction action) {
+    switch (action) {
+      case ChatTopMenuAction.newGroup:
+        _chatsController.openNewGroup();
+        break;
+      case ChatTopMenuAction.broadcasts:
+        _chatsController.showBroadcasts();
+        break;
+      case ChatTopMenuAction.starred:
+        _chatsController.showStarred();
+        break;
+      case ChatTopMenuAction.messageRequests:
+        _chatsController.openMessageRequests();
+        break;
+    }
+  }
+
   // ------------------------------------------------
   // Per-tab pages (kept alive)
   // ------------------------------------------------
@@ -91,7 +110,7 @@ class _HomeShellState extends State<HomeShell>
         _KeepAliveTab(
           child: TabNavigator(
             navigatorKey: _keys[1],
-            child: const ChatsPage(),
+            child: ChatsPage(controller: _chatsController),
           ),
         ),
         _KeepAliveTab(
@@ -103,7 +122,7 @@ class _HomeShellState extends State<HomeShell>
         _KeepAliveTab(
           child: TabNavigator(
             navigatorKey: _keys[3],
-            child: const ProfilePage(),
+            child: ProfilePage(controller: _profileController),
           ),
         ),
       ];
@@ -121,7 +140,11 @@ class _HomeShellState extends State<HomeShell>
           child: Column(
             children: [
               /// 🔝 Fixed top bar
-              HomeTopBar(tabIndex: _index),
+              HomeTopBar(
+                tabIndex: _index,
+                onChatMenuSelected: _handleChatMenu,
+                onProfileEdit: _profileController.openEditor,
+              ),
 
               /// 📄 Swipeable + animated content
               Expanded(

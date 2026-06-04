@@ -10,6 +10,14 @@ class ProfileUser {
     required this.bio,
     required this.location,
     required this.website,
+    required this.avatarUrl,
+    required this.coverUrl,
+    required this.pinnedDetails,
+    required this.category,
+    required this.aiCreator,
+    required this.hometown,
+    required this.phoneCountryCode,
+    required this.phoneNumber,
     required this.isVerified,
     required this.createdAt,
   });
@@ -20,6 +28,14 @@ class ProfileUser {
   final String bio;
   final String location;
   final String website;
+  final String avatarUrl;
+  final String coverUrl;
+  final String pinnedDetails;
+  final String category;
+  final bool aiCreator;
+  final String hometown;
+  final String phoneCountryCode;
+  final String phoneNumber;
   final bool isVerified;
   final DateTime? createdAt;
 
@@ -31,6 +47,14 @@ class ProfileUser {
       bio: json['bio']?.toString() ?? '',
       location: json['location']?.toString() ?? '',
       website: json['website']?.toString() ?? '',
+      avatarUrl: json['avatarUrl']?.toString() ?? '',
+      coverUrl: json['coverUrl']?.toString() ?? '',
+      pinnedDetails: json['pinnedDetails']?.toString() ?? '',
+      category: json['category']?.toString() ?? '',
+      aiCreator: json['aiCreator'] == true,
+      hometown: json['hometown']?.toString() ?? '',
+      phoneCountryCode: json['phoneCountryCode']?.toString() ?? '',
+      phoneNumber: json['phoneNumber']?.toString() ?? '',
       isVerified: json['isVerified'] == true,
       createdAt:
           DateTime.tryParse(json['createdAt']?.toString() ?? ''),

@@ -1,7 +1,15 @@
+import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:typed_data';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as image_lib;
+import 'package:image_picker/image_picker.dart';
 
+import '../../../../services/account_service.dart';
+import '../../../../services/media_service.dart';
 import '../../../../services/profile_service.dart';
 import '../../../../services/profile_visibility.dart';
 import '../../../../ui-system/colors.dart';
@@ -9,9 +17,40 @@ import '../../../../ui-system/feedback/prava_toast.dart';
 import '../../../../ui-system/feedback/toast_type.dart';
 import '../../../../ui-system/skeleton/profile_skeleton.dart';
 import '../../../../ui-system/typography.dart';
+import '../../../../navigation/prava_navigator.dart';
+
+class ProfilePageController {
+  VoidCallback? _openEditor;
+  bool _pendingOpen = false;
+
+  void openEditor() {
+    final openEditor = _openEditor;
+    if (openEditor == null) {
+      _pendingOpen = true;
+      return;
+    }
+    openEditor();
+  }
+
+  void _bind(VoidCallback openEditor) {
+    _openEditor = openEditor;
+    if (_pendingOpen) {
+      _pendingOpen = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openEditor?.call();
+      });
+    }
+  }
+
+  void _unbind() {
+    _openEditor = null;
+  }
+}
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  const ProfilePage({super.key, this.controller});
+
+  final ProfilePageController? controller;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -21,15 +60,32 @@ class _ProfilePageState extends State<ProfilePage> {
   final ProfileService _profileService = ProfileService();
 
   ProfileSummary? _profile;
-  ProfileVisibility? _visibility;
   bool _loading = true;
-  bool _savingVisibility = false;
-  int _segmentIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    _bindController(widget.controller);
     _loadProfile();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfilePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._unbind();
+      _bindController(widget.controller);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller?._unbind();
+    super.dispose();
+  }
+
+  void _bindController(ProfilePageController? controller) {
+    controller?._bind(_openEditProfile);
   }
 
   Future<void> _loadProfile() async {
@@ -39,7 +95,6 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       setState(() {
         _profile = profile;
-        _visibility = profile.visibility;
         _loading = false;
       });
     } catch (_) {
@@ -53,85 +108,17 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  Future<void> _chooseVisibility(String key) async {
-    final current = _visibility ?? ProfileVisibility.defaultsForOwner();
+  Future<void> _openEditProfile() async {
     HapticFeedback.selectionClick();
-    final next = await showCupertinoModalPopup<String>(
-      context: context,
-      builder: (context) {
-        return CupertinoActionSheet(
-          title: Text('Who can see ${ProfileVisibility.fieldLabel(key)}?'),
-          actions: ProfileVisibility.levels
-              .map(
-                (level) => CupertinoActionSheetAction(
-                  onPressed: () => Navigator.of(context).pop(level),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(ProfileVisibility.levelLabel(level)),
-                      if (current.levelFor(key) == level) ...[
-                        const SizedBox(width: 8),
-                        const Icon(
-                          CupertinoIcons.check_mark,
-                          size: 16,
-                          color: PravaColors.accentPrimary,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              )
-              .toList(),
-          cancelButton: CupertinoActionSheetAction(
-            isDefaultAction: true,
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-        );
-      },
+    final changed = await Navigator.of(context, rootNavigator: true).push<bool>(
+      PravaNavigator.route(
+        const _ProfileEditPage(),
+        fullscreenDialog: true,
+      ),
     );
-
-    if (next == null || next == current.levelFor(key)) return;
-    await _saveVisibility(current.copyWithField(key, next));
-  }
-
-  Future<void> _saveVisibility(ProfileVisibility next) async {
-    final previous = _visibility;
-    setState(() {
-      _visibility = next;
-      _savingVisibility = true;
-    });
-
-    try {
-      final saved = await _profileService.saveProfileVisibility(next);
-      if (!mounted) return;
-      setState(() {
-        _visibility = saved;
-        _savingVisibility = false;
-      });
-      PravaToast.show(
-        context,
-        message: 'Profile privacy updated',
-        type: PravaToastType.success,
-      );
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _visibility = previous;
-        _savingVisibility = false;
-      });
-      PravaToast.show(
-        context,
-        message: 'Unable to update privacy',
-        type: PravaToastType.error,
-      );
+    if (changed == true) {
+      _loadProfile();
     }
-  }
-
-  void _setSegment(int index) {
-    if (_segmentIndex == index) return;
-    HapticFeedback.selectionClick();
-    setState(() => _segmentIndex = index);
   }
 
   String _displayName(ProfileUser user) {
@@ -160,49 +147,18 @@ class _ProfilePageState extends State<ProfilePage> {
     return value.toString();
   }
 
-  String _formatJoined(DateTime? value) {
-    if (value == null) return '';
-    return 'Joined ${value.year}';
-  }
-
-  String _formatRelativeTime(DateTime value) {
-    final diff = DateTime.now().difference(value);
-    if (diff.inMinutes < 1) return 'now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m';
-    if (diff.inDays < 1) return '${diff.inHours}h';
-    if (diff.inDays < 7) return '${diff.inDays}d';
-    final weeks = diff.inDays ~/ 7;
-    if (weeks < 5) return '${weeks}w';
-    final month = value.month.toString().padLeft(2, '0');
-    final day = value.day.toString().padLeft(2, '0');
-    return '$month/$day/${value.year}';
-  }
-
-  List<_ProfileStat> _stats(ProfileStats stats) {
-    return [
-      _ProfileStat(label: 'Posts', value: _formatCount(stats.posts)),
-      _ProfileStat(label: 'Followers', value: _formatCount(stats.followers)),
-      _ProfileStat(label: 'Following', value: _formatCount(stats.following)),
-      _ProfileStat(label: 'Likes', value: _formatCount(stats.likes)),
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) return const ProfileSkeleton();
 
-    final profile = _profile;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary =
         isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
     final secondary =
         isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final elevated =
-        isDark ? PravaColors.darkBgElevated : PravaColors.lightBgElevated;
     final border =
         isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final profile = _profile;
 
     if (profile == null) {
       return _ProfileErrorState(
@@ -214,8 +170,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
     final user = profile.user;
     final displayName = _displayName(user);
-    final visibility = _visibility ?? profile.visibility;
-    final activePosts = _segmentIndex == 0 ? profile.posts : profile.liked;
+    final pinned = user.pinnedDetails.trim().isNotEmpty
+        ? user.pinnedDetails.trim()
+        : 'HUMANITY IS THE BEST RELIGION';
 
     return RefreshIndicator(
       color: PravaColors.accentPrimary,
@@ -226,498 +183,110 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         slivers: [
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: _OwnProfileHeader(
-                displayName: displayName,
-                username: user.username,
-                initials: _initials(displayName),
-                bio: user.bio,
-                verified: user.isVerified,
-                privateAccount: visibility.privateAccount,
-                primary: primary,
-                secondary: secondary,
-                surface: elevated,
-                border: border,
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: _StatGrid(
-                stats: _stats(profile.stats),
-                primary: primary,
-                secondary: secondary,
-                surface: surface,
-                border: border,
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: _AboutCard(
-                location: user.location,
-                website: user.website,
-                joined: _formatJoined(user.createdAt),
-                primary: primary,
-                secondary: secondary,
-                surface: surface,
-                border: border,
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: _PrivacyCard(
-                visibility: visibility,
-                saving: _savingVisibility,
-                primary: primary,
-                secondary: secondary,
-                surface: surface,
-                border: border,
-                onChange: _chooseVisibility,
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: _ProfileSegments(
-                value: _segmentIndex,
-                onChanged: _setSegment,
-                surface: surface,
-                secondary: secondary,
-              ),
-            ),
-          ),
-          if (activePosts.isEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                child: _EmptyState(
-                  title: _segmentIndex == 0 ? 'No posts yet' : 'No liked posts',
-                  subtitle: _segmentIndex == 0
-                      ? 'Posts you publish will appear here.'
-                      : 'Posts you like will appear here.',
-                  primary: primary,
-                  secondary: secondary,
-                  surface: surface,
-                  border: border,
-                ),
-              ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              sliver: SliverList.builder(
-                itemCount: activePosts.isEmpty ? 0 : activePosts.length * 2 - 1,
-                itemBuilder: (context, index) {
-                  if (index.isOdd) return const SizedBox(height: 12);
-                  final postIndex = index ~/ 2;
-                  final post = activePosts[postIndex];
-                  return _PostCard(
-                    post: post,
-                    timestamp: _formatRelativeTime(post.createdAt),
-                    primary: primary,
-                    secondary: secondary,
-                    surface: elevated,
-                    border: border,
-                    liked: _segmentIndex == 1,
-                    formatCount: _formatCount,
-                  );
-                },
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OwnProfileHeader extends StatelessWidget {
-  const _OwnProfileHeader({
-    required this.displayName,
-    required this.username,
-    required this.initials,
-    required this.bio,
-    required this.verified,
-    required this.privateAccount,
-    required this.primary,
-    required this.secondary,
-    required this.surface,
-    required this.border,
-  });
-
-  final String displayName;
-  final String username;
-  final String initials;
-  final String bio;
-  final bool verified;
-  final bool privateAccount;
-  final Color primary;
-  final Color secondary;
-  final Color surface;
-  final Color border;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Avatar(initials: initials),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            displayName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: PravaTypography.h2.copyWith(
-                              color: primary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        if (verified) ...[
-                          const SizedBox(width: 6),
-                          const Icon(
-                            CupertinoIcons.check_mark_circled_solid,
-                            color: PravaColors.accentPrimary,
-                            size: 18,
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '@$username',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: PravaTypography.bodySmall.copyWith(
-                        color: secondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (privateAccount)
-                _PrivacyPill(
-                  label: 'Private',
-                  icon: CupertinoIcons.lock_fill,
-                  color: secondary,
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            bio.trim().isEmpty ? 'No bio added yet.' : bio.trim(),
-            style: PravaTypography.body.copyWith(color: primary),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.initials});
-
-  final String initials;
-
-  @override
-  Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 32,
-      backgroundColor: PravaColors.accentPrimary.withValues(alpha: 0.14),
-      child: Text(
-        initials,
-        style: PravaTypography.h3.copyWith(
-          color: PravaColors.accentPrimary,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _StatGrid extends StatelessWidget {
-  const _StatGrid({
-    required this.stats,
-    required this.primary,
-    required this.secondary,
-    required this.surface,
-    required this.border,
-  });
-
-  final List<_ProfileStat> stats;
-  final Color primary;
-  final Color secondary;
-  final Color surface;
-  final Color border;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: stats.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 2.7,
-        ),
-        itemBuilder: (context, index) {
-          final stat = stats[index];
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white10
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    stat.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PravaTypography.caption.copyWith(color: secondary),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  stat.value,
-                  style: PravaTypography.h3.copyWith(
-                    color: primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _AboutCard extends StatelessWidget {
-  const _AboutCard({
-    required this.location,
-    required this.website,
-    required this.joined,
-    required this.primary,
-    required this.secondary,
-    required this.surface,
-    required this.border,
-  });
-
-  final String location;
-  final String website;
-  final String joined;
-  final Color primary;
-  final Color secondary;
-  final Color surface;
-  final Color border;
-
-  @override
-  Widget build(BuildContext context) {
-    final rows = <Widget>[];
-    void add(IconData icon, String label) {
-      if (label.trim().isEmpty) return;
-      rows.add(_DetailRow(icon: icon, label: label, primary: primary, secondary: secondary));
-      rows.add(const SizedBox(height: 10));
-    }
-
-    add(CupertinoIcons.location_solid, location);
-    add(CupertinoIcons.link, website);
-    add(CupertinoIcons.calendar, joined);
-    if (rows.isNotEmpty) rows.removeLast();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Personal Profile',
-            style: PravaTypography.h3.copyWith(
-              color: primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (rows.isEmpty)
-            Text(
-              'No profile details added yet.',
-              style: PravaTypography.bodySmall.copyWith(color: secondary),
-            )
-          else
-            ...rows,
-        ],
-      ),
-    );
-  }
-}
-
-class _PrivacyCard extends StatelessWidget {
-  const _PrivacyCard({
-    required this.visibility,
-    required this.saving,
-    required this.primary,
-    required this.secondary,
-    required this.surface,
-    required this.border,
-    required this.onChange,
-  });
-
-  final ProfileVisibility visibility;
-  final bool saving;
-  final Color primary;
-  final Color secondary;
-  final Color surface;
-  final Color border;
-  final ValueChanged<String> onChange;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Public Profile Privacy',
-                style: PravaTypography.h3.copyWith(
-                  color: primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const Spacer(),
-              if (saving) const CupertinoActivityIndicator(radius: 8),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Choose who can see each detail on your public profile.',
-            style: PravaTypography.bodySmall.copyWith(color: secondary),
-          ),
-          const SizedBox(height: 12),
-          for (final key in ProfileVisibility.fieldKeys)
-            _VisibilityRow(
-              keyName: key,
-              level: visibility.levelFor(key),
+            child: _ProfileHero(
+              displayName: displayName,
+              username: user.username,
+              initials: _initials(displayName),
+              avatarUrl: user.avatarUrl,
+              coverUrl: user.coverUrl,
+              bio: user.bio,
+              pinnedDetails: pinned,
+              verified: user.isVerified,
+              posts: _formatCount(profile.stats.posts),
+              followers: _formatCount(profile.stats.followers),
+              following: _formatCount(profile.stats.following),
               primary: primary,
               secondary: secondary,
-              onTap: () => onChange(key),
+              border: border,
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class _VisibilityRow extends StatelessWidget {
-  const _VisibilityRow({
-    required this.keyName,
-    required this.level,
-    required this.primary,
-    required this.secondary,
-    required this.onTap,
-  });
-
-  final String keyName;
-  final String level;
-  final Color primary;
-  final Color secondary;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              ProfileVisibility.fieldLabel(keyName),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: PravaTypography.body.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w600,
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: _ProfileSection(
+                title: 'Intro',
+                primary: primary,
+                children: [
+                  _ProfileInfoRow(
+                    icon: CupertinoIcons.hand_raised_fill,
+                    title: 'Bio',
+                    value: user.bio.trim().isEmpty
+                        ? 'No bio added'
+                        : user.bio.trim(),
+                    primary: primary,
+                    secondary: secondary,
+                  ),
+                  _ProfileInfoRow(
+                    icon: CupertinoIcons.pin,
+                    title: 'Pinned details',
+                    value: pinned,
+                    primary: primary,
+                    secondary: secondary,
+                  ),
+                ],
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: onTap,
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 108),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: PravaColors.accentPrimary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: _ProfileSection(
+                title: 'Category',
+                primary: primary,
                 children: [
-                  Text(
-                    ProfileVisibility.levelLabel(level),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PravaTypography.caption.copyWith(
-                      color: PravaColors.accentPrimary,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  _ProfileInfoRow(
+                    icon: Icons.category_rounded,
+                    title: user.category.trim().isEmpty
+                        ? 'Creator'
+                        : user.category.trim(),
+                    value: '',
+                    primary: primary,
+                    secondary: secondary,
                   ),
-                  const SizedBox(width: 5),
-                  const Icon(
-                    CupertinoIcons.chevron_down,
-                    size: 12,
-                    color: PravaColors.accentPrimary,
+                  _ProfileInfoRow(
+                    icon: CupertinoIcons.sparkles,
+                    title: 'AI creator',
+                    value: user.aiCreator ? 'Yes' : 'No',
+                    primary: primary,
+                    secondary: secondary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+              child: _ProfileSection(
+                title: 'Personal details',
+                primary: primary,
+                children: [
+                  _ProfileInfoRow(
+                    icon: CupertinoIcons.location,
+                    title: user.location.trim().isEmpty
+                        ? 'Location'
+                        : user.location.trim(),
+                    value: user.location.trim().isEmpty ? '-' : 'Public',
+                    primary: primary,
+                    secondary: secondary,
+                  ),
+                  _ProfileInfoRow(
+                    icon: CupertinoIcons.house,
+                    title: user.hometown.trim().isEmpty
+                        ? 'Hometown'
+                        : user.hometown.trim(),
+                    value: user.hometown.trim().isEmpty ? '-' : '',
+                    primary: primary,
+                    secondary: secondary,
+                  ),
+                  _ProfileInfoRow(
+                    icon: CupertinoIcons.link,
+                    title: user.website.trim().isEmpty
+                        ? 'Website'
+                        : user.website.trim(),
+                    value: user.website.trim().isEmpty ? '-' : '',
+                    primary: primary,
+                    secondary: secondary,
                   ),
                 ],
               ),
@@ -729,312 +298,1725 @@ class _VisibilityRow extends StatelessWidget {
   }
 }
 
-class _ProfileSegments extends StatelessWidget {
-  const _ProfileSegments({
-    required this.value,
-    required this.onChanged,
-    required this.surface,
+class _ProfileHero extends StatelessWidget {
+  const _ProfileHero({
+    required this.displayName,
+    required this.username,
+    required this.initials,
+    required this.avatarUrl,
+    required this.coverUrl,
+    required this.bio,
+    required this.pinnedDetails,
+    required this.verified,
+    required this.posts,
+    required this.followers,
+    required this.following,
+    required this.primary,
     required this.secondary,
+    required this.border,
   });
 
-  final int value;
-  final ValueChanged<int> onChanged;
-  final Color surface;
+  final String displayName;
+  final String username;
+  final String initials;
+  final String avatarUrl;
+  final String coverUrl;
+  final String bio;
+  final String pinnedDetails;
+  final bool verified;
+  final String posts;
+  final String followers;
+  final String following;
+  final Color primary;
   final Color secondary;
+  final Color border;
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoSlidingSegmentedControl<int>(
-      groupValue: value,
-      backgroundColor: surface,
-      thumbColor: PravaColors.accentPrimary,
-      children: {
-        0: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          child: Text(
-            'Posts',
-            style: PravaTypography.label.copyWith(
-              color: value == 0 ? Colors.white : secondary,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface =
+        isDark ? PravaColors.darkBgElevated : PravaColors.lightBgElevated;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: SizedBox(
+                  height: 154,
+                  width: double.infinity,
+                  child: coverUrl.trim().isEmpty
+                      ? _CoverFallback(isDark: isDark)
+                      : Image.network(coverUrl, fit: BoxFit.cover),
+                ),
+              ),
+              Positioned(
+                left: 18,
+                bottom: -46,
+                child: _ProfileAvatar(
+                  initials: initials,
+                  url: avatarUrl,
+                  size: 104,
+                  borderColor: surface,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 56),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PravaTypography.h1.copyWith(
+                          color: primary,
+                          letterSpacing: 0,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (verified) ...[
+                      const SizedBox(width: 6),
+                      const Icon(
+                        CupertinoIcons.check_mark_circled_solid,
+                        color: PravaColors.accentPrimary,
+                        size: 18,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '@$username',
+            style: PravaTypography.body.copyWith(color: secondary),
+          ),
+          if (bio.trim().isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              bio.trim(),
+              style: PravaTypography.bodyLarge.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Text(
+            pinnedDetails,
+            style: PravaTypography.body.copyWith(
+              color: primary,
+              fontWeight: FontWeight.w800,
             ),
           ),
-        ),
-        1: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          child: Text(
-            'Likes',
-            style: PravaTypography.label.copyWith(
-              color: value == 1 ? Colors.white : secondary,
-            ),
+          const SizedBox(height: 16),
+          _DashboardButton(primary: primary, border: border),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _ProfileCount(label: 'Posts', value: posts, primary: primary),
+              _ProfileCount(
+                label: 'Followers',
+                value: followers,
+                primary: primary,
+              ),
+              _ProfileCount(
+                label: 'Following',
+                value: following,
+                primary: primary,
+              ),
+            ],
           ),
-        ),
-      },
-      onValueChanged: (next) {
-        if (next != null) onChanged(next);
-      },
+        ],
+      ),
     );
   }
 }
 
-class _PostCard extends StatelessWidget {
-  const _PostCard({
-    required this.post,
-    required this.timestamp,
-    required this.primary,
-    required this.secondary,
-    required this.surface,
-    required this.border,
-    required this.liked,
-    required this.formatCount,
-  });
+class _CoverFallback extends StatelessWidget {
+  const _CoverFallback({required this.isDark});
 
-  final ProfileFeedPost post;
-  final String timestamp;
-  final Color primary;
-  final Color secondary;
-  final Color surface;
-  final Color border;
-  final bool liked;
-  final String Function(int) formatCount;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final tags = <String>[
-      ...post.hashtags.map((tag) => tag.startsWith('#') ? tag : '#$tag'),
-      ...post.mentions.map((tag) => tag.startsWith('@') ? tag : '@$tag'),
-    ];
-
     return Container(
-      padding: const EdgeInsets.all(16),
+      color: isDark ? PravaColors.darkBgElevated : PravaColors.lightBgSurface,
+      child: CustomPaint(
+        painter: _CoverPatternPainter(isDark: isDark),
+      ),
+    );
+  }
+}
+
+class _CoverPatternPainter extends CustomPainter {
+  _CoverPatternPainter({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08)
+      ..strokeWidth = 1.2;
+    for (var i = 0; i < 9; i++) {
+      final y = size.height * (0.2 + i * 0.08);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y + 34), paint);
+    }
+    for (var i = 0; i < 6; i++) {
+      final x = size.width * (0.1 + i * 0.17);
+      canvas.drawCircle(Offset(x, size.height * 0.58), 38 + i * 5, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CoverPatternPainter oldDelegate) {
+    return oldDelegate.isDark != isDark;
+  }
+}
+
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar({
+    required this.initials,
+    required this.url,
+    required this.size,
+    required this.borderColor,
+  });
+
+  final String initials;
+  final String url;
+  final double size;
+  final Color borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
       decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
+        shape: BoxShape.circle,
+        border: Border.all(color: borderColor, width: 4),
+      ),
+      child: ClipOval(
+        child: url.trim().isEmpty
+            ? Container(
+                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                child: Center(
+                  child: Text(
+                    initials,
+                    style: PravaTypography.h1.copyWith(
+                      color: PravaColors.accentPrimary,
+                      letterSpacing: 0,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              )
+            : Image.network(url, fit: BoxFit.cover),
+      ),
+    );
+  }
+}
+
+class _DashboardButton extends StatelessWidget {
+  const _DashboardButton({required this.primary, required this.border});
+
+  final Color primary;
+  final Color border;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: border),
       ),
+      child: Center(
+        child: Text(
+          'Dashboard',
+          style: PravaTypography.button.copyWith(
+            color: primary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileCount extends StatelessWidget {
+  const _ProfileCount({
+    required this.label,
+    required this.value,
+    required this.primary,
+  });
+
+  final String label;
+  final String value;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: value,
+              style: PravaTypography.body.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            TextSpan(
+              text: ' $label',
+              style: PravaTypography.body.copyWith(color: primary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileSection extends StatelessWidget {
+  const _ProfileSection({
+    required this.title,
+    required this.children,
+    required this.primary,
+  });
+
+  final String title;
+  final List<Widget> children;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: PravaTypography.h2.copyWith(
+                  color: primary,
+                  letterSpacing: 0,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Icon(CupertinoIcons.chevron_up, color: primary, size: 22),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ...children,
+      ],
+    );
+  }
+}
+
+class _ProfileInfoRow extends StatelessWidget {
+  const _ProfileInfoRow({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.primary,
+    required this.secondary,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final Color primary;
+  final Color secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 46,
+            child: Icon(icon, size: 32, color: primary),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.h3.copyWith(
+                    color: primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (value.trim().isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: PravaTypography.body.copyWith(color: secondary),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileEditPage extends StatefulWidget {
+  const _ProfileEditPage();
+
+  @override
+  State<_ProfileEditPage> createState() => _ProfileEditPageState();
+}
+
+class _ProfileEditPageState extends State<_ProfileEditPage> {
+  final AccountService _accountService = AccountService();
+  final MediaService _mediaService = MediaService();
+  final ImagePicker _picker = ImagePicker();
+
+  AccountInfo? _account;
+  bool _loading = true;
+  bool _uploadingAvatar = false;
+  bool _changed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAccount();
+  }
+
+  Future<void> _loadAccount() async {
+    setState(() => _loading = true);
+    try {
+      final account = await _accountService.fetchAccountInfo();
+      if (!mounted) return;
+      setState(() {
+        _account = account;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      PravaToast.show(
+        context,
+        message: 'Unable to load profile details',
+        type: PravaToastType.error,
+      );
+    }
+  }
+
+  void _close() {
+    Navigator.of(context).pop(_changed);
+  }
+
+  Future<void> _pickAvatar() async {
+    if (_uploadingAvatar) return;
+    HapticFeedback.selectionClick();
+    try {
+      final picked = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 2400,
+        imageQuality: 95,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+      final cropped = await Navigator.of(context, rootNavigator: true)
+          .push<Uint8List>(
+        PravaNavigator.route(
+          _AvatarCropPage(imageBytes: bytes),
+          fullscreenDialog: true,
+        ),
+      );
+      if (cropped == null || cropped.isEmpty) return;
+
+      setState(() => _uploadingAvatar = true);
+      final dataUri = 'data:image/jpeg;base64,${base64Encode(cropped)}';
+      final asset = await _mediaService.uploadProfileImage(dataUri: dataUri);
+      final updated = await _accountService.updateProfileMedia(
+        avatarUrl: asset.secureUrl,
+      );
+      if (!mounted) return;
+      setState(() {
+        _account = updated;
+        _changed = true;
+        _uploadingAvatar = false;
+      });
+      PravaToast.show(
+        context,
+        message: 'Profile photo updated',
+        type: PravaToastType.success,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _uploadingAvatar = false);
+      PravaToast.show(
+        context,
+        message: 'Unable to update profile photo',
+        type: PravaToastType.error,
+      );
+    }
+  }
+
+  Future<void> _openField(_ProfileEditField field) async {
+    final account = _account;
+    if (account == null) return;
+    HapticFeedback.selectionClick();
+    final changed = await Navigator.of(context, rootNavigator: true).push<bool>(
+      PravaNavigator.route(
+        _ProfileFieldEditPage(field: field, account: account),
+        fullscreenDialog: true,
+      ),
+    );
+    if (changed == true) {
+      _changed = true;
+      _loadAccount();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary =
+        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
+    final secondary =
+        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final border =
+        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final surface =
+        isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
+    final account = _account;
+
+    return Scaffold(
+      backgroundColor: surface,
+      body: SafeArea(
+        child: _loading
+            ? const Center(child: CupertinoActivityIndicator())
+            : account == null
+                ? _ProfileErrorState(
+                    primary: primary,
+                    secondary: secondary,
+                    onRetry: _loadAccount,
+                  )
+                : Column(
+                    children: [
+                      _FullscreenHeader(
+                        title: 'Edit profile',
+                        leadingIcon: CupertinoIcons.back,
+                        onClose: _close,
+                        primary: primary,
+                      ),
+                      Expanded(
+                        child: ListView(
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                          children: [
+                            _EditMediaHeader(
+                              account: account,
+                              uploading: _uploadingAvatar,
+                              primary: primary,
+                              secondary: secondary,
+                              border: border,
+                              onAvatarTap: _pickAvatar,
+                            ),
+                            const SizedBox(height: 34),
+                            _EditSection(
+                              title: 'Intro',
+                              primary: primary,
+                              children: [
+                                _EditableRow(
+                                  icon: CupertinoIcons.hand_raised_fill,
+                                  title: 'Bio',
+                                  value: account.bio,
+                                  placeholder: 'Add a bio',
+                                  primary: primary,
+                                  secondary: secondary,
+                                  onTap: () => _openField(
+                                    _ProfileEditField.bio(),
+                                  ),
+                                ),
+                                _EditableRow(
+                                  icon: CupertinoIcons.pin,
+                                  title: 'Pinned details',
+                                  value: account.pinnedDetails,
+                                  placeholder: 'Add pinned details',
+                                  primary: primary,
+                                  secondary: secondary,
+                                  onTap: () => _openField(
+                                    _ProfileEditField.pinnedDetails(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            _EditSection(
+                              title: 'Category',
+                              primary: primary,
+                              children: [
+                                _EditableRow(
+                                  icon: Icons.category_rounded,
+                                  title: 'Category',
+                                  value: account.category,
+                                  placeholder: 'Digital creator',
+                                  primary: primary,
+                                  secondary: secondary,
+                                  onTap: () => _openField(
+                                    _ProfileEditField.category(),
+                                  ),
+                                ),
+                                _EditableRow(
+                                  icon: CupertinoIcons.sparkles,
+                                  title: 'AI creator',
+                                  value: account.aiCreator ? 'Yes' : 'No',
+                                  placeholder: 'No',
+                                  primary: primary,
+                                  secondary: secondary,
+                                  onTap: () => _openField(
+                                    _ProfileEditField.aiCreator(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            _EditSection(
+                              title: 'Personal details',
+                              primary: primary,
+                              children: [
+                                _EditableRow(
+                                  icon: CupertinoIcons.location,
+                                  title: 'Location',
+                                  value: account.location,
+                                  placeholder: 'Add current city',
+                                  primary: primary,
+                                  secondary: secondary,
+                                  onTap: () => _openField(
+                                    _ProfileEditField.location(),
+                                  ),
+                                ),
+                                _EditableRow(
+                                  icon: CupertinoIcons.house,
+                                  title: 'Hometown',
+                                  value: account.hometown,
+                                  placeholder: 'Add hometown',
+                                  primary: primary,
+                                  secondary: secondary,
+                                  onTap: () => _openField(
+                                    _ProfileEditField.hometown(),
+                                  ),
+                                ),
+                                _EditableRow(
+                                  icon: CupertinoIcons.link,
+                                  title: 'Website',
+                                  value: account.website,
+                                  placeholder: 'Add website',
+                                  primary: primary,
+                                  secondary: secondary,
+                                  onTap: () => _openField(
+                                    _ProfileEditField.website(),
+                                  ),
+                                ),
+                                _EditableRow(
+                                  icon: CupertinoIcons.phone,
+                                  title: 'Phone',
+                                  value: [
+                                    account.phoneCountryCode,
+                                    account.phoneNumber,
+                                  ].where((v) => v.trim().isNotEmpty).join(' '),
+                                  placeholder: 'Add phone number',
+                                  primary: primary,
+                                  secondary: secondary,
+                                  onTap: () => _openField(
+                                    _ProfileEditField.phone(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+      ),
+    );
+  }
+}
+
+class _FullscreenHeader extends StatelessWidget {
+  const _FullscreenHeader({
+    required this.title,
+    required this.leadingIcon,
+    required this.onClose,
+    required this.primary,
+  });
+
+  final String title;
+  final IconData leadingIcon;
+  final VoidCallback onClose;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 64,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned(
+            left: 8,
+            child: IconButton(
+              icon: Icon(leadingIcon, color: primary, size: 34),
+              onPressed: onClose,
+            ),
+          ),
+          Text(
+            title,
+            style: PravaTypography.h1.copyWith(
+              color: primary,
+              letterSpacing: 0,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditMediaHeader extends StatelessWidget {
+  const _EditMediaHeader({
+    required this.account,
+    required this.uploading,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.onAvatarTap,
+  });
+
+  final AccountInfo account;
+  final bool uploading;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final VoidCallback onAvatarTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface =
+        isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
+    final name = account.displayName.isNotEmpty
+        ? account.displayName
+        : account.username;
+    final initials = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: SizedBox(
+            height: 166,
+            width: double.infinity,
+            child: account.coverUrl.trim().isEmpty
+                ? _CoverFallback(isDark: isDark)
+                : Image.network(account.coverUrl, fit: BoxFit.cover),
+          ),
+        ),
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.28),
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 22,
+          bottom: -48,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              _ProfileAvatar(
+                initials: initials,
+                url: account.avatarUrl,
+                size: 112,
+                borderColor: surface,
+              ),
+              Positioned(
+                right: 0,
+                bottom: 2,
+                child: GestureDetector(
+                  onTap: uploading ? null : onAvatarTap,
+                  child: _CameraBadge(uploading: uploading),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CameraBadge extends StatelessWidget {
+  const _CameraBadge({required this.uploading});
+
+  final bool uploading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: PravaColors.darkBgElevated,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.black.withValues(alpha: 0.18)),
+      ),
+      child: Center(
+        child: uploading
+            ? const CupertinoActivityIndicator(radius: 8)
+            : const Icon(
+                CupertinoIcons.camera_fill,
+                color: Colors.white,
+                size: 21,
+              ),
+      ),
+    );
+  }
+}
+
+class _EditSection extends StatelessWidget {
+  const _EditSection({
+    required this.title,
+    required this.children,
+    required this.primary,
+  });
+
+  final String title;
+  final List<Widget> children;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              if (liked)
-                const Icon(
-                  CupertinoIcons.heart_fill,
-                  size: 14,
-                  color: PravaColors.accentPrimary,
+              Expanded(
+                child: Text(
+                  title,
+                  style: PravaTypography.h2.copyWith(
+                    color: primary,
+                    letterSpacing: 0,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              if (liked) const SizedBox(width: 6),
-              Text(
-                timestamp,
-                style: PravaTypography.caption.copyWith(color: secondary),
               ),
+              Icon(CupertinoIcons.chevron_up, color: primary, size: 22),
             ],
           ),
           const SizedBox(height: 10),
-          Text(
-            post.body,
-            style: PravaTypography.body.copyWith(
-              color: primary,
-              fontWeight: FontWeight.w600,
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+class _EditableRow extends StatelessWidget {
+  const _EditableRow({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.placeholder,
+    required this.primary,
+    required this.secondary,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final String placeholder;
+  final Color primary;
+  final Color secondary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = value.trim().isEmpty ? placeholder : value.trim();
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 46, child: Icon(icon, color: primary, size: 32)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: PravaTypography.h3.copyWith(
+                      color: primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    shown,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: PravaTypography.bodyLarge.copyWith(
+                      color: value.trim().isEmpty ? secondary : primary,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          if (tags.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: tags
-                  .take(6)
-                  .map(
-                    (tag) => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: PravaColors.accentPrimary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
+            const SizedBox(width: 10),
+            Icon(CupertinoIcons.pencil, color: secondary, size: 28),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileEditField {
+  const _ProfileEditField({
+    required this.id,
+    required this.sectionTitle,
+    required this.heading,
+    required this.placeholder,
+    required this.maxLength,
+    this.visibilityKey,
+    this.multiline = false,
+    this.boolean = false,
+    this.phone = false,
+  });
+
+  final String id;
+  final String sectionTitle;
+  final String heading;
+  final String placeholder;
+  final int maxLength;
+  final String? visibilityKey;
+  final bool multiline;
+  final bool boolean;
+  final bool phone;
+
+  factory _ProfileEditField.bio() => const _ProfileEditField(
+        id: 'bio',
+        sectionTitle: 'Intro',
+        heading: 'Add a bio',
+        placeholder: 'Introduce yourself',
+        maxLength: 101,
+        visibilityKey: 'bio',
+        multiline: true,
+      );
+
+  factory _ProfileEditField.pinnedDetails() => const _ProfileEditField(
+        id: 'pinnedDetails',
+        sectionTitle: 'Intro',
+        heading: 'Pinned details',
+        placeholder: 'Add pinned details',
+        maxLength: 240,
+      );
+
+  factory _ProfileEditField.category() => const _ProfileEditField(
+        id: 'category',
+        sectionTitle: 'Category',
+        heading: 'Category',
+        placeholder: 'Digital creator',
+        maxLength: 80,
+      );
+
+  factory _ProfileEditField.aiCreator() => const _ProfileEditField(
+        id: 'aiCreator',
+        sectionTitle: 'Category',
+        heading: 'AI creator',
+        placeholder: 'No',
+        maxLength: 3,
+        boolean: true,
+      );
+
+  factory _ProfileEditField.location() => const _ProfileEditField(
+        id: 'location',
+        sectionTitle: 'Personal details',
+        heading: 'Current city',
+        placeholder: 'Add current city',
+        maxLength: 120,
+        visibilityKey: 'location',
+      );
+
+  factory _ProfileEditField.hometown() => const _ProfileEditField(
+        id: 'hometown',
+        sectionTitle: 'Personal details',
+        heading: 'Hometown',
+        placeholder: 'Add hometown',
+        maxLength: 120,
+        visibilityKey: 'location',
+      );
+
+  factory _ProfileEditField.website() => const _ProfileEditField(
+        id: 'website',
+        sectionTitle: 'Personal details',
+        heading: 'Website',
+        placeholder: 'Add website',
+        maxLength: 240,
+        visibilityKey: 'website',
+      );
+
+  factory _ProfileEditField.phone() => const _ProfileEditField(
+        id: 'phone',
+        sectionTitle: 'Personal details',
+        heading: 'Phone number',
+        placeholder: 'Add phone number',
+        maxLength: 32,
+        phone: true,
+      );
+}
+
+class _ProfileFieldEditPage extends StatefulWidget {
+  const _ProfileFieldEditPage({
+    required this.field,
+    required this.account,
+  });
+
+  final _ProfileEditField field;
+  final AccountInfo account;
+
+  @override
+  State<_ProfileFieldEditPage> createState() => _ProfileFieldEditPageState();
+}
+
+class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
+  final AccountService _accountService = AccountService();
+  final ProfileService _profileService = ProfileService();
+  late final TextEditingController _controller;
+  late final TextEditingController _countryController;
+  late final TextEditingController _phoneController;
+  late bool _booleanValue;
+  ProfileVisibility? _visibility;
+  String? _visibilityLevel;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _initialText());
+    _countryController = TextEditingController(
+      text: widget.account.phoneCountryCode.isEmpty
+          ? '+91'
+          : widget.account.phoneCountryCode,
+    );
+    _phoneController = TextEditingController(text: widget.account.phoneNumber);
+    _booleanValue = widget.account.aiCreator;
+    _controller.addListener(_onChanged);
+    _countryController.addListener(_onChanged);
+    _phoneController.addListener(_onChanged);
+    _loadVisibility();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _countryController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  String _initialText() {
+    switch (widget.field.id) {
+      case 'bio':
+        return widget.account.bio;
+      case 'pinnedDetails':
+        return widget.account.pinnedDetails;
+      case 'category':
+        return widget.account.category;
+      case 'location':
+        return widget.account.location;
+      case 'hometown':
+        return widget.account.hometown;
+      case 'website':
+        return widget.account.website;
+      default:
+        return '';
+    }
+  }
+
+  bool get _hasChanges {
+    if (widget.field.boolean) return _booleanValue != widget.account.aiCreator;
+    if (widget.field.phone) {
+      return _countryController.text.trim() !=
+              widget.account.phoneCountryCode ||
+          _phoneController.text.trim() != widget.account.phoneNumber;
+    }
+    final textChanged = _controller.text.trim() != _initialText().trim();
+    final visibilityChanged = widget.field.visibilityKey != null &&
+        _visibilityLevel != null &&
+        _visibilityLevel !=
+            (_visibility ?? ProfileVisibility.defaultsForOwner())
+                .levelFor(widget.field.visibilityKey!);
+    return textChanged || visibilityChanged;
+  }
+
+  void _onChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadVisibility() async {
+    if (widget.field.visibilityKey == null) return;
+    try {
+      final visibility = await _profileService.fetchProfileVisibility();
+      if (!mounted) return;
+      setState(() {
+        _visibility = visibility;
+        _visibilityLevel = visibility.levelFor(widget.field.visibilityKey!);
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _chooseVisibility() async {
+    final key = widget.field.visibilityKey;
+    if (key == null) return;
+    final currentLevel = _visibilityLevel ??
+        (_visibility ?? ProfileVisibility.defaultsForOwner()).levelFor(key);
+    final next = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: Text('Who can see ${ProfileVisibility.fieldLabel(key)}?'),
+        actions: ProfileVisibility.levels
+            .map(
+              (level) => CupertinoActionSheetAction(
+                onPressed: () => Navigator.of(context).pop(level),
+                child: Text(ProfileVisibility.levelLabel(level)),
+              ),
+            )
+            .toList(),
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (next == null || next == currentLevel) return;
+    setState(() => _visibilityLevel = next);
+  }
+
+  Future<void> _save() async {
+    if (!_hasChanges || _saving) return;
+    HapticFeedback.selectionClick();
+    setState(() => _saving = true);
+    try {
+      switch (widget.field.id) {
+        case 'bio':
+          await _accountService.updateProfileDetails(
+            bio: _controller.text.trim(),
+          );
+          break;
+        case 'pinnedDetails':
+          await _accountService.updateProfileDetails(
+            pinnedDetails: _controller.text.trim(),
+          );
+          break;
+        case 'category':
+          await _accountService.updateProfileDetails(
+            category: _controller.text.trim(),
+          );
+          break;
+        case 'aiCreator':
+          await _accountService.updateProfileDetails(
+            aiCreator: _booleanValue,
+          );
+          break;
+        case 'location':
+          await _accountService.updateProfileDetails(
+            location: _controller.text.trim(),
+          );
+          break;
+        case 'hometown':
+          await _accountService.updateProfileDetails(
+            hometown: _controller.text.trim(),
+          );
+          break;
+        case 'website':
+          await _accountService.updateProfileDetails(
+            website: _controller.text.trim(),
+          );
+          break;
+        case 'phone':
+          await _accountService.updateProfileDetails(
+            phoneCountryCode: _countryController.text.trim(),
+            phoneNumber: _phoneController.text.trim(),
+          );
+          break;
+      }
+      final key = widget.field.visibilityKey;
+      if (key != null && _visibilityLevel != null && _visibility != null) {
+        await _profileService.saveProfileVisibility(
+          _visibility!.copyWithField(key, _visibilityLevel!),
+        );
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      PravaToast.show(
+        context,
+        message: 'Unable to save profile detail',
+        type: PravaToastType.error,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary =
+        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
+    final secondary =
+        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final border =
+        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final surface =
+        isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
+    final enabled = _hasChanges && !_saving;
+
+    return Scaffold(
+      backgroundColor: surface,
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _FullscreenHeader(
+              title: widget.field.sectionTitle,
+              leadingIcon: CupertinoIcons.xmark,
+              onClose: () => Navigator.of(context).pop(false),
+              primary: primary,
+            ),
+            Expanded(
+              child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                children: [
+                  Text(
+                    widget.field.heading,
+                    style: PravaTypography.h1.copyWith(
+                      color: primary,
+                      letterSpacing: 0,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  if (widget.field.boolean)
+                    _BooleanEditor(
+                      value: _booleanValue,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                      onChanged: (value) =>
+                          setState(() => _booleanValue = value),
+                    )
+                  else if (widget.field.phone)
+                    _PhoneEditor(
+                      countryController: _countryController,
+                      phoneController: _phoneController,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                    )
+                  else
+                    _TextEditorBox(
+                      controller: _controller,
+                      placeholder: widget.field.placeholder,
+                      maxLength: widget.field.maxLength,
+                      multiline: widget.field.multiline,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                    ),
+                  if (widget.field.visibilityKey != null) ...[
+                    const SizedBox(height: 14),
+                    GestureDetector(
+                      onTap: _chooseVisibility,
                       child: Text(
-                        tag,
-                        style: PravaTypography.caption.copyWith(
-                          color: PravaColors.accentPrimary,
+                        '${_visibilityLabel()} - ${_counterText()}',
+                        style: PravaTypography.h3.copyWith(
+                          color: secondary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
-                  )
-                  .toList(),
+                  ],
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+              child: GestureDetector(
+                onTap: enabled ? _save : null,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  height: 58,
+                  decoration: BoxDecoration(
+                    color: enabled
+                        ? PravaColors.accentPrimary
+                        : (isDark ? Colors.white12 : Colors.black12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: _saving
+                        ? const CupertinoActivityIndicator(radius: 10)
+                        : Text(
+                            'Save',
+                            style: PravaTypography.h3.copyWith(
+                              color: enabled ? Colors.white : secondary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                  ),
+                ),
+              ),
             ),
           ],
-          const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _PostMetric(
-                icon: CupertinoIcons.heart,
-                label: formatCount(post.likeCount),
-                color: secondary,
-              ),
-              _PostMetric(
-                icon: CupertinoIcons.chat_bubble,
-                label: formatCount(post.commentCount),
-                color: secondary,
-              ),
-              _PostMetric(
-                icon: CupertinoIcons.arrowshape_turn_up_right,
-                label: formatCount(post.shareCount),
-                color: secondary,
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
-}
 
-class _PostMetric extends StatelessWidget {
-  const _PostMetric({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
+  String _visibilityLabel() {
+    final level = _visibilityLevel ?? 'everyone';
+    return ProfileVisibility.levelLabel(level);
+  }
 
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: PravaTypography.caption.copyWith(
-            color: color,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
+  String _counterText() {
+    if (widget.field.boolean) return '';
+    if (widget.field.phone) return _phoneController.text.trim().length.toString();
+    return '${_controller.text.trim().length}/${widget.field.maxLength}';
   }
 }
 
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({
-    required this.icon,
-    required this.label,
+class _TextEditorBox extends StatelessWidget {
+  const _TextEditorBox({
+    required this.controller,
+    required this.placeholder,
+    required this.maxLength,
+    required this.multiline,
     required this.primary,
     required this.secondary,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color primary;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: secondary),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
-            overflow: TextOverflow.ellipsis,
-            style: PravaTypography.bodySmall.copyWith(
-              color: primary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PrivacyPill extends StatelessWidget {
-  const _PrivacyPill({
-    required this.label,
-    required this.icon,
-    required this.color,
-  });
-
-  final String label;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: PravaTypography.caption.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.title,
-    required this.subtitle,
-    required this.primary,
-    required this.secondary,
-    required this.surface,
     required this.border,
   });
 
-  final String title;
-  final String subtitle;
+  final TextEditingController controller;
+  final String placeholder;
+  final int maxLength;
+  final bool multiline;
   final Color primary;
   final Color secondary;
-  final Color surface;
   final Color border;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
+        border: Border.all(color: border, width: 1.4),
+        borderRadius: BorderRadius.circular(22),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+      child: TextField(
+        controller: controller,
+        maxLength: maxLength,
+        maxLines: multiline ? 5 : 1,
+        minLines: multiline ? 4 : 1,
+        style: PravaTypography.h2.copyWith(
+          color: primary,
+          letterSpacing: 0,
+          fontWeight: FontWeight.w700,
+        ),
+        decoration: InputDecoration(
+          hintText: placeholder,
+          hintStyle: PravaTypography.h2.copyWith(
+            color: secondary,
+            letterSpacing: 0,
+          ),
+          counterText: '',
+          border: InputBorder.none,
+        ),
+      ),
+    );
+  }
+}
+
+class _BooleanEditor extends StatelessWidget {
+  const _BooleanEditor({
+    required this.value,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        border: Border.all(color: border, width: 1.4),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
         children: [
-          Text(
-            title,
-            style: PravaTypography.h3.copyWith(
-              color: primary,
-              fontWeight: FontWeight.w700,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value ? 'Yes' : 'No',
+                  style: PravaTypography.h2.copyWith(
+                    color: primary,
+                    letterSpacing: 0,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  'Show whether you create with AI tools.',
+                  style: PravaTypography.body.copyWith(color: secondary),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: PravaTypography.bodySmall.copyWith(color: secondary),
-          ),
+          CupertinoSwitch(value: value, onChanged: onChanged),
         ],
+      ),
+    );
+  }
+}
+
+class _PhoneEditor extends StatelessWidget {
+  const _PhoneEditor({
+    required this.countryController,
+    required this.phoneController,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+  });
+
+  final TextEditingController countryController;
+  final TextEditingController phoneController;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 96,
+          child: _PlainField(
+            controller: countryController,
+            placeholder: '+91',
+            keyboardType: TextInputType.phone,
+            primary: primary,
+            secondary: secondary,
+            border: border,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _PlainField(
+            controller: phoneController,
+            placeholder: 'Phone number',
+            keyboardType: TextInputType.phone,
+            primary: primary,
+            secondary: secondary,
+            border: border,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlainField extends StatelessWidget {
+  const _PlainField({
+    required this.controller,
+    required this.placeholder,
+    required this.keyboardType,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+  });
+
+  final TextEditingController controller;
+  final String placeholder;
+  final TextInputType keyboardType;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 58,
+      decoration: BoxDecoration(
+        border: Border.all(color: border, width: 1.4),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        style: PravaTypography.h3.copyWith(
+          color: primary,
+          fontWeight: FontWeight.w700,
+        ),
+        decoration: InputDecoration(
+          hintText: placeholder,
+          hintStyle: PravaTypography.body.copyWith(color: secondary),
+          border: InputBorder.none,
+        ),
+      ),
+    );
+  }
+}
+
+class _AvatarCropPage extends StatefulWidget {
+  const _AvatarCropPage({required this.imageBytes});
+
+  final Uint8List imageBytes;
+
+  @override
+  State<_AvatarCropPage> createState() => _AvatarCropPageState();
+}
+
+class _AvatarCropPageState extends State<_AvatarCropPage> {
+  double _scale = 1;
+  Offset _offset = Offset.zero;
+  double _startScale = 1;
+  Offset _startOffset = Offset.zero;
+  Offset _startFocal = Offset.zero;
+
+  void _onScaleStart(ScaleStartDetails details) {
+    _startScale = _scale;
+    _startOffset = _offset;
+    _startFocal = details.focalPoint;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails details, double previewSize) {
+    final nextScale =
+        ((_startScale * details.scale).clamp(1.0, 4.0) as num).toDouble();
+    final rawOffset = _startOffset + details.focalPoint - _startFocal;
+    setState(() {
+      _scale = nextScale;
+      _offset = _clampOffset(rawOffset, previewSize, nextScale);
+    });
+  }
+
+  Offset _clampOffset(Offset offset, double previewSize, double scale) {
+    final source = image_lib.decodeImage(widget.imageBytes);
+    if (source == null) return Offset.zero;
+    final aspect = source.width / source.height;
+    final baseW = aspect >= 1 ? previewSize * aspect : previewSize;
+    final baseH = aspect >= 1 ? previewSize : previewSize / aspect;
+    final maxX = math.max(0, (baseW * scale - previewSize) / 2);
+    final maxY = math.max(0, (baseH * scale - previewSize) / 2);
+    return Offset(
+      (offset.dx.clamp(-maxX, maxX) as num).toDouble(),
+      (offset.dy.clamp(-maxY, maxY) as num).toDouble(),
+    );
+  }
+
+  Uint8List? _crop(double previewSize) {
+    final source = image_lib.decodeImage(widget.imageBytes);
+    if (source == null) return null;
+    final sourceW = source.width.toDouble();
+    final sourceH = source.height.toDouble();
+    final aspect = sourceW / sourceH;
+    final baseW = aspect >= 1 ? previewSize * aspect : previewSize;
+    final baseH = aspect >= 1 ? previewSize : previewSize / aspect;
+    final displayW = baseW * _scale;
+    final displayH = baseH * _scale;
+    final centerDisplayX = displayW / 2 - _offset.dx;
+    final centerDisplayY = displayH / 2 - _offset.dy;
+    final centerX = centerDisplayX / displayW * sourceW;
+    final centerY = centerDisplayY / displayH * sourceH;
+    final cropSize = math.min(
+      sourceW * previewSize / displayW,
+      sourceH * previewSize / displayH,
+    );
+    final left = (centerX - cropSize / 2).clamp(0, sourceW - cropSize);
+    final top = (centerY - cropSize / 2).clamp(0, sourceH - cropSize);
+    final cropped = image_lib.copyCrop(
+      source,
+      x: left.round(),
+      y: top.round(),
+      width: cropSize.round(),
+      height: cropSize.round(),
+    );
+    final resized = image_lib.copyResize(cropped, width: 512, height: 512);
+    return Uint8List.fromList(image_lib.encodeJpg(resized, quality: 92));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary =
+        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
+    final secondary =
+        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final bg = isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
+    final previewSize = math.min(MediaQuery.of(context).size.width - 56, 340.0);
+    final decoded = image_lib.decodeImage(widget.imageBytes);
+    final aspect = decoded == null ? 1.0 : decoded.width / decoded.height;
+    final baseW = aspect >= 1 ? previewSize * aspect : previewSize;
+    final baseH = aspect >= 1 ? previewSize : previewSize / aspect;
+
+    return Scaffold(
+      backgroundColor: bg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _FullscreenHeader(
+              title: 'Adjust photo',
+              leadingIcon: CupertinoIcons.xmark,
+              onClose: () => Navigator.of(context).pop(),
+              primary: primary,
+            ),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  GestureDetector(
+                    onScaleStart: _onScaleStart,
+                    onScaleUpdate: (details) =>
+                        _onScaleUpdate(details, previewSize),
+                    child: Container(
+                      width: previewSize,
+                      height: previewSize,
+                      color: Colors.transparent,
+                      child: ClipOval(
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Transform.translate(
+                              offset: _offset,
+                              child: Transform.scale(
+                                scale: _scale,
+                                child: Image.memory(
+                                  widget.imageBytes,
+                                  width: baseW,
+                                  height: baseH,
+                                  fit: BoxFit.fill,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 34),
+                    child: Row(
+                      children: [
+                        Icon(CupertinoIcons.minus, color: secondary),
+                        Expanded(
+                          child: Slider(
+                            value: _scale,
+                            min: 1,
+                            max: 4,
+                            onChanged: (value) {
+                              setState(() {
+                                _scale = value;
+                                _offset = _clampOffset(
+                                  _offset,
+                                  previewSize,
+                                  value,
+                                );
+                              });
+                            },
+                          ),
+                        ),
+                        Icon(CupertinoIcons.plus, color: secondary),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+              child: GestureDetector(
+                onTap: () {
+                  final cropped = _crop(previewSize);
+                  Navigator.of(context).pop(cropped);
+                },
+                child: Container(
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: PravaColors.accentPrimary,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'Use photo',
+                      style: PravaTypography.h3.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1059,35 +2041,30 @@ class _ProfileErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Icon(CupertinoIcons.person_crop_circle_badge_exclam,
+                size: 42, color: secondary),
+            const SizedBox(height: 14),
             Text(
               'Profile unavailable',
               style: PravaTypography.h3.copyWith(
                 color: primary,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Refresh to try loading your profile again.',
-              textAlign: TextAlign.center,
-              style: PravaTypography.bodySmall.copyWith(color: secondary),
-            ),
-            const SizedBox(height: 14),
-            CupertinoButton(
-              color: PravaColors.accentPrimary,
-              onPressed: onRetry,
-              child: const Text('Refresh'),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: onRetry,
+              child: Text(
+                'Try again',
+                style: PravaTypography.body.copyWith(
+                  color: PravaColors.accentPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ],
         ),
       ),
     );
   }
-}
-
-class _ProfileStat {
-  const _ProfileStat({required this.label, required this.value});
-
-  final String label;
-  final String value;
 }
