@@ -226,6 +226,24 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_posts_created ON posts (created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_posts_share ON posts (share_of_post_id, author_id);
 
+    CREATE TABLE IF NOT EXISTS post_tags (
+      post_id         TEXT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+      tag             TEXT NOT NULL,
+      author_id       TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (post_id, tag)
+    );
+    CREATE INDEX IF NOT EXISTS idx_post_tags_tag_created ON post_tags (tag, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_post_tags_author ON post_tags (author_id, tag);
+
+    CREATE TABLE IF NOT EXISTS tag_stats (
+      tag             TEXT PRIMARY KEY,
+      post_count      INT NOT NULL DEFAULT 0,
+      last_post_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_tag_stats_rank ON tag_stats (post_count DESC, last_post_at DESC);
+
     CREATE TABLE IF NOT EXISTS post_likes (
       post_id         TEXT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
       user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,

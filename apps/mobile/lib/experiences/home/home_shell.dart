@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,6 +12,7 @@ import 'tabs/chats/chats_page.dart';
 import 'tabs/friends/friends_page.dart';
 import 'tabs/profile/profile_page.dart';
 import '../../services/e2ee_scheduler.dart';
+import '../../services/platform_bridge_service.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -27,6 +30,7 @@ class _HomeShellState extends State<HomeShell>
   late final PageController _pageController;
   late final E2eeKeyRefreshScheduler _keyRefreshScheduler =
       E2eeKeyRefreshScheduler();
+  late final PlatformBridgeService _platformBridge = PlatformBridgeService();
   final ChatsPageController _chatsController = ChatsPageController();
   final ProfilePageController _profileController = ProfilePageController();
 
@@ -40,6 +44,7 @@ class _HomeShellState extends State<HomeShell>
     super.initState();
     _pageController = PageController(initialPage: _index);
     _keyRefreshScheduler.start();
+    unawaited(_platformBridge.requestLocationTimeAccess());
   }
 
   @override

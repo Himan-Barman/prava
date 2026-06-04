@@ -280,6 +280,31 @@ function mapProfilePost(post: any) {
   };
 }
 
+function mapProfileTag(row: any) {
+  return {
+    tag: row.tag,
+    postCount: Number(row.post_count || 0),
+    rankScore: Number(row.rank_score || 0),
+    lastPostAt: toIso(row.last_post_at),
+  };
+}
+
+async function buildProfileTags(userId: string, limit: number) {
+  return queryMany(
+    `SELECT pt.tag,
+            COUNT(*)::int AS post_count,
+            MAX(pt.created_at) AS last_post_at,
+            (COUNT(*)::int * 10 + COALESCE(MAX(ts.post_count), 0)) AS rank_score
+     FROM post_tags pt
+     LEFT JOIN tag_stats ts ON ts.tag = pt.tag
+     WHERE pt.author_id = $1
+     GROUP BY pt.tag
+     ORDER BY rank_score DESC, last_post_at DESC
+     LIMIT $2`,
+    [userId, limit]
+  );
+}
+
 function mapConnectionItem(user: any, rel: any) {
   return {
     id: user.user_id,
@@ -370,7 +395,7 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
   const visible = visibility.visible as Record<string, boolean>;
   const details = user.details || {};
 
-  const [stats, posts] = await Promise.all([
+  const [stats, posts, tags] = await Promise.all([
     buildStats(targetUserId),
     visible.posts
       ? queryMany(
@@ -382,6 +407,7 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
           [targetUserId, limit]
         )
       : Promise.resolve([]),
+    visible.posts ? buildProfileTags(targetUserId, limit) : Promise.resolve([]),
   ]);
 
   const summary = {
@@ -410,6 +436,7 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
       likes: visible.likes ? stats.likes : 0,
     },
     posts: posts.map(mapProfilePost),
+    tags: tags.map(mapProfileTag),
     visibility,
     relationship,
   };

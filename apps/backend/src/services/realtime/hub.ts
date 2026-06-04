@@ -68,6 +68,20 @@ function sendToUsers(
   }
 }
 
+function sendToFeedSubscribers(
+  type: string,
+  payload: unknown,
+  excludeUserId?: string
+): void {
+  for (const connections of connectionsByUser.values()) {
+    for (const connection of connections) {
+      if (!connection.feedSubscribed) continue;
+      if (excludeUserId && connection.userId === excludeUserId) continue;
+      send(connection, type, payload);
+    }
+  }
+}
+
 function publishEvent(
   userIds: string[],
   type: string,
@@ -86,6 +100,33 @@ function publishEvent(
       JSON.stringify({
         instanceId,
         userIds,
+        type,
+        payload,
+        excludeUserId,
+      })
+    );
+  } catch {
+    // ignore publish errors
+  }
+}
+
+function publishFeedEvent(
+  type: string,
+  payload: unknown,
+  excludeUserId?: string
+): void {
+  sendToFeedSubscribers(type, payload, excludeUserId);
+
+  if (!publisher) {
+    return;
+  }
+
+  try {
+    void publisher.publish(
+      channelName,
+      JSON.stringify({
+        instanceId,
+        feed: true,
         type,
         payload,
         excludeUserId,
@@ -115,6 +156,11 @@ export async function initRealtimeHub(): Promise<void> {
       const type = String(parsed.type || "");
       const payload = parsed.payload;
       const excludeUserId = parsed.excludeUserId ? String(parsed.excludeUserId) : undefined;
+      if (parsed.feed === true) {
+        if (!type) return;
+        sendToFeedSubscribers(type, payload, excludeUserId);
+        return;
+      }
       if (!type || userIds.length === 0) return;
       sendToUsers(userIds, type, payload, excludeUserId);
     } catch {
@@ -182,4 +228,13 @@ export function publishToConversation(
 ): void {
   if (!memberIds || memberIds.length === 0) return;
   publishEvent(memberIds, type, payload, excludeUserId);
+}
+
+export function publishToFeedSubscribers(
+  type: string,
+  payload: unknown,
+  excludeUserId?: string
+): void {
+  if (!type) return;
+  publishFeedEvent(type, payload, excludeUserId);
 }

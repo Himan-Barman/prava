@@ -714,23 +714,24 @@ class _ChatsPageState extends State<ChatsPage> {
   String _formatChatTime(DateTime? date) {
     if (date == null) return 'New';
 
+    final localDate = date.toLocal();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final target = DateTime(date.year, date.month, date.day);
+    final target = DateTime(localDate.year, localDate.month, localDate.day);
     final diffDays = today.difference(target).inDays;
 
     if (diffDays == 0) {
-      final hour = date.hour;
-      final minute = date.minute.toString().padLeft(2, '0');
+      final hour = localDate.hour;
+      final minute = localDate.minute.toString().padLeft(2, '0');
       final suffix = hour >= 12 ? 'PM' : 'AM';
       final hour12 = hour % 12 == 0 ? 12 : hour % 12;
       return '$hour12:$minute $suffix';
     }
 
     if (diffDays == 1) return 'Yesterday';
-    if (diffDays < 7) return _weekdayLabel(date.weekday);
+    if (diffDays < 7) return _weekdayLabel(localDate.weekday);
 
-    return '${date.month}/${date.day}/${date.year}';
+    return '${localDate.month}/${localDate.day}/${localDate.year}';
   }
 
   String _weekdayLabel(int weekday) {

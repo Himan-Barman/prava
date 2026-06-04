@@ -7,17 +7,47 @@ class FeedAuthor {
     required this.id,
     required this.username,
     required this.displayName,
+    required this.avatarUrl,
   });
 
   final String id;
   final String username;
   final String displayName;
+  final String avatarUrl;
 
   factory FeedAuthor.fromJson(Map<String, dynamic> json) {
     return FeedAuthor(
       id: json['id']?.toString() ?? '',
       username: json['username']?.toString() ?? '',
       displayName: json['displayName']?.toString() ?? '',
+      avatarUrl: json['avatarUrl']?.toString() ?? '',
+    );
+  }
+}
+
+class FeedTag {
+  FeedTag({
+    required this.tag,
+    required this.postCount,
+    required this.rankScore,
+    required this.lastPostAt,
+  });
+
+  final String tag;
+  final int postCount;
+  final int rankScore;
+  final DateTime? lastPostAt;
+
+  factory FeedTag.fromJson(Map<String, dynamic> json) {
+    return FeedTag(
+      tag: json['tag']?.toString() ?? '',
+      postCount: json['postCount'] is int
+          ? json['postCount'] as int
+          : int.tryParse(json['postCount']?.toString() ?? '') ?? 0,
+      rankScore: json['rankScore'] is int
+          ? json['rankScore'] as int
+          : int.tryParse(json['rankScore']?.toString() ?? '') ?? 0,
+      lastPostAt: DateTime.tryParse(json['lastPostAt']?.toString() ?? ''),
     );
   }
 }
@@ -30,6 +60,7 @@ class FeedPost {
     required this.likeCount,
     required this.commentCount,
     required this.shareCount,
+    required this.rankScore,
     required this.liked,
     required this.followed,
     required this.mentions,
@@ -43,6 +74,7 @@ class FeedPost {
   int likeCount;
   int commentCount;
   int shareCount;
+  int rankScore;
   bool liked;
   bool followed;
   final List<String> mentions;
@@ -64,6 +96,9 @@ class FeedPost {
       shareCount: json['shareCount'] is int
           ? json['shareCount'] as int
           : int.tryParse(json['shareCount']?.toString() ?? '') ?? 0,
+      rankScore: json['rankScore'] is int
+          ? json['rankScore'] as int
+          : int.tryParse(json['rankScore']?.toString() ?? '') ?? 0,
       liked: json['liked'] == true,
       followed: json['followed'] == true,
       mentions: (json['mentions'] as List<dynamic>? ?? [])
@@ -115,6 +150,7 @@ class FeedService {
     DateTime? before,
     int limit = 20,
     String mode = 'for-you',
+    String? tag,
   }) async {
     final query = <String, String>{
       'limit': limit.toString(),
@@ -123,6 +159,9 @@ class FeedService {
     if (before != null) {
       query['before'] = before.toUtc().toIso8601String();
     }
+    if (tag != null && tag.trim().isNotEmpty) {
+      query['tag'] = tag.trim().replaceFirst('#', '');
+    }
 
     final data = await _client.get('/feed', auth: true, query: query);
     if (data is! List) return [];
@@ -130,6 +169,21 @@ class FeedService {
     return data
         .whereType<Map<String, dynamic>>()
         .map(FeedPost.fromJson)
+        .toList();
+  }
+
+  Future<List<FeedTag>> listTags({int limit = 16}) async {
+    final data = await _client.get(
+      '/feed/tags',
+      auth: true,
+      query: {'limit': limit.toString()},
+    );
+    if (data is! List) return [];
+
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map(FeedTag.fromJson)
+        .where((tag) => tag.tag.isNotEmpty)
         .toList();
   }
 

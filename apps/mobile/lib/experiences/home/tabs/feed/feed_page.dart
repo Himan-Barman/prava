@@ -1,3 +1,4 @@
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -11,6 +12,8 @@ import '../../../../ui-system/skeleton/feed_skeleton.dart';
 import '../../../../services/feed_service.dart';
 import '../../../../services/feed_realtime.dart';
 import '../../../../services/chat_service.dart';
+import '../../../../services/local_time_service.dart';
+import '../../../../services/platform_bridge_service.dart';
 import '../../../../core/storage/secure_store.dart';
 
 class FeedPage extends StatefulWidget {
@@ -24,6 +27,8 @@ class _FeedPageState extends State<FeedPage> {
   final FeedService _feedService = FeedService();
   final FeedRealtime _realtime = FeedRealtime();
   final ChatService _chatService = ChatService();
+  final LocalTimeService _time = const LocalTimeService();
+  final PlatformBridgeService _platform = PlatformBridgeService();
   final SecureStore _store = SecureStore();
 
   final ScrollController _scrollController = ScrollController();
@@ -33,12 +38,15 @@ class _FeedPageState extends State<FeedPage> {
   final Set<String> _pendingFollows = <String>{};
 
   List<FeedPost> _posts = <FeedPost>[];
+  List<FeedTag> _tags = <FeedTag>[];
   bool _loading = true;
   bool _loadingMore = false;
+  bool _loadingTags = false;
   bool _posting = false;
   bool _hasMore = true;
   int _segmentIndex = 0;
   String? _userId;
+  String? _selectedTag;
 
   static const int _pageSize = 20;
   String _currentFeedMode() =>
@@ -63,7 +71,10 @@ class _FeedPageState extends State<FeedPage> {
 
   Future<void> _bootstrap() async {
     _userId = await _store.getUserId();
-    await _loadFeed(showSkeleton: true);
+    await Future.wait([
+      _loadFeed(showSkeleton: true),
+      _loadTags(),
+    ]);
     await _realtime.connect(_handleRealtimeEvent);
   }
 
@@ -95,6 +106,7 @@ class _FeedPageState extends State<FeedPage> {
       final data = await _feedService.listFeed(
         limit: _pageSize,
         mode: _currentFeedMode(),
+        tag: _selectedTag,
       );
       if (!mounted) return;
 
@@ -116,15 +128,21 @@ class _FeedPageState extends State<FeedPage> {
 
   Future<void> _refreshFeed() async {
     try {
-      final data = await _feedService.listFeed(
-        limit: _pageSize,
-        mode: _currentFeedMode(),
-      );
+      final results = await Future.wait([
+        _feedService.listFeed(
+          limit: _pageSize,
+          mode: _currentFeedMode(),
+          tag: _selectedTag,
+        ),
+        _feedService.listTags(limit: 16),
+      ]);
       if (!mounted) return;
 
       setState(() {
-        _posts = data;
-        _hasMore = data.length >= _pageSize;
+        final posts = results[0] as List<FeedPost>;
+        _posts = posts;
+        _tags = results[1] as List<FeedTag>;
+        _hasMore = posts.length >= _pageSize;
       });
     } catch (_) {
       if (!mounted) return;
@@ -157,6 +175,7 @@ class _FeedPageState extends State<FeedPage> {
         before: before,
         limit: _pageSize,
         mode: _currentFeedMode(),
+        tag: _selectedTag,
       );
 
       if (!mounted) return;
@@ -172,14 +191,56 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
+  Future<void> _loadTags() async {
+    if (_loadingTags) return;
+    setState(() => _loadingTags = true);
+    try {
+      final tags = await _feedService.listTags(limit: 16);
+      if (!mounted) return;
+      setState(() {
+        _tags = tags;
+        _loadingTags = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingTags = false);
+    }
+  }
+
+  Future<void> _selectTag(String? tag) async {
+    final normalized = tag?.trim().replaceFirst('#', '');
+    if (_selectedTag == normalized) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedTag = normalized == null || normalized.isEmpty
+          ? null
+          : normalized;
+      _posts = <FeedPost>[];
+      _hasMore = true;
+    });
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+    await _loadFeed(showSkeleton: true);
+  }
+
   Future<void> _createPost() async {
     if (_posting) return;
 
     final body = _composerController.text.trim();
+    final words = _wordCount(body);
     if (body.isEmpty) {
       PravaToast.show(
         context,
         message: 'Write something before posting',
+        type: PravaToastType.warning,
+      );
+      return;
+    }
+    if (words > 200) {
+      PravaToast.show(
+        context,
+        message: 'Posts must stay under 200 words',
         type: PravaToastType.warning,
       );
       return;
@@ -193,10 +254,14 @@ class _FeedPageState extends State<FeedPage> {
       if (!mounted) return;
 
       setState(() {
-        _posts = [post, ..._posts];
+        final selectedTag = _selectedTag;
+        if (selectedTag == null || post.hashtags.contains(selectedTag)) {
+          _posts = [post, ..._posts];
+        }
         _composerController.clear();
         _posting = false;
       });
+      unawaited(_loadTags());
     } catch (_) {
       if (!mounted) return;
       setState(() => _posting = false);
@@ -206,6 +271,10 @@ class _FeedPageState extends State<FeedPage> {
         type: PravaToastType.error,
       );
     }
+  }
+
+  int _wordCount(String value) {
+    return value.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
   }
 
   void _handleRealtimeEvent(Map<String, dynamic> event) {
@@ -234,6 +303,10 @@ class _FeedPageState extends State<FeedPage> {
   void _applyPostEvent(Map<String, dynamic> payload) {
     if (_segmentIndex == 1) return;
     final post = FeedPost.fromJson(payload);
+    final selectedTag = _selectedTag;
+    if (selectedTag != null && !post.hashtags.contains(selectedTag)) {
+      return;
+    }
     if (_posts.any((item) => item.id == post.id)) return;
     if (_posts.any(
       (item) => item.author.id == post.author.id && item.followed,
@@ -420,6 +493,7 @@ class _FeedPageState extends State<FeedPage> {
           post: post,
           feedService: _feedService,
           chatService: _chatService,
+          platform: _platform,
           onShareUpdated: (count) {
             setState(() {
               post.shareCount = count;
@@ -466,20 +540,7 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   String _formatTimeAgo(DateTime createdAt) {
-    final now = DateTime.now();
-    final diff = now.difference(createdAt);
-
-    if (diff.inMinutes < 1) return 'now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-    if (diff.inHours < 24) return '${diff.inHours}h';
-    if (diff.inDays < 7) return '${diff.inDays}d';
-
-    final weeks = diff.inDays ~/ 7;
-    if (weeks < 5) return '${weeks}w';
-
-    final month = createdAt.month.toString().padLeft(2, '0');
-    final day = createdAt.day.toString().padLeft(2, '0');
-    return '$month/$day/${createdAt.year}';
+    return _time.shortRelative(createdAt);
   }
 
   @override
@@ -528,6 +589,14 @@ class _FeedPageState extends State<FeedPage> {
             },
           ),
         ),
+        _TagRail(
+          tags: _tags,
+          selectedTag: _selectedTag,
+          loading: _loadingTags,
+          onSelect: (tag) {
+            _selectTag(tag);
+          },
+        ),
         Expanded(
           child: _loading
               ? const FeedSkeleton()
@@ -545,6 +614,7 @@ class _FeedPageState extends State<FeedPage> {
                           controller: _composerController,
                           onPost: _createPost,
                           isPosting: _posting,
+                          wordCount: _wordCount,
                         ),
                       ),
                       if (visiblePosts.isEmpty)
@@ -638,16 +708,146 @@ class _FeedPageState extends State<FeedPage> {
     );
   }
 }
+
+class _TagRail extends StatelessWidget {
+  const _TagRail({
+    required this.tags,
+    required this.selectedTag,
+    required this.loading,
+    required this.onSelect,
+  });
+
+  final List<FeedTag> tags;
+  final String? selectedTag;
+  final bool loading;
+  final ValueChanged<String?> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final border =
+        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final secondary =
+        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+
+    if (loading && tags.isEmpty) {
+      return const SizedBox(height: 38);
+    }
+
+    final visibleTags = tags.take(12).toList();
+    if (visibleTags.isEmpty && selectedTag == null) {
+      return const SizedBox.shrink();
+    }
+
+    return SizedBox(
+      height: 42,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        itemCount: visibleTags.length + (selectedTag == null ? 0 : 1),
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          if (selectedTag != null && index == 0) {
+            return _TagChip(
+              label: '#$selectedTag',
+              selected: true,
+              count: null,
+              border: border,
+              secondary: secondary,
+              onTap: () => onSelect(null),
+            );
+          }
+          final tag = visibleTags[index - (selectedTag == null ? 0 : 1)];
+          return _TagChip(
+            label: '#${tag.tag}',
+            selected: tag.tag == selectedTag,
+            count: tag.postCount,
+            border: border,
+            secondary: secondary,
+            onTap: () => onSelect(tag.tag),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TagChip extends StatelessWidget {
+  const _TagChip({
+    required this.label,
+    required this.selected,
+    required this.count,
+    required this.border,
+    required this.secondary,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final int? count;
+  final Color border;
+  final Color secondary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected
+              ? PravaColors.accentPrimary.withValues(alpha: 0.16)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? PravaColors.accentPrimary : border,
+          ),
+        ),
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: PravaTypography.caption.copyWith(
+                color: selected ? PravaColors.accentPrimary : secondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (count != null) ...[
+              const SizedBox(width: 6),
+              Text(
+                count.toString(),
+                style: PravaTypography.caption.copyWith(color: secondary),
+              ),
+            ],
+            if (selected) ...[
+              const SizedBox(width: 6),
+              const Icon(
+                CupertinoIcons.xmark,
+                size: 12,
+                color: PravaColors.accentPrimary,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ComposerCard extends StatelessWidget {
   const _ComposerCard({
     required this.controller,
     required this.onPost,
     required this.isPosting,
+    required this.wordCount,
   });
 
   final TextEditingController controller;
   final VoidCallback onPost;
   final bool isPosting;
+  final int Function(String value) wordCount;
 
   void _insertToken(String token) {
     HapticFeedback.selectionClick();
@@ -725,35 +925,40 @@ class _ComposerCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              _ComposerIcon(
-                icon: CupertinoIcons.at,
-                label: 'Mention',
-                onTap: () => _insertToken('@'),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _ComposerIcon(
+                        icon: CupertinoIcons.at,
+                        label: 'Mention',
+                        onTap: () => _insertToken('@'),
+                      ),
+                      const SizedBox(width: 8),
+                      _ComposerIcon(
+                        icon: CupertinoIcons.number,
+                        label: 'Hashtag',
+                        onTap: () => _insertToken('#'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(width: 12),
-              _ComposerIcon(
-                icon: CupertinoIcons.number,
-                label: 'Hashtag',
-                onTap: () => _insertToken('#'),
-              ),
-              const SizedBox(width: 12),
-              _ComposerIcon(
-                icon: CupertinoIcons.bolt,
-                label: 'Live',
-                onTap: () {},
-              ),
-              const Spacer(),
+              const SizedBox(width: 10),
               ValueListenableBuilder<TextEditingValue>(
                 valueListenable: controller,
                 builder: (context, value, child) {
-                  final count = value.text.trim().length;
-                  final canPost = count > 0 && count <= 400;
+                  final text = value.text.trim();
+                  final count = wordCount(text);
+                  final tooLong = count > 200 || text.length > 1600;
+                  final canPost = text.isNotEmpty && !tooLong;
                   return Row(
                     children: [
                       Text(
-                        '$count/400',
+                        '$count/200',
                         style: PravaTypography.caption.copyWith(
-                          color: count > 400
+                          color: tooLong
                               ? PravaColors.error
                               : secondary,
                         ),
@@ -873,10 +1078,10 @@ class _PostCard extends StatelessWidget {
 
     return RepaintBoundary(
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(color: border),
         ),
         child: Column(
@@ -889,14 +1094,19 @@ class _PostCard extends StatelessWidget {
                   radius: 22,
                   backgroundColor:
                       PravaColors.accentPrimary.withValues(alpha: 0.16),
-                  child: Text(
-                    post.author.displayName.isNotEmpty
-                        ? post.author.displayName[0].toUpperCase()
-                        : '@',
-                    style: PravaTypography.h3.copyWith(
-                      color: PravaColors.accentPrimary,
-                    ),
-                  ),
+                  backgroundImage: post.author.avatarUrl.trim().isNotEmpty
+                      ? NetworkImage(post.author.avatarUrl.trim())
+                      : null,
+                  child: post.author.avatarUrl.trim().isNotEmpty
+                      ? null
+                      : Text(
+                          post.author.displayName.isNotEmpty
+                              ? post.author.displayName[0].toUpperCase()
+                              : '@',
+                          style: PravaTypography.h3.copyWith(
+                            color: PravaColors.accentPrimary,
+                          ),
+                        ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -917,24 +1127,13 @@ class _PostCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          const Icon(
-                            CupertinoIcons.star_fill,
-                            size: 14,
-                            color: PravaColors.accentPrimary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            timeAgo,
-                            style: PravaTypography.caption.copyWith(
-                              color: secondary,
-                            ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '@${post.author.username}',
+                        '@${post.author.username} - $timeAgo',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: PravaTypography.caption.copyWith(
                           color: secondary,
                         ),
@@ -953,6 +1152,7 @@ class _PostCard extends StatelessWidget {
             const SizedBox(height: 12),
             RichText(
               text: bodySpan,
+              textWidthBasis: TextWidthBasis.parent,
             ),
             const SizedBox(height: 16),
             Row(
@@ -1162,14 +1362,23 @@ class _CommentSheetState extends State<_CommentSheet> {
     final secondary =
         isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        top: false,
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.82,
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
         children: [
           Container(
             width: 36,
@@ -1208,9 +1417,8 @@ class _CommentSheetState extends State<_CommentSheet> {
               ),
             )
           else
-            Flexible(
+            Expanded(
               child: ListView.builder(
-                shrinkWrap: true,
                 itemCount: _comments.length,
                 itemBuilder: (context, index) {
                   final comment = _comments[index];
@@ -1303,8 +1511,9 @@ class _CommentSheetState extends State<_CommentSheet> {
               ),
             ],
           ),
-          SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
         ],
+      ),
+        ),
       ),
     );
   }
@@ -1314,12 +1523,14 @@ class _ShareSheet extends StatefulWidget {
     required this.post,
     required this.feedService,
     required this.chatService,
+    required this.platform,
     required this.onShareUpdated,
   });
 
   final FeedPost post;
   final FeedService feedService;
   final ChatService chatService;
+  final PlatformBridgeService platform;
   final ValueChanged<int> onShareUpdated;
 
   @override
@@ -1330,6 +1541,9 @@ class _ShareSheetState extends State<_ShareSheet> {
   final List<ConversationSummary> _conversations = <ConversationSummary>[];
   bool _loading = true;
   bool _sending = false;
+
+  String get _shareText =>
+      'Post from @${widget.post.author.username}: ${widget.post.body}';
 
   @override
   void initState() {
@@ -1361,8 +1575,7 @@ class _ShareSheetState extends State<_ShareSheet> {
     try {
       await widget.chatService.sendMessage(
         conversationId: convo.id,
-        body:
-            'Shared a post from @${widget.post.author.username}: "${widget.post.body}"',
+        body: _shareText,
       );
 
       final response = await widget.feedService.sharePost(widget.post.id);
@@ -1381,6 +1594,29 @@ class _ShareSheetState extends State<_ShareSheet> {
     }
   }
 
+  Future<void> _shareOutsideApp() async {
+    if (_sending) return;
+    setState(() => _sending = true);
+    try {
+      await widget.platform.shareText(_shareText);
+      final response = await widget.feedService.sharePost(widget.post.id);
+      if (!mounted) return;
+      if (response['shareCount'] is int) {
+        widget.onShareUpdated(response['shareCount'] as int);
+      }
+      Navigator.of(context).pop();
+    } catch (_) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: 'Share failed',
+        type: PravaToastType.error,
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1391,14 +1627,18 @@ class _ShareSheetState extends State<_ShareSheet> {
     final secondary =
         isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+    return SafeArea(
+      top: false,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.82,
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
         children: [
           Container(
             width: 36,
@@ -1412,7 +1652,7 @@ class _ShareSheetState extends State<_ShareSheet> {
           Row(
             children: [
               Text(
-                'Share to chat',
+                'Share post',
                 style: PravaTypography.h3.copyWith(color: primary),
               ),
               const Spacer(),
@@ -1424,6 +1664,53 @@ class _ShareSheetState extends State<_ShareSheet> {
             ],
           ),
           const SizedBox(height: 12),
+          InkWell(
+            onTap: _sending ? null : _shareOutsideApp,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white10 : Colors.black12,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    CupertinoIcons.square_arrow_up,
+                    color: PravaColors.accentPrimary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Share with another app',
+                      style: PravaTypography.body.copyWith(
+                        color: primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    CupertinoIcons.chevron_right,
+                    color: secondary,
+                    size: 16,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Chats',
+              style: PravaTypography.caption.copyWith(
+                color: secondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           if (_loading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
@@ -1438,9 +1725,8 @@ class _ShareSheetState extends State<_ShareSheet> {
               ),
             )
           else
-            Flexible(
+            Expanded(
               child: ListView.separated(
-                shrinkWrap: true,
                 itemCount: _conversations.length,
                 separatorBuilder: (_, __) =>
                     const SizedBox(height: 10),
@@ -1518,6 +1804,7 @@ class _ShareSheetState extends State<_ShareSheet> {
               child: CupertinoActivityIndicator(),
             ),
         ],
+      ),
       ),
     );
   }

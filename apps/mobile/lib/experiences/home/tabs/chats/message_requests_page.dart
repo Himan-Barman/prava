@@ -133,19 +133,20 @@ class _MessageRequestsPageState extends State<MessageRequestsPage> {
 
   String _time(DateTime? value) {
     if (value == null) return '';
+    final localValue = value.toLocal();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final target = DateTime(value.year, value.month, value.day);
+    final target = DateTime(localValue.year, localValue.month, localValue.day);
     final diffDays = today.difference(target).inDays;
     if (diffDays == 0) {
-      final hour = value.hour;
-      final minute = value.minute.toString().padLeft(2, '0');
+      final hour = localValue.hour;
+      final minute = localValue.minute.toString().padLeft(2, '0');
       final suffix = hour >= 12 ? 'PM' : 'AM';
       final hour12 = hour % 12 == 0 ? 12 : hour % 12;
       return '$hour12:$minute $suffix';
     }
     if (diffDays == 1) return 'Yesterday';
-    return '${value.month}/${value.day}/${value.year}';
+    return '${localValue.month}/${localValue.day}/${localValue.year}';
   }
 
   void _close() {

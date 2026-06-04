@@ -8,6 +8,7 @@ class SecureStore {
   static const _settingsKey = 'userSettings';
   static const _chatSyncStateKey = 'chatSyncState';
   static const _recentEmojisKey = 'recentEmojis';
+  static const _localTimeZoneKey = 'localTimeZone';
   static const _e2eeIdentityXPublicKey = 'e2eeIdentityXPublicKey';
   static const _e2eeIdentityXPrivateKey = 'e2eeIdentityXPrivateKey';
 
@@ -74,6 +75,14 @@ class SecureStore {
     return _storage.read(key: _recentEmojisKey);
   }
 
+  Future<void> setLocalTimeZoneJson(String timezone) {
+    return _storage.write(key: _localTimeZoneKey, value: timezone);
+  }
+
+  Future<String?> getLocalTimeZoneJson() {
+    return _storage.read(key: _localTimeZoneKey);
+  }
+
   Future<void> clearSettings() {
     return _storage.delete(key: _settingsKey);
   }
@@ -106,6 +115,7 @@ class SecureStore {
     await _storage.delete(key: _settingsKey);
     await _storage.delete(key: _chatSyncStateKey);
     await _storage.delete(key: _recentEmojisKey);
+    await _storage.delete(key: _localTimeZoneKey);
     await _storage.delete(key: _e2eeIdentityXPublicKey);
     await _storage.delete(key: _e2eeIdentityXPrivateKey);
   }

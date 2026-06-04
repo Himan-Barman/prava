@@ -294,7 +294,16 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
             ),
-          ] else
+          ] else if (_contentTab == _ProfileContentTab.tags)
+            SliverToBoxAdapter(
+              child: _ProfileTagsList(
+                tags: profile.tags,
+                primary: primary,
+                secondary: secondary,
+                border: border,
+              ),
+            )
+          else
             SliverToBoxAdapter(
               child: _ProfilePostsList(
                 posts: profile.posts,
@@ -320,7 +329,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-enum _ProfileContentTab { all, posts }
+enum _ProfileContentTab { all, tags, posts }
 
 class _ProfileHero extends StatelessWidget {
   const _ProfileHero({
@@ -469,6 +478,15 @@ class _ProfileTabBar extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           _ProfileTabButton(
+            label: 'Tags',
+            selected: value == _ProfileContentTab.tags,
+            primary: primary,
+            secondary: secondary,
+            border: border,
+            onTap: () => onChanged(_ProfileContentTab.tags),
+          ),
+          const SizedBox(width: 10),
+          _ProfileTabButton(
             label: 'Posts',
             selected: value == _ProfileContentTab.posts,
             primary: primary,
@@ -527,6 +545,82 @@ class _ProfileTabButton extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ProfileTagsList extends StatelessWidget {
+  const _ProfileTagsList({
+    required this.tags,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+  });
+
+  final List<ProfileTagSummary> tags;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+
+  @override
+  Widget build(BuildContext context) {
+    if (tags.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(24, 42, 24, 28),
+        child: Column(
+          children: [
+            Icon(CupertinoIcons.number, size: 34, color: secondary),
+            const SizedBox(height: 12),
+            Text(
+              'No tags yet',
+              style: PravaTypography.h3.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Hashtags from your posts will show here.',
+              textAlign: TextAlign.center,
+              style: PravaTypography.body.copyWith(color: secondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: tags.map((tag) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '#${tag.tag}',
+                  style: PravaTypography.bodySmall.copyWith(
+                    color: primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${tag.postCount}',
+                  style: PravaTypography.caption.copyWith(color: secondary),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }

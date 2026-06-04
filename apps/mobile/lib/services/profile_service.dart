@@ -139,11 +139,39 @@ class ProfileFeedPost {
   }
 }
 
+class ProfileTagSummary {
+  ProfileTagSummary({
+    required this.tag,
+    required this.postCount,
+    required this.rankScore,
+    required this.lastPostAt,
+  });
+
+  final String tag;
+  final int postCount;
+  final int rankScore;
+  final DateTime? lastPostAt;
+
+  factory ProfileTagSummary.fromJson(Map<String, dynamic> json) {
+    return ProfileTagSummary(
+      tag: json['tag']?.toString() ?? '',
+      postCount: json['postCount'] is int
+          ? json['postCount'] as int
+          : int.tryParse(json['postCount']?.toString() ?? '') ?? 0,
+      rankScore: json['rankScore'] is int
+          ? json['rankScore'] as int
+          : int.tryParse(json['rankScore']?.toString() ?? '') ?? 0,
+      lastPostAt: DateTime.tryParse(json['lastPostAt']?.toString() ?? ''),
+    );
+  }
+}
+
 class ProfileSummary {
   ProfileSummary({
     required this.user,
     required this.stats,
     required this.posts,
+    required this.tags,
     required this.liked,
     required this.visibility,
   });
@@ -151,6 +179,7 @@ class ProfileSummary {
   final ProfileUser user;
   final ProfileStats stats;
   final List<ProfileFeedPost> posts;
+  final List<ProfileTagSummary> tags;
   final List<ProfileFeedPost> liked;
   final ProfileVisibility visibility;
 
@@ -163,6 +192,11 @@ class ProfileSummary {
         .whereType<Map<String, dynamic>>()
         .map(ProfileFeedPost.fromJson)
         .toList();
+    final tags = (json['tags'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(ProfileTagSummary.fromJson)
+        .where((tag) => tag.tag.isNotEmpty)
+        .toList();
 
     return ProfileSummary(
       user: ProfileUser.fromJson(
@@ -172,6 +206,7 @@ class ProfileSummary {
         json['stats'] as Map<String, dynamic>? ?? {},
       ),
       posts: posts,
+      tags: tags,
       liked: liked,
       visibility: ProfileVisibility.fromSummaryJson(
         json['visibility'] as Map<String, dynamic>?,
