@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, useInView, useScroll, useTransform } from 'framer-motion';
 import {
   Shield, MessageCircle, Users, Radio, Lock, Eye, Fingerprint,
-  Zap, ChevronRight, Instagram, Linkedin,
+  Zap, Instagram, Linkedin,
   ArrowUp, Sparkles, KeyRound, BellRing
 } from 'lucide-react';
 
@@ -110,7 +110,7 @@ export default function LandingPage() {
           <div className="landing-nav-actions">
             <button onClick={() => navigate('/signup')} className="landing-btn-ghost">Sign Up</button>
             <button onClick={() => navigate('/login')} className="landing-btn-primary">
-              Log In <ChevronRight size={16} />
+              Log In
             </button>
           </div>
         </div>
@@ -145,7 +145,7 @@ export default function LandingPage() {
           <Reveal delay={0.3}>
             <div className="landing-hero-ctas">
               <button onClick={() => navigate('/login')} className="landing-btn-hero">
-                Get Started <ChevronRight size={18} />
+                Get Started
               </button>
               <a href="#features" className="landing-btn-outline">
                 Explore Features
@@ -212,7 +212,7 @@ export default function LandingPage() {
                 Join Prava today and experience social media the way it should be — private, secure, and yours.
               </p>
               <button onClick={() => navigate('/login')} className="landing-btn-hero relative z-10">
-                Join Prava <ChevronRight size={18} />
+                Join Prava
               </button>
             </div>
           </Reveal>
