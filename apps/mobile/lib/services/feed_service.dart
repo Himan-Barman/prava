@@ -117,22 +117,44 @@ class FeedPost {
 class FeedComment {
   FeedComment({
     required this.id,
+    required this.postId,
+    required this.parentCommentId,
     required this.body,
     required this.createdAt,
+    required this.likeCount,
+    required this.replyCount,
+    required this.liked,
     required this.author,
   });
 
   final String id;
+  final String postId;
+  final String? parentCommentId;
   final String body;
   final DateTime createdAt;
+  int likeCount;
+  int replyCount;
+  bool liked;
   final FeedAuthor author;
 
   factory FeedComment.fromJson(Map<String, dynamic> json) {
     return FeedComment(
       id: json['id']?.toString() ?? '',
+      postId: json['postId']?.toString() ?? '',
+      parentCommentId: () {
+        final value = json['parentCommentId']?.toString().trim() ?? '';
+        return value.isEmpty ? null : value;
+      }(),
       body: json['body']?.toString() ?? '',
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
+      likeCount: json['likeCount'] is int
+          ? json['likeCount'] as int
+          : int.tryParse(json['likeCount']?.toString() ?? '') ?? 0,
+      replyCount: json['replyCount'] is int
+          ? json['replyCount'] as int
+          : int.tryParse(json['replyCount']?.toString() ?? '') ?? 0,
+      liked: json['liked'] == true,
       author: FeedAuthor.fromJson(
         json['author'] as Map<String, dynamic>? ?? {},
       ),
@@ -204,9 +226,15 @@ class FeedService {
     return data;
   }
 
-  Future<List<FeedComment>> listComments(String postId) async {
-    final data =
-        await _client.get('/feed/$postId/comments', auth: true);
+  Future<List<FeedComment>> listComments(
+    String postId, {
+    int limit = 100,
+  }) async {
+    final data = await _client.get(
+      '/feed/$postId/comments',
+      auth: true,
+      query: {'limit': limit.toString()},
+    );
     if (data is! List) return [];
 
     return data
@@ -215,15 +243,34 @@ class FeedService {
         .toList();
   }
 
-  Future<FeedComment> addComment(String postId, String body) async {
+  Future<FeedComment> addComment(
+    String postId,
+    String body, {
+    String? parentCommentId,
+  }) async {
     final data = await _client.post(
       '/feed/$postId/comments',
       auth: true,
-      body: {'body': body},
+      body: {
+        'body': body,
+        if (parentCommentId != null && parentCommentId.trim().isNotEmpty)
+          'parentCommentId': parentCommentId.trim(),
+      },
     );
 
     final comment = data['comment'] as Map<String, dynamic>? ?? {};
     return FeedComment.fromJson(comment);
+  }
+
+  Future<Map<String, dynamic>> toggleCommentLike(
+    String postId,
+    String commentId,
+  ) async {
+    final data = await _client.post(
+      '/feed/$postId/comments/$commentId/like',
+      auth: true,
+    );
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
   }
 
   Future<bool> toggleFollow(String userId) async {

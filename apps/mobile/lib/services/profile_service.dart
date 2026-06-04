@@ -166,12 +166,43 @@ class ProfileTagSummary {
   }
 }
 
+class ProfileMentionSummary {
+  ProfileMentionSummary({
+    required this.username,
+    required this.postCount,
+    required this.rankScore,
+    required this.lastPostAt,
+  });
+
+  final String username;
+  final int postCount;
+  final int rankScore;
+  final DateTime? lastPostAt;
+
+  factory ProfileMentionSummary.fromJson(Map<String, dynamic> json) {
+    return ProfileMentionSummary(
+      username: json['username']?.toString() ??
+          json['mention']?.toString() ??
+          json['tag']?.toString() ??
+          '',
+      postCount: json['postCount'] is int
+          ? json['postCount'] as int
+          : int.tryParse(json['postCount']?.toString() ?? '') ?? 0,
+      rankScore: json['rankScore'] is int
+          ? json['rankScore'] as int
+          : int.tryParse(json['rankScore']?.toString() ?? '') ?? 0,
+      lastPostAt: DateTime.tryParse(json['lastPostAt']?.toString() ?? ''),
+    );
+  }
+}
+
 class ProfileSummary {
   ProfileSummary({
     required this.user,
     required this.stats,
     required this.posts,
     required this.tags,
+    required this.mentions,
     required this.liked,
     required this.visibility,
   });
@@ -180,6 +211,7 @@ class ProfileSummary {
   final ProfileStats stats;
   final List<ProfileFeedPost> posts;
   final List<ProfileTagSummary> tags;
+  final List<ProfileMentionSummary> mentions;
   final List<ProfileFeedPost> liked;
   final ProfileVisibility visibility;
 
@@ -197,6 +229,11 @@ class ProfileSummary {
         .map(ProfileTagSummary.fromJson)
         .where((tag) => tag.tag.isNotEmpty)
         .toList();
+    final mentions = (json['mentions'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(ProfileMentionSummary.fromJson)
+        .where((mention) => mention.username.isNotEmpty)
+        .toList();
 
     return ProfileSummary(
       user: ProfileUser.fromJson(
@@ -207,6 +244,7 @@ class ProfileSummary {
       ),
       posts: posts,
       tags: tags,
+      mentions: mentions,
       liked: liked,
       visibility: ProfileVisibility.fromSummaryJson(
         json['visibility'] as Map<String, dynamic>?,

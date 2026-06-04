@@ -289,6 +289,15 @@ function mapProfileTag(row: any) {
   };
 }
 
+function mapProfileMention(row: any) {
+  return {
+    username: row.username,
+    postCount: Number(row.post_count || 0),
+    rankScore: Number(row.rank_score || 0),
+    lastPostAt: toIso(row.last_post_at),
+  };
+}
+
 async function buildProfileTags(userId: string, limit: number) {
   return queryMany(
     `SELECT pt.tag,
@@ -303,6 +312,50 @@ async function buildProfileTags(userId: string, limit: number) {
      LIMIT $2`,
     [userId, limit]
   );
+}
+
+async function buildProfileMentions(userId: string, limit: number) {
+  const rows = await queryMany(
+    `SELECT mentions, created_at
+     FROM posts
+     WHERE author_id = $1
+     ORDER BY created_at DESC`,
+    [userId]
+  );
+  const aggregate = new Map<string, { username: string; post_count: number; last_post_at: Date; rank_score: number }>();
+
+  for (const row of rows) {
+    const mentions = Array.isArray(row.mentions) ? row.mentions : [];
+    const createdAt = new Date(row.created_at);
+    for (const raw of mentions) {
+      const username = String(raw || "")
+        .trim()
+        .replace(/^@/, "")
+        .toLowerCase();
+      if (!username) continue;
+
+      const existing = aggregate.get(username);
+      if (!existing) {
+        aggregate.set(username, {
+          username,
+          post_count: 1,
+          last_post_at: createdAt,
+          rank_score: 10,
+        });
+        continue;
+      }
+
+      existing.post_count += 1;
+      existing.rank_score += 10;
+      if (createdAt > existing.last_post_at) {
+        existing.last_post_at = createdAt;
+      }
+    }
+  }
+
+  return [...aggregate.values()]
+    .sort((a, b) => b.rank_score - a.rank_score || b.last_post_at.getTime() - a.last_post_at.getTime())
+    .slice(0, limit);
 }
 
 function mapConnectionItem(user: any, rel: any) {
@@ -395,7 +448,7 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
   const visible = visibility.visible as Record<string, boolean>;
   const details = user.details || {};
 
-  const [stats, posts, tags] = await Promise.all([
+  const [stats, posts, tags, mentions] = await Promise.all([
     buildStats(targetUserId),
     visible.posts
       ? queryMany(
@@ -408,6 +461,7 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
         )
       : Promise.resolve([]),
     visible.posts ? buildProfileTags(targetUserId, limit) : Promise.resolve([]),
+    visible.posts ? buildProfileMentions(targetUserId, limit) : Promise.resolve([]),
   ]);
 
   const summary = {
@@ -437,6 +491,7 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
     },
     posts: posts.map(mapProfilePost),
     tags: tags.map(mapProfileTag),
+    mentions: mentions.map(mapProfileMention),
     visibility,
     relationship,
   };

@@ -25,9 +25,11 @@ class _HomeShellState extends State<HomeShell>
     with TickerProviderStateMixin {
   int _index = 0;
   bool _isAnimatingToIndex = false;
+  bool _feedChromeVisible = true;
   int? _targetIndex;
 
   late final PageController _pageController;
+  late final List<Widget> _pages;
   late final E2eeKeyRefreshScheduler _keyRefreshScheduler =
       E2eeKeyRefreshScheduler();
   late final PlatformBridgeService _platformBridge = PlatformBridgeService();
@@ -43,6 +45,7 @@ class _HomeShellState extends State<HomeShell>
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _index);
+    _pages = _buildPages();
     _keyRefreshScheduler.start();
     unawaited(_platformBridge.requestLocationTimeAccess());
   }
@@ -67,6 +70,7 @@ class _HomeShellState extends State<HomeShell>
 
       setState(() {
         _index = index;
+        _feedChromeVisible = true;
         _isAnimatingToIndex = true;
         _targetIndex = index;
       });
@@ -83,6 +87,12 @@ class _HomeShellState extends State<HomeShell>
         }
       });
     }
+  }
+
+  void _setFeedChromeVisible(bool visible) {
+    if (!mounted) return;
+    if (_feedChromeVisible == visible) return;
+    setState(() => _feedChromeVisible = visible);
   }
 
   void _handleChatMenu(ChatTopMenuAction action) {
@@ -109,7 +119,9 @@ class _HomeShellState extends State<HomeShell>
         _KeepAliveTab(
           child: TabNavigator(
             navigatorKey: _keys[0],
-            child: const FeedPage(),
+            child: FeedPage(
+              onChromeVisibilityChanged: _setFeedChromeVisible,
+            ),
           ),
         ),
         _KeepAliveTab(
@@ -134,6 +146,8 @@ class _HomeShellState extends State<HomeShell>
 
   @override
   Widget build(BuildContext context) {
+    final chromeVisible = _index != 0 || _feedChromeVisible;
+
     return WillPopScope(
       onWillPop: () async {
         final canPop =
@@ -145,10 +159,13 @@ class _HomeShellState extends State<HomeShell>
           child: Column(
             children: [
               /// 🔝 Fixed top bar
-              HomeTopBar(
-                tabIndex: _index,
-                onChatMenuSelected: _handleChatMenu,
-                onProfileEdit: _profileController.openEditor,
+              _ShellChromeVisibility(
+                visible: chromeVisible,
+                child: HomeTopBar(
+                  tabIndex: _index,
+                  onChatMenuSelected: _handleChatMenu,
+                  onProfileEdit: _profileController.openEditor,
+                ),
               ),
 
               /// 📄 Swipeable + animated content
@@ -202,7 +219,7 @@ class _HomeShellState extends State<HomeShell>
                           ),
                         );
                       },
-                      child: _buildPages()[i],
+                      child: _pages[i],
                     );
                   },
                 ),
@@ -212,9 +229,43 @@ class _HomeShellState extends State<HomeShell>
         ),
 
         /// ⬇️ Bottom bar
-        bottomNavigationBar: HomeBottomBar(
-          index: _index,
-          onChanged: _onTabChange,
+        bottomNavigationBar: _ShellChromeVisibility(
+          visible: chromeVisible,
+          child: HomeBottomBar(
+            index: _index,
+            onChanged: _onTabChange,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShellChromeVisibility extends StatelessWidget {
+  const _ShellChromeVisibility({
+    required this.visible,
+    required this.child,
+  });
+
+  final bool visible;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: visible ? 1 : 0,
+          child: AnimatedOpacity(
+            opacity: visible ? 1 : 0,
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeOutCubic,
+            child: child,
+          ),
         ),
       ),
     );

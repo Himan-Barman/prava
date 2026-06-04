@@ -91,6 +91,25 @@ function mapFeedPost(post: any, author: any, liked: boolean, followed: boolean) 
   };
 }
 
+function mapFeedComment(comment: any, author: any, liked: boolean) {
+  return {
+    id: comment.comment_id,
+    postId: comment.post_id,
+    parentCommentId: comment.parent_comment_id || null,
+    body: comment.body,
+    createdAt: toIso(comment.created_at),
+    likeCount: Number(comment.like_count || 0),
+    replyCount: Number(comment.reply_count || 0),
+    liked,
+    author: {
+      id: author?.user_id || comment.author_id,
+      username: author?.username || "unknown",
+      displayName: author?.display_name || author?.username || "Unknown",
+      avatarUrl: author?.avatar_url || "",
+    },
+  };
+}
+
 async function hydrateFeedPosts(posts: any[], currentUserId: string) {
   if (posts.length === 0) {
     return [];
@@ -131,6 +150,42 @@ async function hydrateFeedPosts(posts: any[], currentUserId: string) {
       authorMap.get(post.author_id),
       likedSet.has(post.post_id),
       followedSet.has(post.author_id)
+    )
+  );
+}
+
+async function hydrateFeedComments(comments: any[], currentUserId: string) {
+  if (comments.length === 0) {
+    return [];
+  }
+
+  const commentIds = comments.map((comment) => comment.comment_id);
+  const authorIds = [...new Set(comments.map((comment) => comment.author_id))];
+
+  const [authors, likes] = await Promise.all([
+    queryMany(
+      `SELECT user_id, username, display_name, avatar_url
+       FROM users
+       WHERE user_id IN (${placeholders(authorIds.length)})`,
+      authorIds
+    ),
+    queryMany(
+      `SELECT comment_id
+       FROM comment_likes
+       WHERE user_id = $1
+         AND comment_id IN (${placeholders(commentIds.length, 2)})`,
+      [currentUserId, ...commentIds]
+    ),
+  ]);
+
+  const authorMap = new Map(authors.map((author) => [author.user_id, author]));
+  const likedSet = new Set(likes.map((like) => like.comment_id));
+
+  return comments.map((comment) =>
+    mapFeedComment(
+      comment,
+      authorMap.get(comment.author_id),
+      likedSet.has(comment.comment_id)
     )
   );
 }
@@ -184,7 +239,7 @@ async function findTaggedPosts(tag: string, currentUserId: string, before: Date 
        ON f.follower_id = $1 AND f.following_id = p.author_id
      WHERE pt.tag = $2
        ${beforeSql}
-     ORDER BY rank_score DESC, p.created_at DESC
+     ORDER BY p.created_at DESC, rank_score DESC
      LIMIT $${params.length}`,
     params
   );
@@ -341,20 +396,38 @@ export default async function feedService(app: any) {
       [postId, request.user.userId]
     );
 
-    let liked;
     const ts = now();
-    if (existing) {
-      await query(`DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`, [postId, request.user.userId]);
-      await query(`UPDATE posts SET like_count = GREATEST(like_count - 1, 0), updated_at = $2 WHERE post_id = $1`, [postId, ts]);
-      liked = false;
-    } else {
-      await query(
-        `INSERT INTO post_likes (post_id, user_id, created_at) VALUES ($1, $2, $3)`,
+    let liked = false;
+    await withTransaction(async (client) => {
+      if (existing) {
+        await client.query(
+          `DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`,
+          [postId, request.user.userId]
+        );
+        await client.query(
+          `UPDATE posts
+           SET like_count = GREATEST(like_count - 1, 0), updated_at = $2
+           WHERE post_id = $1`,
+          [postId, ts]
+        );
+        liked = false;
+        return;
+      }
+
+      const inserted = await client.query(
+        `INSERT INTO post_likes (post_id, user_id, created_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (post_id, user_id) DO NOTHING`,
         [postId, request.user.userId, ts]
       );
-      await query(`UPDATE posts SET like_count = like_count + 1, updated_at = $2 WHERE post_id = $1`, [postId, ts]);
+      if ((inserted.rowCount || 0) > 0) {
+        await client.query(
+          `UPDATE posts SET like_count = like_count + 1, updated_at = $2 WHERE post_id = $1`,
+          [postId, ts]
+        );
+      }
       liked = true;
-    }
+    });
 
     const updated = await queryOne(`SELECT like_count FROM posts WHERE post_id = $1`, [postId]);
     const payload = {
@@ -373,37 +446,15 @@ export default async function feedService(app: any) {
 
     const limit = parseLimit(request.query?.limit, 30, 1, 100);
     const comments = await queryMany(
-      `SELECT * FROM comments WHERE post_id = $1 ORDER BY created_at DESC LIMIT $2`,
+      `SELECT *
+       FROM comments
+       WHERE post_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
       [postId, limit]
     );
 
-    if (comments.length === 0) {
-      return [];
-    }
-
-    const authorIds = [...new Set(comments.map((item) => item.author_id))];
-    const authors = await queryMany(
-      `SELECT user_id, username, display_name, avatar_url
-       FROM users
-       WHERE user_id IN (${placeholders(authorIds.length)})`,
-      authorIds
-    );
-    const authorMap = new Map(authors.map((a) => [a.user_id, a]));
-
-    return comments.map((comment) => {
-      const author = authorMap.get(comment.author_id);
-      return {
-        id: comment.comment_id,
-        body: comment.body,
-        createdAt: toIso(comment.created_at),
-        author: {
-          id: author?.user_id || comment.author_id,
-          username: author?.username || "unknown",
-          displayName: author?.display_name || author?.username || "Unknown",
-          avatarUrl: author?.avatar_url || "",
-        },
-      };
-    });
+    return hydrateFeedComments(comments, request.user.userId);
   });
 
   app.post("/:postId/comments", { preHandler: requireAuth }, async (request: any) => {
@@ -411,21 +462,43 @@ export default async function feedService(app: any) {
     ensure(postId.length >= 8, 400, "Invalid post");
 
     const body = normalizeBody(request.body?.body, MAX_COMMENT_WORDS, MAX_COMMENT_CHARS, "Comment");
+    const parentCommentId = String(request.body?.parentCommentId || "").trim() || null;
 
     const post = await queryOne(`SELECT post_id FROM posts WHERE post_id = $1`, [postId]);
     if (!post) {
       throw new HttpError(404, "Post not found");
     }
+    if (parentCommentId) {
+      ensure(parentCommentId.length >= 8, 400, "Invalid comment");
+      const parent = await queryOne(
+        `SELECT comment_id FROM comments WHERE comment_id = $1 AND post_id = $2`,
+        [parentCommentId, postId]
+      );
+      if (!parent) {
+        throw new HttpError(404, "Comment not found");
+      }
+    }
 
     const createdAt = now();
     const commentId = generateId();
 
-    await query(
-      `INSERT INTO comments (comment_id, post_id, author_id, body, created_at)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [commentId, postId, request.user.userId, body, createdAt]
-    );
-    await query(`UPDATE posts SET comment_count = comment_count + 1, updated_at = $2 WHERE post_id = $1`, [postId, createdAt]);
+    await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO comments (comment_id, post_id, parent_comment_id, author_id, body, like_count, reply_count, created_at)
+         VALUES ($1, $2, $3, $4, $5, 0, 0, $6)`,
+        [commentId, postId, parentCommentId, request.user.userId, body, createdAt]
+      );
+      await client.query(
+        `UPDATE posts SET comment_count = comment_count + 1, updated_at = $2 WHERE post_id = $1`,
+        [postId, createdAt]
+      );
+      if (parentCommentId) {
+        await client.query(
+          `UPDATE comments SET reply_count = reply_count + 1 WHERE comment_id = $1`,
+          [parentCommentId]
+        );
+      }
+    });
 
     const [author, postStats] = await Promise.all([
       queryOne(`SELECT user_id, username, display_name, avatar_url FROM users WHERE user_id = $1`, [request.user.userId]),
@@ -435,23 +508,90 @@ export default async function feedService(app: any) {
     const payload = {
       postId,
       commentCount: Number(postStats?.comment_count || 0),
-      comment: {
-        id: commentId,
-        body,
-        createdAt: toIso(createdAt),
-        author: {
-          id: author?.user_id || request.user.userId,
-          username: author?.username || "unknown",
-          displayName: author?.display_name || author?.username || "Unknown",
-          avatarUrl: author?.avatar_url || "",
+      comment: mapFeedComment(
+        {
+          comment_id: commentId,
+          post_id: postId,
+          parent_comment_id: parentCommentId,
+          author_id: request.user.userId,
+          body,
+          like_count: 0,
+          reply_count: 0,
+          created_at: createdAt,
         },
-      },
+        author,
+        false
+      ),
     };
     publishToFeedSubscribers("FEED_COMMENT", {
       postId,
       commentCount: payload.commentCount,
     });
     return payload;
+  });
+
+  app.post("/:postId/comments/:commentId/like", { preHandler: requireAuth }, async (request: any) => {
+    const postId = String(request.params.postId || "").trim();
+    const commentId = String(request.params.commentId || "").trim();
+    ensure(postId.length >= 8, 400, "Invalid post");
+    ensure(commentId.length >= 8, 400, "Invalid comment");
+
+    const comment = await queryOne(
+      `SELECT comment_id, like_count FROM comments WHERE comment_id = $1 AND post_id = $2`,
+      [commentId, postId]
+    );
+    if (!comment) {
+      throw new HttpError(404, "Comment not found");
+    }
+
+    const existing = await queryOne(
+      `SELECT comment_id FROM comment_likes WHERE comment_id = $1 AND user_id = $2`,
+      [commentId, request.user.userId]
+    );
+
+    const ts = now();
+    let liked = false;
+    await withTransaction(async (client) => {
+      if (existing) {
+        await client.query(
+          `DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2`,
+          [commentId, request.user.userId]
+        );
+        await client.query(
+          `UPDATE comments SET like_count = GREATEST(like_count - 1, 0) WHERE comment_id = $1`,
+          [commentId]
+        );
+        liked = false;
+        return;
+      }
+
+      const inserted = await client.query(
+        `INSERT INTO comment_likes (comment_id, user_id, created_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (comment_id, user_id) DO NOTHING`,
+        [commentId, request.user.userId, ts]
+      );
+      if ((inserted.rowCount || 0) > 0) {
+        await client.query(
+          `UPDATE comments SET like_count = like_count + 1 WHERE comment_id = $1`,
+          [commentId]
+        );
+      }
+      liked = true;
+    });
+
+    const updated = await queryOne(
+      `SELECT like_count FROM comments WHERE comment_id = $1`,
+      [commentId]
+    );
+
+    return {
+      postId,
+      commentId,
+      userId: request.user.userId,
+      liked,
+      likeCount: Math.max(0, Number(updated?.like_count || 0)),
+    };
   });
 
   app.post("/:postId/share", { preHandler: requireAuth }, async (request: any) => {

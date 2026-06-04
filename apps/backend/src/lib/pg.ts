@@ -255,11 +255,26 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     CREATE TABLE IF NOT EXISTS comments (
       comment_id      TEXT PRIMARY KEY,
       post_id         TEXT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+      parent_comment_id TEXT DEFAULT NULL REFERENCES comments(comment_id) ON DELETE CASCADE,
       author_id       TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
       body            TEXT NOT NULL DEFAULT '',
+      like_count      INT NOT NULL DEFAULT 0,
+      reply_count     INT NOT NULL DEFAULT 0,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS parent_comment_id TEXT DEFAULT NULL;
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS like_count INT NOT NULL DEFAULT 0;
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS reply_count INT NOT NULL DEFAULT 0;
     CREATE INDEX IF NOT EXISTS idx_comments_post ON comments (post_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments (parent_comment_id, created_at ASC);
+
+    CREATE TABLE IF NOT EXISTS comment_likes (
+      comment_id      TEXT NOT NULL REFERENCES comments(comment_id) ON DELETE CASCADE,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (comment_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_comment_likes_user ON comment_likes (user_id, created_at DESC);
 
     -- MESSAGING
     CREATE TABLE IF NOT EXISTS conversations (

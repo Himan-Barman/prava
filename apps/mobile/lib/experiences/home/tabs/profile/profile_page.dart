@@ -294,10 +294,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
             ),
-          ] else if (_contentTab == _ProfileContentTab.tags)
+          ] else if (_contentTab == _ProfileContentTab.mentions)
             SliverToBoxAdapter(
-              child: _ProfileTagsList(
-                tags: profile.tags,
+              child: _ProfileMentionsList(
+                mentions: profile.mentions,
                 primary: primary,
                 secondary: secondary,
                 border: border,
@@ -329,7 +329,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-enum _ProfileContentTab { all, tags, posts }
+enum _ProfileContentTab { all, mentions, posts }
 
 class _ProfileHero extends StatelessWidget {
   const _ProfileHero({
@@ -478,12 +478,12 @@ class _ProfileTabBar extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           _ProfileTabButton(
-            label: 'Tags',
-            selected: value == _ProfileContentTab.tags,
+            label: 'Mentions',
+            selected: value == _ProfileContentTab.mentions,
             primary: primary,
             secondary: secondary,
             border: border,
-            onTap: () => onChanged(_ProfileContentTab.tags),
+            onTap: () => onChanged(_ProfileContentTab.mentions),
           ),
           const SizedBox(width: 10),
           _ProfileTabButton(
@@ -550,30 +550,30 @@ class _ProfileTabButton extends StatelessWidget {
   }
 }
 
-class _ProfileTagsList extends StatelessWidget {
-  const _ProfileTagsList({
-    required this.tags,
+class _ProfileMentionsList extends StatelessWidget {
+  const _ProfileMentionsList({
+    required this.mentions,
     required this.primary,
     required this.secondary,
     required this.border,
   });
 
-  final List<ProfileTagSummary> tags;
+  final List<ProfileMentionSummary> mentions;
   final Color primary;
   final Color secondary;
   final Color border;
 
   @override
   Widget build(BuildContext context) {
-    if (tags.isEmpty) {
+    if (mentions.isEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(24, 42, 24, 28),
         child: Column(
           children: [
-            Icon(CupertinoIcons.number, size: 34, color: secondary),
+            Icon(CupertinoIcons.at, size: 34, color: secondary),
             const SizedBox(height: 12),
             Text(
-              'No tags yet',
+              'No mentions yet',
               style: PravaTypography.h3.copyWith(
                 color: primary,
                 fontWeight: FontWeight.w800,
@@ -581,7 +581,7 @@ class _ProfileTagsList extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Hashtags from your posts will show here.',
+              'People you mention in posts will show here.',
               textAlign: TextAlign.center,
               style: PravaTypography.body.copyWith(color: secondary),
             ),
@@ -595,7 +595,7 @@ class _ProfileTagsList extends StatelessWidget {
       child: Wrap(
         spacing: 10,
         runSpacing: 10,
-        children: tags.map((tag) {
+        children: mentions.map((mention) {
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
@@ -606,7 +606,7 @@ class _ProfileTagsList extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '#${tag.tag}',
+                  '@${mention.username}',
                   style: PravaTypography.bodySmall.copyWith(
                     color: primary,
                     fontWeight: FontWeight.w800,
@@ -614,7 +614,7 @@ class _ProfileTagsList extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '${tag.postCount}',
+                  '${mention.postCount}',
                   style: PravaTypography.caption.copyWith(color: secondary),
                 ),
               ],
