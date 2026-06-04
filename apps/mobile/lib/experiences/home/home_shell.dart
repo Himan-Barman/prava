@@ -121,7 +121,7 @@ class _HomeShellState extends State<HomeShell>
           child: Column(
             children: [
               /// 🔝 Fixed top bar
-              const HomeTopBar(),
+              HomeTopBar(tabIndex: _index),
 
               /// 📄 Swipeable + animated content
               Expanded(

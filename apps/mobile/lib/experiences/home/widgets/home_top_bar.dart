@@ -11,7 +11,11 @@ import '../pages/search_page.dart';
 import 'home_overflow_menu.dart';
 
 class HomeTopBar extends StatelessWidget {
-  const HomeTopBar({super.key});
+  const HomeTopBar({super.key, this.tabIndex = 0});
+
+  final int tabIndex;
+
+  static const _tabTitles = ['Prava', 'Chat', 'Friends', 'Profile'];
 
   @override
   Widget build(BuildContext context) {
@@ -22,17 +26,30 @@ class HomeTopBar extends StatelessWidget {
         ? PravaColors.darkTextPrimary
         : PravaColors.lightTextPrimary;
 
+    final title = tabIndex >= 0 && tabIndex < _tabTitles.length
+        ? _tabTitles[tabIndex]
+        : 'Prava';
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
       child: Row(
         children: [
-          /// Brand
-          Text(
-            "Prava",
-            style: PravaTypography.h2.copyWith(
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.6,
-              color: primaryText,
+          /// Brand / tab title
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+            child: Text(
+              title,
+              key: ValueKey(title),
+              style: PravaTypography.h2.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.6,
+                color: primaryText,
+              ),
             ),
           ),
 
