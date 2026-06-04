@@ -64,6 +64,8 @@ class HomeTopBar extends StatelessWidget {
 
           if (tabIndex == 1) ...[
             _ChatTopMenuButton(onSelected: onChatMenuSelected),
+          ] else if (tabIndex == 2) ...[
+            const SizedBox.shrink(),
           ] else if (tabIndex == 3) ...[
             IconButton(
               icon: const Icon(CupertinoIcons.pencil),

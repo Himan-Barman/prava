@@ -5,19 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../navigation/prava_navigator.dart';
-import '../../../../ui-system/background.dart';
+import '../../../../services/chat_service.dart';
+import '../../../../services/friend_connections_service.dart';
 import '../../../../ui-system/colors.dart';
-import '../../../../ui-system/typography.dart';
 import '../../../../ui-system/feedback/prava_toast.dart';
 import '../../../../ui-system/feedback/toast_type.dart';
-import '../../../../services/friend_connections_service.dart';
+import '../../../../ui-system/skeleton/chat_list_skeleton.dart';
+import '../../../../ui-system/typography.dart';
+import '../chats/chat_thread_page.dart';
+import '../chats/chats_page.dart';
 import '../profile/public_profile_page.dart';
 
-enum FriendsSection { requests, sent, friends }
-
-enum SentRequestStatus { pending, seen }
-
-enum FriendMenuAction { viewProfile, remove, block }
+enum _FriendsTab { friends, following, followers, requests }
 
 class FriendsPage extends StatefulWidget {
   const FriendsPage({super.key});
@@ -29,31 +28,43 @@ class FriendsPage extends StatefulWidget {
 class _FriendsPageState extends State<FriendsPage> {
   final FriendConnectionsService _connectionsService =
       FriendConnectionsService();
-  final Set<String> _pendingActions = <String>{};
+  final ChatService _chatService = ChatService();
+  final TextEditingController _searchController = TextEditingController();
 
-  FriendsSection _section = FriendsSection.requests;
+  final Set<String> _pendingActions = <String>{};
+  _FriendsTab _tab = _FriendsTab.friends;
   bool _loading = true;
-  List<FriendRequest> _requests = [];
-  List<SentRequest> _sent = [];
-  List<FriendConnection> _friends = [];
+  List<FriendConnectionItem> _requests = [];
+  List<FriendConnectionItem> _followingOnly = [];
+  List<FriendConnectionItem> _friends = [];
 
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(_onSearchChanged);
     _loadConnections();
   }
 
-  bool _isPending(String userId) => _pendingActions.contains(userId);
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    if (mounted) setState(() {});
+  }
 
   Future<void> _loadConnections({bool silent = false}) async {
-    if (!silent) {
-      setState(() => _loading = true);
-    }
+    if (!silent) setState(() => _loading = true);
     try {
-      final response = await _connectionsService.fetchConnections(limit: 30);
+      final response = await _connectionsService.fetchConnections(limit: 100);
       if (!mounted) return;
       setState(() {
-        _applyConnections(response);
+        _requests = response.requests;
+        _followingOnly = response.sent;
+        _friends = response.friends;
         _loading = false;
       });
     } catch (_) {
@@ -61,147 +72,185 @@ class _FriendsPageState extends State<FriendsPage> {
       setState(() => _loading = false);
       PravaToast.show(
         context,
-        message: 'Unable to load connections',
+        message: 'Unable to load friends',
         type: PravaToastType.error,
       );
     }
   }
 
-  void _applyConnections(FriendConnectionsResponse response) {
-    final existingFriends = <String, FriendConnection>{
-      for (final friend in _friends) friend.user.id: friend,
+  bool _isPending(String userId) => _pendingActions.contains(userId);
+
+  List<_FriendRowData> get _currentRows {
+    final rows = switch (_tab) {
+      _FriendsTab.friends => _friends
+          .map((item) => _FriendRowData(item, _FriendRowKind.friend))
+          .toList(),
+      _FriendsTab.following => [
+          ..._followingOnly
+              .map((item) => _FriendRowData(item, _FriendRowKind.following)),
+          ..._friends.map((item) => _FriendRowData(item, _FriendRowKind.friend)),
+        ],
+      _FriendsTab.followers => [
+          ..._requests
+              .map((item) => _FriendRowData(item, _FriendRowKind.follower)),
+          ..._friends.map((item) => _FriendRowData(item, _FriendRowKind.friend)),
+        ],
+      _FriendsTab.requests => _requests
+          .map((item) => _FriendRowData(item, _FriendRowKind.request))
+          .toList(),
     };
 
-    _requests = response.requests.map(_mapRequest).toList();
-    _sent = response.sent.map(_mapSent).toList();
-    _friends = response.friends
-        .map(
-          (item) => _mapFriend(
-            item,
-            existingFriends[item.user.id],
-          ),
-        )
-        .toList();
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return rows;
+    return rows.where((row) {
+      final user = row.item.user;
+      return user.displayName.toLowerCase().contains(query) ||
+          user.username.toLowerCase().contains(query);
+    }).toList();
   }
 
-  FriendUser _mapUser(FriendConnectionUser user) {
-    return FriendUser(
-      id: user.id,
-      displayName:
-          user.displayName.isNotEmpty ? user.displayName : user.username,
-      username: user.username,
-      bio: user.bio,
-      location: user.location,
-      isVerified: user.isVerified,
-      isOnline: user.isOnline,
-      tags: const [],
-      stats: const FriendStats(posts: 0, followers: 0, following: 0),
-      joined: _formatJoined(user.createdAt),
-      highlight:
-          user.bio.isNotEmpty ? user.bio : 'Connecting on Prava',
-    );
+  int _countFor(_FriendsTab tab) {
+    return switch (tab) {
+      _FriendsTab.friends => _friends.length,
+      _FriendsTab.following => _followingOnly.length + _friends.length,
+      _FriendsTab.followers => _requests.length + _friends.length,
+      _FriendsTab.requests => _requests.length,
+    };
   }
 
-  FriendRequest _mapRequest(FriendConnectionItem item) {
-    final receivedAt = _formatRelativeTime(item.since);
-    return FriendRequest(
-      user: _mapUser(item.user),
-      message: _requestMessage(item.user),
-      mutualCount: 0,
-      sharedSpaces: 0,
-      receivedAt: receivedAt.isEmpty ? 'recently' : receivedAt,
-      priorityLabel: _priorityLabel(item.since),
-    );
+  String _searchPlaceholder() {
+    return switch (_tab) {
+      _FriendsTab.friends => 'Search friends',
+      _FriendsTab.following => 'Search following',
+      _FriendsTab.followers => 'Search followers',
+      _FriendsTab.requests => 'Search friend requests',
+    };
   }
 
-  SentRequest _mapSent(FriendConnectionItem item) {
-    final time = _formatRelativeTime(item.since);
-    final label = time.isEmpty ? 'Following recently' : 'Followed $time';
-    return SentRequest(
-      user: _mapUser(item.user),
-      status: SentRequestStatus.pending,
-      timeLabel: label,
-      note: item.user.bio.isNotEmpty
-          ? item.user.bio
-          : 'You follow this profile.',
-    );
-  }
-
-  FriendConnection _mapFriend(
-    FriendConnectionItem item,
-    FriendConnection? existing,
-  ) {
-    return FriendConnection(
-      user: _mapUser(item.user),
-      connectedSince: _connectionLabel(item.since),
-      mutualCount: 0,
-      sharedSpaces: 0,
-      presenceLabel:
-          item.user.isOnline ? 'Active now' : 'Active recently',
-      isFavorite: existing?.isFavorite ?? false,
-      isMuted: existing?.isMuted ?? false,
-      isPinned: existing?.isPinned ?? false,
-    );
-  }
-
-  String _requestMessage(FriendConnectionUser user) {
-    if (user.bio.isNotEmpty) return user.bio;
-    if (user.location.isNotEmpty) {
-      return 'Based in ${user.location}. Follows you.';
-    }
-    return 'Follows you on Prava.';
-  }
-
-  String _priorityLabel(DateTime? since) {
-    if (since == null) return '';
-    final diff = DateTime.now().difference(since);
-    if (diff.inMinutes <= 10) return 'Priority';
-    if (diff.inHours < 24) return 'New';
-    return '';
-  }
-
-  String _formatRelativeTime(DateTime? value) {
-    if (value == null) return '';
-    final diff = DateTime.now().difference(value);
-
-    if (diff.inMinutes < 1) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-
-    final weeks = diff.inDays ~/ 7;
-    if (weeks < 5) return '${weeks}w ago';
-
-    final month = value.month.toString().padLeft(2, '0');
-    final day = value.day.toString().padLeft(2, '0');
-    return '$month/$day/${value.year}';
-  }
-
-  String _formatJoined(DateTime? value) {
-    if (value == null) return 'Joined recently';
-    return 'Joined ${value.year}';
-  }
-
-  String _connectionLabel(DateTime? value) {
-    final relative = _formatRelativeTime(value);
-    if (relative.isEmpty) return 'Connected';
-    if (relative == 'just now') return 'Connected just now';
-    if (relative.contains('/')) return 'Connected $relative';
-    return 'Connected $relative';
-  }
-
-  void _setSection(FriendsSection section) {
-    if (_section == section) return;
+  void _setTab(_FriendsTab tab) {
+    if (_tab == tab) return;
     HapticFeedback.selectionClick();
-    setState(() => _section = section);
+    setState(() => _tab = tab);
   }
 
-  Future<bool> _runAction(
+  void _openProfile(FriendConnectionItem item) {
+    HapticFeedback.selectionClick();
+    PravaNavigator.push(
+      context,
+      PublicProfilePage(
+        userId: item.user.id,
+        initialIsFollowing: item.isFollowing,
+        initialIsFollowedBy: item.isFollowedBy,
+      ),
+    );
+  }
+
+  Future<void> _messageUser(FriendConnectionItem item) async {
+    final user = item.user;
+    if (_isPending(user.id)) return;
+    HapticFeedback.selectionClick();
+    setState(() => _pendingActions.add(user.id));
+    try {
+      final conversationId = await _chatService.createDm(otherUserId: user.id);
+      if (!mounted) return;
+      if (conversationId == null || conversationId.isEmpty) {
+        throw Exception('Conversation not created');
+      }
+      final name = user.displayName.isNotEmpty ? user.displayName : user.username;
+      await PravaNavigator.push(
+        context,
+        ChatThreadPage(
+          chat: ChatPreview(
+            id: conversationId,
+            name: name,
+            lastMessage: 'No messages yet',
+            time: 'New',
+            unreadCount: 0,
+            isGroup: false,
+            isOnline: user.isOnline,
+            isMuted: false,
+            isPinned: false,
+            isFavorite: false,
+            isStarred: false,
+            isTyping: false,
+            lastMessageFromMe: false,
+            delivery: MessageDeliveryState.read,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: 'Unable to open chat',
+        type: PravaToastType.error,
+      );
+    } finally {
+      if (mounted) setState(() => _pendingActions.remove(user.id));
+    }
+  }
+
+  Future<void> _followBack(FriendConnectionItem item) async {
+    final ok = await _runRelationshipAction(
+      item.user.id,
+      'Unable to follow back',
+      () async {
+        await _connectionsService.setFollow(item.user.id, true);
+      },
+    );
+    if (ok) await _loadConnections(silent: true);
+  }
+
+  Future<void> _addFriend(FriendConnectionItem item) async {
+    final ok = await _runRelationshipAction(
+      item.user.id,
+      'Unable to send request',
+      () async {
+        await _connectionsService.setFollow(item.user.id, true);
+      },
+    );
+    if (!ok || !mounted) return;
+    PravaToast.show(
+      context,
+      message: 'Friend request active',
+      type: PravaToastType.success,
+    );
+  }
+
+  Future<void> _unfriend(FriendConnectionItem item) async {
+    final ok = await _runRelationshipAction(
+      item.user.id,
+      'Unable to unfriend',
+      () => _connectionsService.removeConnection(item.user.id),
+    );
+    if (ok) await _loadConnections(silent: true);
+  }
+
+  Future<void> _removeFollower(FriendConnectionItem item) async {
+    final ok = await _runRelationshipAction(
+      item.user.id,
+      'Unable to remove follower',
+      () => _connectionsService.removeFollower(item.user.id),
+    );
+    if (ok) await _loadConnections(silent: true);
+  }
+
+  Future<void> _blockUser(FriendConnectionItem item) async {
+    final ok = await _runRelationshipAction(
+      item.user.id,
+      'Unable to block user',
+      () => _connectionsService.blockUser(item.user.id),
+    );
+    if (ok) await _loadConnections(silent: true);
+  }
+
+  Future<bool> _runRelationshipAction(
     String userId,
     String failureMessage,
     Future<void> Function() action,
   ) async {
     if (_isPending(userId)) return false;
+    HapticFeedback.selectionClick();
     setState(() => _pendingActions.add(userId));
     try {
       await action();
@@ -216,1765 +265,492 @@ class _FriendsPageState extends State<FriendsPage> {
       }
       return false;
     } finally {
-      if (mounted) {
-        setState(() => _pendingActions.remove(userId));
-      }
+      if (mounted) setState(() => _pendingActions.remove(userId));
     }
   }
 
-  Future<void> _acceptRequest(FriendRequest request) async {
+  Future<void> _showActions(_FriendRowData row) async {
     HapticFeedback.selectionClick();
-    final ok = await _runAction(
-      request.user.id,
-      'Unable to follow back',
-      () => _connectionsService.setFollow(request.user.id, true),
-    );
-    if (!ok || !mounted) return;
-
-    setState(() {
-      _requests.removeWhere((item) => item.user.id == request.user.id);
-      _friends = List<FriendConnection>.from(_friends)
-        ..insert(
-          0,
-          FriendConnection(
-            user: request.user,
-            connectedSince: 'Connected just now',
-            mutualCount: request.mutualCount,
-            sharedSpaces: request.sharedSpaces,
-            presenceLabel:
-                request.user.isOnline ? 'Active now' : 'Active recently',
-            isFavorite: false,
-            isMuted: false,
-            isPinned: false,
+    final isFriend = row.kind == _FriendRowKind.friend;
+    final action = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: Text(_displayName(row.item.user)),
+        actions: [
+          if (!isFriend)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(context).pop('message'),
+              child: const Text('Message'),
+            ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('profile'),
+            child: const Text('View profile'),
           ),
-        );
-    });
-    PravaToast.show(
-      context,
-      message: 'Followed back',
-      type: PravaToastType.success,
-    );
-  }
-
-  Future<void> _declineRequest(FriendRequest request) async {
-    HapticFeedback.selectionClick();
-    final ok = await _runAction(
-      request.user.id,
-      'Unable to remove follower',
-      () => _connectionsService.removeFollower(request.user.id),
-    );
-    if (!ok || !mounted) return;
-
-    setState(() {
-      _requests.removeWhere((item) => item.user.id == request.user.id);
-    });
-    PravaToast.show(
-      context,
-      message: 'Follower removed',
-      type: PravaToastType.info,
-    );
-  }
-
-  Future<void> _cancelSent(SentRequest request) async {
-    HapticFeedback.selectionClick();
-    final ok = await _runAction(
-      request.user.id,
-      'Unable to unfollow',
-      () => _connectionsService.setFollow(request.user.id, false),
-    );
-    if (!ok || !mounted) return;
-
-    setState(() {
-      _sent.removeWhere((item) => item.user.id == request.user.id);
-    });
-    PravaToast.show(
-      context,
-      message: 'Unfollowed',
-      type: PravaToastType.warning,
-    );
-  }
-
-  void _toggleFavorite(FriendConnection friend) {
-    HapticFeedback.selectionClick();
-    _updateFriend(
-      friend.user.id,
-      (item) => item.copyWith(isFavorite: !item.isFavorite),
-    );
-    PravaToast.show(
-      context,
-      message: friend.isFavorite
-          ? 'Removed from favorites'
-          : 'Marked as favorite',
-      type: PravaToastType.info,
-    );
-  }
-
-  void _toggleMute(FriendConnection friend) {
-    HapticFeedback.selectionClick();
-    _updateFriend(
-      friend.user.id,
-      (item) => item.copyWith(isMuted: !item.isMuted),
-    );
-    PravaToast.show(
-      context,
-      message: friend.isMuted ? 'Unmuted' : 'Muted notifications',
-      type: PravaToastType.info,
-    );
-  }
-
-  void _togglePinned(FriendConnection friend) {
-    HapticFeedback.selectionClick();
-    _updateFriend(
-      friend.user.id,
-      (item) => item.copyWith(isPinned: !item.isPinned),
-    );
-    PravaToast.show(
-      context,
-      message: friend.isPinned ? 'Unpinned' : 'Pinned to top',
-      type: PravaToastType.success,
-    );
-  }
-
-  Future<void> _handleFriendMenu(
-    FriendConnection friend,
-    FriendMenuAction action,
-  ) async {
-    HapticFeedback.selectionClick();
-    switch (action) {
-      case FriendMenuAction.viewProfile:
-        _openProfile(
-          friend.user,
-          isFollowing: true,
-          isFollowedBy: true,
-        );
-        return;
-      case FriendMenuAction.remove:
-        final ok = await _runAction(
-          friend.user.id,
-          'Unable to remove connection',
-          () => _connectionsService.removeConnection(friend.user.id),
-        );
-        if (!ok || !mounted) return;
-        setState(() {
-          _friends.removeWhere((item) => item.user.id == friend.user.id);
-        });
-        PravaToast.show(
-          context,
-          message: 'Removed ${friend.user.displayName}',
-          type: PravaToastType.warning,
-        );
-        return;
-      case FriendMenuAction.block:
-        final ok = await _runAction(
-          friend.user.id,
-          'Unable to block profile',
-          () => _connectionsService.blockUser(friend.user.id),
-        );
-        if (!ok || !mounted) return;
-        setState(() {
-          _friends.removeWhere((item) => item.user.id == friend.user.id);
-        });
-        PravaToast.show(
-          context,
-          message: 'Blocked ${friend.user.displayName}',
-          type: PravaToastType.error,
-        );
-        return;
-    }
-  }
-
-  void _updateFriend(
-    String userId,
-    FriendConnection Function(FriendConnection) update,
-  ) {
-    final index = _friends.indexWhere((item) => item.user.id == userId);
-    if (index == -1) return;
-    setState(() {
-      final updated = update(_friends[index]);
-      _friends = List<FriendConnection>.from(_friends);
-      _friends[index] = updated;
-    });
-  }
-
-  void _openProfile(
-    FriendUser user, {
-    required bool isFollowing,
-    required bool isFollowedBy,
-  }) {
-    HapticFeedback.selectionClick();
-    PravaNavigator.push(
-      context,
-      PublicProfilePage(
-        userId: user.id,
-        initialIsFollowing: isFollowing,
-        initialIsFollowedBy: isFollowedBy,
+          if (isFriend)
+            CupertinoActionSheetAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(context).pop('unfriend'),
+              child: const Text('Unfriend'),
+            ),
+          if (row.kind == _FriendRowKind.follower ||
+              row.kind == _FriendRowKind.request)
+            CupertinoActionSheetAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(context).pop('removeFollower'),
+              child: const Text('Remove follower'),
+            ),
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(context).pop('block'),
+            child: const Text('Block'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
       ),
     );
-  }
 
-  String _sectionLabel(FriendsSection section) {
-    switch (section) {
-      case FriendsSection.requests:
-        return 'Followers';
-      case FriendsSection.sent:
-        return 'Following';
-      case FriendsSection.friends:
-        return 'Friends';
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'message':
+        await _messageUser(row.item);
+        break;
+      case 'profile':
+        _openProfile(row.item);
+        break;
+      case 'unfriend':
+        await _unfriend(row.item);
+        break;
+      case 'removeFollower':
+        await _removeFollower(row.item);
+        break;
+      case 'block':
+        await _blockUser(row.item);
+        break;
     }
   }
 
-  Color _sentStatusColor(SentRequestStatus status) {
-    switch (status) {
-      case SentRequestStatus.pending:
-        return PravaColors.warning;
-      case SentRequestStatus.seen:
-        return PravaColors.accentPrimary;
-    }
-  }
-
-  Widget _buildSectionBody({
-    required bool isDark,
-    required Color primary,
-    required Color secondary,
-    required Color surface,
-    required Color border,
-  }) {
-    if (_loading &&
-        _requests.isEmpty &&
-        _sent.isEmpty &&
-        _friends.isEmpty) {
-      return _LoadingState(primary: primary, secondary: secondary);
-    }
-
-    switch (_section) {
-      case FriendsSection.requests:
-        if (_requests.isEmpty) {
-          return _EmptyState(
-            key: const ValueKey('requests-empty'),
-            icon: CupertinoIcons.person_crop_circle_badge_exclam,
-            title: 'No followers yet',
-            subtitle: 'People who follow you will appear here.',
-            primary: primary,
-            secondary: secondary,
-          );
-        }
-        return ListView(
-          key: const ValueKey('requests'),
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          children: [
-            _SectionHeader(
-              title: _sectionLabel(FriendsSection.requests),
-              subtitle:
-                  '${_requests.length} followers | ${_friends.length} friends',
-              primary: primary,
-              secondary: secondary,
-            ),
-            const SizedBox(height: 12),
-            for (final request in _requests)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _FriendRequestCard(
-                  request: request,
-                  isDark: isDark,
-                  primary: primary,
-                  secondary: secondary,
-                  border: border,
-                  surface: surface,
-                  onAccept: () {
-                    _acceptRequest(request);
-                  },
-                  onDecline: () {
-                    _declineRequest(request);
-                  },
-                  onProfile: () => _openProfile(
-                    request.user,
-                    isFollowing: false,
-                    isFollowedBy: true,
-                  ),
-                ),
-              ),
-          ],
-        );
-      case FriendsSection.sent:
-        if (_sent.isEmpty) {
-          return _EmptyState(
-            key: const ValueKey('sent-empty'),
-            icon: CupertinoIcons.paperplane,
-            title: 'Not following anyone',
-            subtitle: 'People you follow will appear here.',
-            primary: primary,
-            secondary: secondary,
-          );
-        }
-        return ListView(
-          key: const ValueKey('sent'),
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          children: [
-            _SectionHeader(
-              title: _sectionLabel(FriendsSection.sent),
-              subtitle:
-                  '${_sent.length} following | Follow back creates friendship',
-              primary: primary,
-              secondary: secondary,
-            ),
-            const SizedBox(height: 12),
-            for (final request in _sent)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _SentRequestCard(
-                  request: request,
-                  isDark: isDark,
-                  primary: primary,
-                  secondary: secondary,
-                  border: border,
-                  surface: surface,
-                  statusColor: _sentStatusColor(request.status),
-                  onCancel: () {
-                    _cancelSent(request);
-                  },
-                  onView: () => _openProfile(
-                    request.user,
-                    isFollowing: true,
-                    isFollowedBy: false,
-                  ),
-                  onProfile: () => _openProfile(
-                    request.user,
-                    isFollowing: true,
-                    isFollowedBy: false,
-                  ),
-                ),
-              ),
-          ],
-        );
-      case FriendsSection.friends:
-        if (_friends.isEmpty) {
-          return _EmptyState(
-            key: const ValueKey('friends-empty'),
-            icon: CupertinoIcons.person_2,
-            title: 'No friends yet',
-            subtitle: 'Follow someone back to become friends.',
-            primary: primary,
-            secondary: secondary,
-          );
-        }
-        return ListView(
-          key: const ValueKey('friends'),
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          children: [
-            _SectionHeader(
-              title: _sectionLabel(FriendsSection.friends),
-              subtitle:
-                  '${_friends.length} connections | Manage with full control',
-              primary: primary,
-              secondary: secondary,
-            ),
-            const SizedBox(height: 12),
-            for (final friend in _friends)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _FriendCard(
-                  friend: friend,
-                  isDark: isDark,
-                  primary: primary,
-                  secondary: secondary,
-                  border: border,
-                  surface: surface,
-                  onMessage: () {
-                    HapticFeedback.selectionClick();
-                    PravaToast.show(
-                      context,
-                      message: 'Opening chat with ${friend.user.displayName}',
-                      type: PravaToastType.success,
-                    );
-                  },
-                  onCall: () {
-                    HapticFeedback.selectionClick();
-                    PravaToast.show(
-                      context,
-                      message: 'Starting call with ${friend.user.displayName}',
-                      type: PravaToastType.info,
-                    );
-                  },
-                  onProfile: () => _openProfile(
-                    friend.user,
-                    isFollowing: true,
-                    isFollowedBy: true,
-                  ),
-                  onToggleFavorite: () => _toggleFavorite(friend),
-                  onToggleMute: () => _toggleMute(friend),
-                  onTogglePinned: () => _togglePinned(friend),
-                  onMenuAction: (action) {
-                    _handleFriendMenu(friend, action);
-                  },
-                ),
-              ),
-          ],
-        );
-    }
+  String _displayName(FriendConnectionUser user) {
+    return user.displayName.isNotEmpty ? user.displayName : user.username;
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final rows = _currentRows;
 
-    return Scaffold(
-      body: Stack(
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Column(
         children: [
-          _FriendsBackdrop(isDark: isDark),
-          SafeArea(
-            child: Column(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white10
+                        : Colors.white.withValues(alpha: 0.75),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: border),
+                  ),
+                  child: CupertinoSearchTextField(
+                    controller: _searchController,
+                    placeholder: _searchPlaceholder(),
+                    backgroundColor: Colors.transparent,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            height: 46,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
               children: [
-                _FriendsTopBar(
-                  section: _section,
-                  primary: primary,
-                  border: border,
-                  isDark: isDark,
-                  loading: _loading,
-                  onSectionChanged: _setSection,
+                _FriendCapsule(
+                  label: 'Friends',
+                  count: _countFor(_FriendsTab.friends),
+                  selected: _tab == _FriendsTab.friends,
+                  onTap: () => _setTab(_FriendsTab.friends),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: _SummaryStrip(
-                    selected: _section,
-                    requests: _requests.length,
-                    sent: _sent.length,
-                    friends: _friends.length,
-                    primary: primary,
-                    secondary: secondary,
-                    surface: surface,
-                    border: border,
-                    isDark: isDark,
-                    onSelect: _setSection,
-                  ),
+                const SizedBox(width: 8),
+                _FriendCapsule(
+                  label: 'Following',
+                  count: _countFor(_FriendsTab.following),
+                  selected: _tab == _FriendsTab.following,
+                  onTap: () => _setTab(_FriendsTab.following),
                 ),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    switchInCurve: Curves.easeOut,
-                    switchOutCurve: Curves.easeIn,
-                    transitionBuilder: (child, animation) {
-                      final fade = FadeTransition(
-                        opacity: animation,
-                        child: child,
-                      );
-                      return SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 0.06),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: fade,
-                      );
-                    },
-                    child: _buildSectionBody(
-                      isDark: isDark,
-                      primary: primary,
-                      secondary: secondary,
-                      surface: surface,
-                      border: border,
-                    ),
-                  ),
+                const SizedBox(width: 8),
+                _FriendCapsule(
+                  label: 'Followers',
+                  count: _countFor(_FriendsTab.followers),
+                  selected: _tab == _FriendsTab.followers,
+                  onTap: () => _setTab(_FriendsTab.followers),
+                ),
+                const SizedBox(width: 8),
+                _FriendCapsule(
+                  label: 'Friend requests',
+                  count: _countFor(_FriendsTab.requests),
+                  selected: _tab == _FriendsTab.requests,
+                  onTap: () => _setTab(_FriendsTab.requests),
                 ),
               ],
             ),
+          ),
+          Expanded(
+            child: _loading
+                ? const ChatListSkeleton()
+                : RefreshIndicator(
+                    onRefresh: () => _loadConnections(silent: true),
+                    color: PravaColors.accentPrimary,
+                    child: rows.isEmpty
+                        ? _EmptyFriendsState(
+                            title: _emptyTitle(),
+                            subtitle: _searchController.text.trim().isEmpty
+                                ? _emptySubtitle()
+                                : 'Try another name or username.',
+                            primary: primary,
+                            secondary: secondary,
+                          )
+                        : ListView.separated(
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            physics: const BouncingScrollPhysics(
+                              parent: AlwaysScrollableScrollPhysics(),
+                            ),
+                            padding: const EdgeInsets.fromLTRB(12, 2, 12, 18),
+                            itemCount: rows.length,
+                            separatorBuilder: (_, __) =>
+                                Divider(color: border, height: 1),
+                            itemBuilder: (context, index) {
+                              final row = rows[index];
+                              return _FriendRow(
+                                row: row,
+                                pending: _isPending(row.item.user.id),
+                                primary: primary,
+                                secondary: secondary,
+                                onTap: () => _openProfile(row.item),
+                                onMessage: () => _messageUser(row.item),
+                                onPrimaryAction: () {
+                                  switch (row.kind) {
+                                    case _FriendRowKind.friend:
+                                      _messageUser(row.item);
+                                      break;
+                                    case _FriendRowKind.follower:
+                                      _followBack(row.item);
+                                      break;
+                                    case _FriendRowKind.following:
+                                      _addFriend(row.item);
+                                      break;
+                                    case _FriendRowKind.request:
+                                      _followBack(row.item);
+                                      break;
+                                  }
+                                },
+                                onMore: () => _showActions(row),
+                              );
+                            },
+                          ),
+                  ),
           ),
         ],
       ),
     );
   }
-}
 
-class _FriendsTopBar extends StatelessWidget {
-  const _FriendsTopBar({
-    required this.section,
-    required this.primary,
-    required this.border,
-    required this.isDark,
-    required this.loading,
-    required this.onSectionChanged,
-  });
+  String _emptyTitle() {
+    if (_searchController.text.trim().isNotEmpty) return 'No matches';
+    return switch (_tab) {
+      _FriendsTab.friends => 'No friends yet',
+      _FriendsTab.following => 'Not following anyone',
+      _FriendsTab.followers => 'No followers yet',
+      _FriendsTab.requests => 'No friend requests',
+    };
+  }
 
-  final FriendsSection section;
-  final Color primary;
-  final Color border;
-  final bool isDark;
-  final bool loading;
-  final ValueChanged<FriendsSection> onSectionChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final surface =
-        isDark ? Colors.black.withValues(alpha: 0.45) : Colors.white.withValues(alpha: 0.8);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: border),
-            ),
-            child: Row(
-              children: [
-                Text(
-                  'Friends',
-                  style: PravaTypography.h3.copyWith(
-                    color: primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const Spacer(),
-                _RealtimePill(loading: loading),
-                const SizedBox(width: 8),
-                _SectionMenu(
-                  section: section,
-                  onChanged: onSectionChanged,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  String _emptySubtitle() {
+    return switch (_tab) {
+      _FriendsTab.friends => 'Follow each other to become friends.',
+      _FriendsTab.following => 'People you follow will show here.',
+      _FriendsTab.followers => 'People following you will show here.',
+      _FriendsTab.requests => 'New followers waiting for follow back show here.',
+    };
   }
 }
 
-class _SectionMenu extends StatelessWidget {
-  const _SectionMenu({
-    required this.section,
-    required this.onChanged,
-  });
+enum _FriendRowKind { friend, following, follower, request }
 
-  final FriendsSection section;
-  final ValueChanged<FriendsSection> onChanged;
+class _FriendRowData {
+  const _FriendRowData(this.item, this.kind);
 
-  String _label(FriendsSection section) {
-    switch (section) {
-      case FriendsSection.requests:
-        return 'Followers';
-      case FriendsSection.sent:
-        return 'Following';
-      case FriendsSection.friends:
-        return 'Friends';
-    }
-  }
-
-  IconData _icon(FriendsSection section) {
-    switch (section) {
-      case FriendsSection.requests:
-        return CupertinoIcons.person_crop_circle;
-      case FriendsSection.sent:
-        return CupertinoIcons.paperplane_fill;
-      case FriendsSection.friends:
-        return CupertinoIcons.person_2_fill;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-
-    return PopupMenuButton<FriendsSection>(
-      onSelected: onChanged,
-      color:
-          isDark ? PravaColors.darkBgElevated : PravaColors.lightBgElevated,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
-      itemBuilder: (context) => [
-        for (final option in FriendsSection.values)
-          PopupMenuItem(
-            value: option,
-            child: Row(
-              children: [
-                Icon(
-                  _icon(option),
-                  size: 18,
-                  color: PravaColors.accentPrimary,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  _label(option),
-                  style: PravaTypography.body.copyWith(color: primary),
-                ),
-              ],
-            ),
-          ),
-      ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.white10 : Colors.black12,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: border),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              _icon(section),
-              size: 16,
-              color: PravaColors.accentPrimary,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              _label(section),
-              style: PravaTypography.caption.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Icon(
-              CupertinoIcons.chevron_down,
-              size: 14,
-              color: primary,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  final FriendConnectionItem item;
+  final _FriendRowKind kind;
 }
 
-class _SummaryStrip extends StatelessWidget {
-  const _SummaryStrip({
-    required this.selected,
-    required this.requests,
-    required this.sent,
-    required this.friends,
-    required this.primary,
-    required this.secondary,
-    required this.surface,
-    required this.border,
-    required this.isDark,
-    required this.onSelect,
-  });
-
-  final FriendsSection selected;
-  final int requests;
-  final int sent;
-  final int friends;
-  final Color primary;
-  final Color secondary;
-  final Color surface;
-  final Color border;
-  final bool isDark;
-  final ValueChanged<FriendsSection> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _SummaryTile(
-            label: 'Followers',
-            count: requests,
-            selected: selected == FriendsSection.requests,
-            primary: primary,
-            secondary: secondary,
-            surface: surface,
-            border: border,
-            isDark: isDark,
-            onTap: () => onSelect(FriendsSection.requests),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _SummaryTile(
-            label: 'Following',
-            count: sent,
-            selected: selected == FriendsSection.sent,
-            primary: primary,
-            secondary: secondary,
-            surface: surface,
-            border: border,
-            isDark: isDark,
-            onTap: () => onSelect(FriendsSection.sent),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _SummaryTile(
-            label: 'Friends',
-            count: friends,
-            selected: selected == FriendsSection.friends,
-            primary: primary,
-            secondary: secondary,
-            surface: surface,
-            border: border,
-            isDark: isDark,
-            onTap: () => onSelect(FriendsSection.friends),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SummaryTile extends StatelessWidget {
-  const _SummaryTile({
+class _FriendCapsule extends StatelessWidget {
+  const _FriendCapsule({
     required this.label,
     required this.count,
     required this.selected,
-    required this.primary,
-    required this.secondary,
-    required this.surface,
-    required this.border,
-    required this.isDark,
     required this.onTap,
   });
 
   final String label;
   final int count;
   final bool selected;
-  final Color primary;
-  final Color secondary;
-  final Color surface;
-  final Color border;
-  final bool isDark;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final highlight = PravaColors.accentPrimary.withValues(alpha: 0.12);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: 36,
         decoration: BoxDecoration(
-          color: selected ? highlight : surface,
-          borderRadius: BorderRadius.circular(16),
+          color: selected
+              ? PravaColors.accentPrimary.withValues(alpha: 0.16)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: selected
-                ? PravaColors.accentPrimary.withValues(alpha: 0.4)
-                : border,
+            color: selected ? PravaColors.accentPrimary : border,
           ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: PravaColors.accentPrimary
-                        .withValues(alpha: isDark ? 0.25 : 0.15),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : [],
         ),
-        child: Column(
-          children: [
-            Text(
-              count.toString(),
-              style: PravaTypography.h3.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w700,
-              ),
+        child: Center(
+          child: Text(
+            '$label $count',
+            style: PravaTypography.button.copyWith(
+              color: selected ? PravaColors.accentPrimary : secondary,
+              letterSpacing: 0,
+              fontWeight: FontWeight.w800,
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: PravaTypography.caption.copyWith(
-                color: secondary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    required this.subtitle,
+class _FriendRow extends StatelessWidget {
+  const _FriendRow({
+    required this.row,
+    required this.pending,
     required this.primary,
     required this.secondary,
-  });
-
-  final String title;
-  final String subtitle;
-  final Color primary;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: PravaTypography.h3.copyWith(
-            color: primary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          subtitle,
-          style: PravaTypography.bodySmall.copyWith(color: secondary),
-        ),
-      ],
-    );
-  }
-}
-
-class _FriendRequestCard extends StatelessWidget {
-  const _FriendRequestCard({
-    required this.request,
-    required this.isDark,
-    required this.primary,
-    required this.secondary,
-    required this.border,
-    required this.surface,
-    required this.onAccept,
-    required this.onDecline,
-    required this.onProfile,
-  });
-
-  final FriendRequest request;
-  final bool isDark;
-  final Color primary;
-  final Color secondary;
-  final Color border;
-  final Color surface;
-  final VoidCallback onAccept;
-  final VoidCallback onDecline;
-  final VoidCallback onProfile;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Avatar(
-                initials: request.user.initials,
-                isOnline: request.user.isOnline,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            request.user.displayName,
-                            style: PravaTypography.bodyLarge.copyWith(
-                              color: primary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        if (request.user.isVerified)
-                          const Icon(
-                            CupertinoIcons.checkmark_seal_fill,
-                            size: 16,
-                            color: PravaColors.accentPrimary,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        _HandleLink(
-                          username: request.user.username,
-                          onTap: onProfile,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          request.receivedAt,
-                          style: PravaTypography.caption.copyWith(
-                            color: secondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (request.priorityLabel.isNotEmpty)
-                _StatusPill(
-                  label: request.priorityLabel,
-                  color: PravaColors.accentPrimary,
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            request.message,
-            style: PravaTypography.body.copyWith(color: primary),
-          ),
-          const SizedBox(height: 12),
-          if (request.mutualCount > 0 || request.sharedSpaces > 0) ...[
-            Row(
-              children: [
-                if (request.mutualCount > 0)
-                  _MetaItem(
-                    icon: CupertinoIcons.person_2_fill,
-                    label: '${request.mutualCount} mutuals',
-                    secondary: secondary,
-                  ),
-                if (request.mutualCount > 0 &&
-                    request.sharedSpaces > 0)
-                  const SizedBox(width: 12),
-                if (request.sharedSpaces > 0)
-                  _MetaItem(
-                    icon: CupertinoIcons.square_stack_3d_up_fill,
-                    label: '${request.sharedSpaces} shared spaces',
-                    secondary: secondary,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-          ],
-          if (request.user.tags.isNotEmpty) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: request.user.tags
-                  .map(
-                    (tag) => _TagPill(label: tag, secondary: secondary),
-                  )
-                  .toList(),
-            ),
-            const SizedBox(height: 10),
-          ],
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _ActionButton(
-                  label: 'Follow back',
-                  onTap: onAccept,
-                  filled: true,
-                  icon: CupertinoIcons.check_mark,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _ActionButton(
-                  label: 'Remove',
-                  onTap: onDecline,
-                  filled: false,
-                  icon: CupertinoIcons.xmark,
-                  color: PravaColors.error,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SentRequestCard extends StatelessWidget {
-  const _SentRequestCard({
-    required this.request,
-    required this.isDark,
-    required this.primary,
-    required this.secondary,
-    required this.border,
-    required this.surface,
-    required this.statusColor,
-    required this.onCancel,
-    required this.onView,
-    required this.onProfile,
-  });
-
-  final SentRequest request;
-  final bool isDark;
-  final Color primary;
-  final Color secondary;
-  final Color border;
-  final Color surface;
-  final Color statusColor;
-  final VoidCallback onCancel;
-  final VoidCallback onView;
-  final VoidCallback onProfile;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Avatar(
-                initials: request.user.initials,
-                isOnline: request.user.isOnline,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            request.user.displayName,
-                            style: PravaTypography.bodyLarge.copyWith(
-                              color: primary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        if (request.user.isVerified)
-                          const Icon(
-                            CupertinoIcons.checkmark_seal_fill,
-                            size: 16,
-                            color: PravaColors.accentPrimary,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        _HandleLink(
-                          username: request.user.username,
-                          onTap: onProfile,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          request.timeLabel,
-                          style: PravaTypography.caption.copyWith(
-                            color: secondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              _StatusPill(
-                label: request.statusLabel,
-                color: statusColor,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            request.note,
-            style: PravaTypography.body.copyWith(color: primary),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _MetaItem(
-                icon: CupertinoIcons.clock_fill,
-                label: request.timeLabel,
-                secondary: secondary,
-              ),
-              const SizedBox(width: 12),
-              _MetaItem(
-                icon: CupertinoIcons.antenna_radiowaves_left_right,
-                label: 'Realtime updates',
-                secondary: secondary,
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _ActionButton(
-                  label: 'View',
-                  onTap: onView,
-                  filled: true,
-                  icon: CupertinoIcons.person_crop_circle,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _ActionButton(
-                  label: 'Unfollow',
-                  onTap: onCancel,
-                  filled: false,
-                  icon: CupertinoIcons.xmark_circle,
-                  color: PravaColors.error,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FriendCard extends StatelessWidget {
-  const _FriendCard({
-    required this.friend,
-    required this.isDark,
-    required this.primary,
-    required this.secondary,
-    required this.border,
-    required this.surface,
+    required this.onTap,
     required this.onMessage,
-    required this.onCall,
-    required this.onProfile,
-    required this.onToggleFavorite,
-    required this.onToggleMute,
-    required this.onTogglePinned,
-    required this.onMenuAction,
+    required this.onPrimaryAction,
+    required this.onMore,
   });
 
-  final FriendConnection friend;
-  final bool isDark;
+  final _FriendRowData row;
+  final bool pending;
   final Color primary;
   final Color secondary;
-  final Color border;
-  final Color surface;
+  final VoidCallback onTap;
   final VoidCallback onMessage;
-  final VoidCallback onCall;
-  final VoidCallback onProfile;
-  final VoidCallback onToggleFavorite;
-  final VoidCallback onToggleMute;
-  final VoidCallback onTogglePinned;
-  final ValueChanged<FriendMenuAction> onMenuAction;
+  final VoidCallback onPrimaryAction;
+  final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
-    final highlight = friend.isFavorite
-        ? PravaColors.accentPrimary.withValues(alpha: 0.08)
-        : surface;
+    final user = row.item.user;
+    final name = user.displayName.isNotEmpty ? user.displayName : user.username;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: highlight,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Avatar(
-                initials: friend.user.initials,
-                isOnline: friend.user.isOnline,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            friend.user.displayName,
-                            style: PravaTypography.bodyLarge.copyWith(
-                              color: primary,
-                              fontWeight: FontWeight.w700,
-                            ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        child: Row(
+          children: [
+            _FriendAvatar(user: user),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: PravaTypography.bodyLarge.copyWith(
+                            color: primary,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                        if (friend.user.isVerified)
-                          const Icon(
-                            CupertinoIcons.checkmark_seal_fill,
-                            size: 16,
-                            color: PravaColors.accentPrimary,
-                          ),
-                        if (friend.isFavorite) ...[
-                          const SizedBox(width: 6),
-                          const Icon(
-                            CupertinoIcons.star_fill,
-                            size: 14,
-                            color: PravaColors.warning,
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        _HandleLink(
-                          username: friend.user.username,
-                          onTap: onProfile,
-                        ),
-                        const SizedBox(width: 8),
-                        _StatusPill(
-                          label: friend.presenceLabel,
-                          color: friend.user.isOnline
-                              ? PravaColors.success
-                              : PravaColors.accentMuted,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              PopupMenuButton<FriendMenuAction>(
-                onSelected: onMenuAction,
-                color: isDark
-                    ? PravaColors.darkBgElevated
-                    : PravaColors.lightBgElevated,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: FriendMenuAction.viewProfile,
-                    child: Row(
-                      children: [
+                      ),
+                      if (user.isVerified) ...[
+                        const SizedBox(width: 5),
                         const Icon(
-                          CupertinoIcons.person_crop_circle,
-                          size: 18,
+                          CupertinoIcons.check_mark_circled_solid,
                           color: PravaColors.accentPrimary,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'View profile',
-                          style: PravaTypography.body.copyWith(color: primary),
+                          size: 15,
                         ),
                       ],
-                    ),
+                    ],
                   ),
-                  PopupMenuItem(
-                    value: FriendMenuAction.remove,
-                    child: Row(
-                      children: [
-                        const Icon(
-                          CupertinoIcons.person_crop_circle_badge_minus,
-                          size: 18,
-                          color: PravaColors.warning,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Remove friend',
-                          style: PravaTypography.body.copyWith(color: primary),
-                        ),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: FriendMenuAction.block,
-                    child: Row(
-                      children: [
-                        const Icon(
-                          CupertinoIcons.hand_raised_fill,
-                          size: 18,
-                          color: PravaColors.error,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Block',
-                          style: PravaTypography.body.copyWith(
-                            color: PravaColors.error,
-                          ),
-                        ),
-                      ],
+                  const SizedBox(height: 2),
+                  Text(
+                    '@${user.username}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PravaTypography.bodySmall.copyWith(
+                      color: secondary,
                     ),
                   ),
                 ],
-                child: const _IconPill(icon: CupertinoIcons.ellipsis),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            friend.user.bio,
-            style: PravaTypography.body.copyWith(color: primary),
-          ),
-          const SizedBox(height: 12),
-          if (friend.user.tags.isNotEmpty) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: friend.user.tags
-                  .map(
-                    (tag) => _TagPill(label: tag, secondary: secondary),
-                  )
-                  .toList(),
             ),
-            const SizedBox(height: 12),
-          ],
-          if (friend.mutualCount > 0 || friend.sharedSpaces > 0) ...[
-            Row(
-              children: [
-                if (friend.mutualCount > 0)
-                  _MetaItem(
-                    icon: CupertinoIcons.person_2_fill,
-                    label: '${friend.mutualCount} mutuals',
-                    secondary: secondary,
-                  ),
-                if (friend.mutualCount > 0 &&
-                    friend.sharedSpaces > 0)
-                  const SizedBox(width: 12),
-                if (friend.sharedSpaces > 0)
-                  _MetaItem(
-                    icon: CupertinoIcons.square_stack_3d_up_fill,
-                    label: '${friend.sharedSpaces} shared spaces',
-                    secondary: secondary,
-                  ),
-              ],
+            const SizedBox(width: 8),
+            _FriendActionButton(
+              label: _buttonLabel(),
+              pending: pending,
+              onTap: onPrimaryAction,
             ),
-            const SizedBox(height: 6),
+            IconButton(
+              onPressed: onMore,
+              icon: Icon(
+                CupertinoIcons.ellipsis,
+                color: secondary,
+                size: 24,
+              ),
+            ),
           ],
-          _MetaItem(
-            icon: CupertinoIcons.calendar,
-            label: friend.connectedSince,
-            secondary: secondary,
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _ActionButton(
-                  label: 'Message',
-                  onTap: onMessage,
-                  filled: true,
-                  icon: CupertinoIcons.chat_bubble_2_fill,
+        ),
+      ),
+    );
+  }
+
+  String _buttonLabel() {
+    return switch (row.kind) {
+      _FriendRowKind.friend => 'Message',
+      _FriendRowKind.follower => 'Follow back',
+      _FriendRowKind.following => 'Add friend',
+      _FriendRowKind.request => 'Accept request',
+    };
+  }
+}
+
+class _FriendAvatar extends StatelessWidget {
+  const _FriendAvatar({required this.user});
+
+  final FriendConnectionUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = (user.displayName.isNotEmpty
+            ? user.displayName
+            : user.username)
+        .trim();
+
+    return SizedBox(
+      width: 52,
+      height: 52,
+      child: ClipOval(
+        child: user.avatarUrl.trim().isNotEmpty
+            ? Image.network(user.avatarUrl, fit: BoxFit.cover)
+            : Container(
+                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                child: Center(
+                  child: Text(
+                    initial.isEmpty ? '?' : initial[0].toUpperCase(),
+                    style: PravaTypography.h3.copyWith(
+                      color: PravaColors.accentPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _ActionButton(
-                  label: 'Call',
-                  onTap: onCall,
-                  filled: false,
-                  icon: CupertinoIcons.phone_fill,
-                  color: PravaColors.accentPrimary,
+      ),
+    );
+  }
+}
+
+class _FriendActionButton extends StatelessWidget {
+  const _FriendActionButton({
+    required this.label,
+    required this.pending,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool pending;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: pending ? null : onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        height: 34,
+        constraints: const BoxConstraints(minWidth: 84, maxWidth: 116),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: pending
+              ? PravaColors.accentPrimary.withValues(alpha: 0.45)
+              : PravaColors.accentPrimary,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Center(
+          child: pending
+              ? const CupertinoActivityIndicator(radius: 8)
+              : Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.button.copyWith(
+                    color: Colors.white,
+                    letterSpacing: 0,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _TogglePill(
-                label: friend.isFavorite ? 'Favorited' : 'Favorite',
-                icon: friend.isFavorite
-                    ? CupertinoIcons.star_fill
-                    : CupertinoIcons.star,
-                active: friend.isFavorite,
-                onTap: onToggleFavorite,
-              ),
-              _TogglePill(
-                label: friend.isMuted ? 'Muted' : 'Mute',
-                icon: friend.isMuted
-                    ? CupertinoIcons.bell_slash_fill
-                    : CupertinoIcons.bell,
-                active: friend.isMuted,
-                onTap: onToggleMute,
-              ),
-              _TogglePill(
-                label: friend.isPinned ? 'Pinned' : 'Pin',
-                icon: friend.isPinned
-                    ? CupertinoIcons.pin_fill
-                    : CupertinoIcons.pin,
-                active: friend.isPinned,
-                onTap: onTogglePinned,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  const _Avatar({
-    required this.initials,
-    required this.isOnline,
-  });
-
-  final String initials;
-  final bool isOnline;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(3),
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              colors: [
-                PravaColors.accentPrimary,
-                PravaColors.accentMuted,
-              ],
-            ),
-          ),
-          child: CircleAvatar(
-            radius: 22,
-            backgroundColor: PravaColors.accentPrimary.withValues(alpha: 0.15),
-            child: Text(
-              initials,
-              style: PravaTypography.body.copyWith(
-                color: PravaColors.accentPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          right: 2,
-          bottom: 2,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: isOnline ? 10 : 8,
-            height: isOnline ? 10 : 8,
-            decoration: BoxDecoration(
-              color: isOnline ? PravaColors.success : Colors.transparent,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white,
-                width: isOnline ? 2 : 1,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _HandleLink extends StatelessWidget {
-  const _HandleLink({
-    required this.username,
-    required this.onTap,
-  });
-
-  final String username;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Text(
-        '@$username',
-        style: PravaTypography.caption.copyWith(
-          color: PravaColors.accentPrimary,
-          fontWeight: FontWeight.w600,
         ),
       ),
     );
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({
-    required this.label,
-    required this.color,
-  });
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        label,
-        style: PravaTypography.caption.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-class _MetaItem extends StatelessWidget {
-  const _MetaItem({
-    required this.icon,
-    required this.label,
-    required this.secondary,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: secondary),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: PravaTypography.caption.copyWith(color: secondary),
-        ),
-      ],
-    );
-  }
-}
-
-class _TagPill extends StatelessWidget {
-  const _TagPill({
-    required this.label,
-    required this.secondary,
-  });
-
-  final String label;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white10 : Colors.black12,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: PravaTypography.caption.copyWith(
-          color: secondary,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.label,
-    required this.onTap,
-    this.icon,
-    this.filled = false,
-    this.color,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-  final IconData? icon;
-  final bool filled;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tint = color ?? PravaColors.accentPrimary;
-    final background = isDark ? Colors.white10 : Colors.black12;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          gradient: filled
-              ? LinearGradient(
-                  colors: [
-                    tint,
-                    tint == PravaColors.accentPrimary
-                        ? PravaColors.accentMuted
-                        : tint.withValues(alpha: 0.8),
-                  ],
-                )
-              : null,
-          color: filled ? null : background,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: filled ? Colors.transparent : tint.withValues(alpha: 0.4),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 16,
-                color: filled ? Colors.white : tint,
-              ),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: PravaTypography.caption.copyWith(
-                color: filled ? Colors.white : tint,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TogglePill extends StatelessWidget {
-  const _TogglePill({
-    required this.label,
-    required this.icon,
-    required this.active,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    const baseColor = PravaColors.accentPrimary;
-    final inactive =
-        isDark ? Colors.white10 : Colors.black12.withValues(alpha: 0.5);
-    final textColor = active
-        ? PravaColors.accentPrimary
-        : (isDark
-            ? PravaColors.darkTextSecondary
-            : PravaColors.lightTextSecondary);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? baseColor.withValues(alpha: 0.14) : inactive,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color:
-                active ? baseColor.withValues(alpha: 0.5) : Colors.transparent,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: textColor),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: PravaTypography.caption.copyWith(
-                color: textColor,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _IconPill extends StatelessWidget {
-  const _IconPill({required this.icon});
-
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white10 : Colors.black12,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(
-        icon,
-        size: 16,
-        color:
-            isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary,
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    super.key,
-    required this.icon,
+class _EmptyFriendsState extends StatelessWidget {
+  const _EmptyFriendsState({
     required this.title,
     required this.subtitle,
     required this.primary,
     required this.secondary,
   });
 
-  final IconData icon;
   final String title;
   final String subtitle;
   final Color primary;
@@ -1982,277 +758,27 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                color: PravaColors.accentPrimary.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: PravaColors.accentPrimary, size: 32),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: PravaTypography.h3.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: PravaTypography.bodySmall.copyWith(color: secondary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LoadingState extends StatelessWidget {
-  const _LoadingState({
-    required this.primary,
-    required this.secondary,
-  });
-
-  final Color primary;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(
-              height: 32,
-              width: 32,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: PravaColors.accentPrimary,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Syncing connections',
-              style: PravaTypography.bodyLarge.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Hold on while we load your network.',
-              textAlign: TextAlign.center,
-              style: PravaTypography.bodySmall.copyWith(color: secondary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FriendsBackdrop extends StatelessWidget {
-  const _FriendsBackdrop({required this.isDark});
-
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    return PravaBackground(isDark: isDark);
-  }
-}
-
-class _RealtimePill extends StatelessWidget {
-  const _RealtimePill({required this.loading});
-
-  final bool loading;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = loading ? 'Syncing' : 'Realtime';
-    final dotColor =
-        loading ? PravaColors.accentPrimary : PravaColors.success;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: PravaColors.accentPrimary.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: dotColor,
-              shape: BoxShape.circle,
-            ),
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(24, 80, 24, 16),
+      children: [
+        Icon(CupertinoIcons.person_2, size: 40, color: secondary),
+        const SizedBox(height: 12),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: PravaTypography.bodyLarge.copyWith(
+            color: primary,
+            fontWeight: FontWeight.w800,
           ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: PravaTypography.caption.copyWith(
-              color: PravaColors.accentPrimary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: PravaTypography.body.copyWith(color: secondary),
+        ),
+      ],
     );
   }
 }
-
-class FriendStats {
-  const FriendStats({
-    required this.posts,
-    required this.followers,
-    required this.following,
-  });
-
-  final int posts;
-  final int followers;
-  final int following;
-}
-
-class FriendUser {
-  const FriendUser({
-    required this.id,
-    required this.displayName,
-    required this.username,
-    required this.bio,
-    required this.location,
-    required this.isVerified,
-    required this.isOnline,
-    required this.tags,
-    required this.stats,
-    required this.joined,
-    required this.highlight,
-  });
-
-  final String id;
-  final String displayName;
-  final String username;
-  final String bio;
-  final String location;
-  final bool isVerified;
-  final bool isOnline;
-  final List<String> tags;
-  final FriendStats stats;
-  final String joined;
-  final String highlight;
-
-  String get initials {
-    final parts = displayName.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty || parts.first.isEmpty) return '?';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts[0].substring(0, 1) + parts[1].substring(0, 1))
-        .toUpperCase();
-  }
-}
-
-class FriendRequest {
-  const FriendRequest({
-    required this.user,
-    required this.message,
-    required this.mutualCount,
-    required this.sharedSpaces,
-    required this.receivedAt,
-    required this.priorityLabel,
-  });
-
-  final FriendUser user;
-  final String message;
-  final int mutualCount;
-  final int sharedSpaces;
-  final String receivedAt;
-  final String priorityLabel;
-}
-
-class SentRequest {
-  const SentRequest({
-    required this.user,
-    required this.status,
-    required this.timeLabel,
-    required this.note,
-  });
-
-  final FriendUser user;
-  final SentRequestStatus status;
-  final String timeLabel;
-  final String note;
-
-  String get statusLabel {
-    switch (status) {
-      case SentRequestStatus.pending:
-        return 'Following';
-      case SentRequestStatus.seen:
-        return 'Following';
-    }
-  }
-
-  SentRequest copyWith({
-    SentRequestStatus? status,
-    String? timeLabel,
-    String? note,
-  }) {
-    return SentRequest(
-      user: user,
-      status: status ?? this.status,
-      timeLabel: timeLabel ?? this.timeLabel,
-      note: note ?? this.note,
-    );
-  }
-}
-
-class FriendConnection {
-  const FriendConnection({
-    required this.user,
-    required this.connectedSince,
-    required this.mutualCount,
-    required this.sharedSpaces,
-    required this.presenceLabel,
-    required this.isFavorite,
-    required this.isMuted,
-    required this.isPinned,
-  });
-
-  final FriendUser user;
-  final String connectedSince;
-  final int mutualCount;
-  final int sharedSpaces;
-  final String presenceLabel;
-  final bool isFavorite;
-  final bool isMuted;
-  final bool isPinned;
-
-  FriendConnection copyWith({
-    bool? isFavorite,
-    bool? isMuted,
-    bool? isPinned,
-  }) {
-    return FriendConnection(
-      user: user,
-      connectedSince: connectedSince,
-      mutualCount: mutualCount,
-      sharedSpaces: sharedSpaces,
-      presenceLabel: presenceLabel,
-      isFavorite: isFavorite ?? this.isFavorite,
-      isMuted: isMuted ?? this.isMuted,
-      isPinned: isPinned ?? this.isPinned,
-    );
-  }
-}
-

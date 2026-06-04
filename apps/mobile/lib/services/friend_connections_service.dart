@@ -8,6 +8,7 @@ class FriendConnectionUser {
     required this.displayName,
     required this.bio,
     required this.location,
+    required this.avatarUrl,
     required this.isVerified,
     required this.isOnline,
     required this.createdAt,
@@ -18,6 +19,7 @@ class FriendConnectionUser {
   final String displayName;
   final String bio;
   final String location;
+  final String avatarUrl;
   final bool isVerified;
   final bool isOnline;
   final DateTime? createdAt;
@@ -31,6 +33,7 @@ class FriendConnectionUser {
           '',
       bio: json['bio']?.toString() ?? '',
       location: json['location']?.toString() ?? '',
+      avatarUrl: json['avatarUrl']?.toString() ?? '',
       isVerified: json['isVerified'] == true,
       isOnline: json['isOnline'] == true,
       createdAt:
