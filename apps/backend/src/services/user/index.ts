@@ -290,6 +290,7 @@ function mapConnectionItem(user: any, rel: any) {
     avatarUrl: user.avatar_url || "",
     isVerified: user.is_verified === true,
     isOnline: false,
+    lastSeenAt: toIso(user.last_seen_at),
     createdAt: toIso(user.created_at),
     since: rel?.since ? toIso(rel.since) : null,
     isFollowing: rel?.isFollowing === true,
@@ -303,7 +304,7 @@ async function loadUsersByIds(ids: string[]): Promise<any[]> {
   }
 
   return queryMany(
-    `SELECT user_id, username, display_name, bio, location, avatar_url, is_verified, created_at
+    `SELECT user_id, username, display_name, bio, location, avatar_url, is_verified, last_seen_at, created_at
      FROM users
      WHERE user_id = ANY($1::text[]) AND deleted_at IS NULL`,
     [ids]

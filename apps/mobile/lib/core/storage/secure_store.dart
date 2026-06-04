@@ -7,6 +7,7 @@ class SecureStore {
   static const _userIdKey = 'userId';
   static const _settingsKey = 'userSettings';
   static const _chatSyncStateKey = 'chatSyncState';
+  static const _recentEmojisKey = 'recentEmojis';
   static const _e2eeIdentityXPublicKey = 'e2eeIdentityXPublicKey';
   static const _e2eeIdentityXPrivateKey = 'e2eeIdentityXPrivateKey';
 
@@ -65,6 +66,14 @@ class SecureStore {
     return _storage.delete(key: _chatSyncStateKey);
   }
 
+  Future<void> setRecentEmojisJson(String emojis) {
+    return _storage.write(key: _recentEmojisKey, value: emojis);
+  }
+
+  Future<String?> getRecentEmojisJson() {
+    return _storage.read(key: _recentEmojisKey);
+  }
+
   Future<void> clearSettings() {
     return _storage.delete(key: _settingsKey);
   }
@@ -96,6 +105,7 @@ class SecureStore {
     await _storage.delete(key: _userIdKey);
     await _storage.delete(key: _settingsKey);
     await _storage.delete(key: _chatSyncStateKey);
+    await _storage.delete(key: _recentEmojisKey);
     await _storage.delete(key: _e2eeIdentityXPublicKey);
     await _storage.delete(key: _e2eeIdentityXPrivateKey);
   }

@@ -11,6 +11,7 @@ class FriendConnectionUser {
     required this.avatarUrl,
     required this.isVerified,
     required this.isOnline,
+    required this.lastSeenAt,
     required this.createdAt,
   });
 
@@ -22,6 +23,7 @@ class FriendConnectionUser {
   final String avatarUrl;
   final bool isVerified;
   final bool isOnline;
+  final DateTime? lastSeenAt;
   final DateTime? createdAt;
 
   factory FriendConnectionUser.fromJson(Map<String, dynamic> json) {
@@ -36,6 +38,8 @@ class FriendConnectionUser {
       avatarUrl: json['avatarUrl']?.toString() ?? '',
       isVerified: json['isVerified'] == true,
       isOnline: json['isOnline'] == true,
+      lastSeenAt:
+          DateTime.tryParse(json['lastSeenAt']?.toString() ?? ''),
       createdAt:
           DateTime.tryParse(json['createdAt']?.toString() ?? ''),
     );

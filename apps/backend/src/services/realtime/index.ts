@@ -5,6 +5,7 @@ import {
   verifyAccessToken,
   toIso,
 } from "../../lib/security.js";
+import { query } from "../../lib/pg.js";
 import {
   MESSAGE_TYPES,
   createMessage,
@@ -31,9 +32,9 @@ function parseIntStrict(value: unknown): number | null {
 
 export default async function realtimeService(app: FastifyInstance): Promise<void> {
   const handleConnection = async (socket: any, request: any) => {
-    const query = request.query as Record<string, unknown> | undefined;
-    const token = normalizeString(query?.token);
-    const deviceId = normalizeString(query?.deviceId);
+    const params = request.query as Record<string, unknown> | undefined;
+    const token = normalizeString(params?.token);
+    const deviceId = normalizeString(params?.deviceId);
 
     if (!token) {
       socket.close(1008, "Unauthorized");
@@ -49,6 +50,15 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       return;
     }
 
+    const touchLastSeen = () => {
+      void query(
+        `UPDATE users SET last_seen_at = NOW() WHERE user_id = $1`,
+        [userId]
+      ).catch(() => undefined);
+    };
+
+    touchLastSeen();
+
     const state = {
       socket,
       userId,
@@ -61,6 +71,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
     registerConnection(state);
 
     const cleanup = () => {
+      touchLastSeen();
       unregisterConnection(state);
       for (const [conversationId, meta] of state.conversationMeta.entries()) {
         if (meta.type !== "dm") continue;
@@ -274,6 +285,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
     };
 
     socket.on("message", async (raw: unknown) => {
+      touchLastSeen();
       let event: { type?: string; payload?: Record<string, unknown> } | null = null;
       try {
         event = JSON.parse(String(raw));

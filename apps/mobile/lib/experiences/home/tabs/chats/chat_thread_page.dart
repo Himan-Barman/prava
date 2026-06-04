@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
 
@@ -9,6 +10,7 @@ import 'package:flutter/services.dart';
 import '../../../../ui-system/colors.dart';
 import '../../../../ui-system/typography.dart';
 import '../../../../ui-system/background.dart';
+import '../../../../navigation/prava_navigator.dart';
 import '../../../../services/chat_realtime.dart';
 import '../../../../services/chat_service.dart';
 import '../../../../services/chat_sync_store.dart';
@@ -17,6 +19,7 @@ import '../../../../services/group_e2ee_service.dart';
 import '../../../../security/ratchet/group/sender_key_state.dart';
 import '../../../../core/device/device_id.dart';
 import '../../../../core/storage/secure_store.dart';
+import '../profile/public_profile_page.dart';
 import 'chats_page.dart';
 
 DateTime? _parseDate(dynamic value) {
@@ -74,8 +77,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   bool _isAtBottom = true;
   ChatMessage? _editingMessage;
   bool _peerOnline = false;
+  DateTime? _peerLastSeenAt;
   bool _groupReady = false;
   bool _usingPlaintextFallback = false;
+  bool _isMuted = false;
+  bool _isStarred = false;
+  final List<String> _recentEmojis = <String>[];
   List<String> _groupMemberIds = <String>[];
   final Set<String> _hiddenMessageIds = <String>{};
 
@@ -86,7 +93,15 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   @override
   void initState() {
     super.initState();
+    _peerUserId = widget.chat.peerUserId.trim().isNotEmpty
+        ? widget.chat.peerUserId.trim()
+        : null;
+    _peerLastSeenAt = widget.chat.peerLastSeenAt;
+    _peerOnline = widget.chat.isOnline;
+    _isMuted = widget.chat.isMuted;
+    _isStarred = widget.chat.isStarred;
     _scrollController.addListener(_handleScroll);
+    _loadRecentEmojis();
     _bootstrap();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom(animated: false);
@@ -125,6 +140,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
 
   Future<void> _resolvePeerUserId() async {
     if (!_isDmChat) return;
+    if (_peerUserId != null && _peerUserId!.isNotEmpty) return;
     final current = _userId;
     if (current == null || current.isEmpty) return;
     try {
@@ -436,6 +452,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
           isEncrypted ? serverMessage.body : existing.encryptedBody,
       deliveryState: MessageDeliveryState.sent,
       isOutgoing: true,
+      clientTempId: tempId,
     );
     final seq = updated.seq;
     if (seq != null && seq > 0) {
@@ -714,6 +731,164 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     });
     _controller.clear();
     _composerFocus.unfocus();
+  }
+
+  void _openPeerProfile() {
+    final peerUserId = _peerUserId?.trim();
+    if (!_isDmChat || peerUserId == null || peerUserId.isEmpty) return;
+    HapticFeedback.selectionClick();
+    PravaNavigator.push(
+      context,
+      PublicProfilePage(userId: peerUserId),
+    );
+  }
+
+  Future<void> _showThreadOptions() async {
+    HapticFeedback.selectionClick();
+    final action = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: Text(widget.chat.name),
+        actions: [
+          if (_isDmChat)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(context).pop('profile'),
+              child: const Text('View profile'),
+            ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('mute'),
+            child: Text(_isMuted ? 'Unmute notifications' : 'Mute notifications'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('star'),
+            child: Text(_isStarred ? 'Unstar chat' : 'Star chat'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('clear'),
+            isDestructiveAction: true,
+            child: const Text('Clear local view'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'profile':
+        _openPeerProfile();
+        break;
+      case 'mute':
+        await _updateThreadPreferences(isMuted: !_isMuted);
+        break;
+      case 'star':
+        await _updateThreadPreferences(isStarred: !_isStarred);
+        break;
+      case 'clear':
+        setState(() => _messages = <ChatMessage>[]);
+        break;
+    }
+  }
+
+  Future<void> _updateThreadPreferences({
+    bool? isMuted,
+    bool? isStarred,
+  }) async {
+    final previousMuted = _isMuted;
+    final previousStarred = _isStarred;
+    final nextMuted = isMuted ?? _isMuted;
+    final nextStarred = isStarred ?? _isStarred;
+    setState(() {
+      _isMuted = nextMuted;
+      _isStarred = nextStarred;
+    });
+    try {
+      await _chatService.updatePreferences(
+        conversationId: widget.chat.id,
+        isFavorite: widget.chat.isFavorite,
+        isStarred: nextStarred,
+        isMuted: nextMuted,
+        isArchived: false,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isMuted = previousMuted;
+        _isStarred = previousStarred;
+      });
+    }
+  }
+
+  Future<void> _loadRecentEmojis() async {
+    try {
+      final raw = await _store.getRecentEmojisJson();
+      if (!mounted || raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final emojis = decoded
+          .map((item) => item.toString())
+          .where((item) => item.trim().isNotEmpty)
+          .take(48)
+          .toList();
+      if (emojis.isEmpty) return;
+      setState(() {
+        _recentEmojis
+          ..clear()
+          ..addAll(emojis);
+      });
+    } catch (_) {
+      // Recent emojis are optional UI state.
+    }
+  }
+
+  void _saveRecentEmojis() {
+    void ignoreError(Object _, StackTrace __) {}
+    _store
+        .setRecentEmojisJson(jsonEncode(_recentEmojis))
+        .then<void>((_) {})
+        .catchError(ignoreError);
+  }
+
+  void _showEmojiPicker() {
+    HapticFeedback.selectionClick();
+    _composerFocus.unfocus();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _EmojiPickerSheet(
+        recent: _recentEmojis,
+        onSelect: _insertEmoji,
+      ),
+    );
+  }
+
+  void _insertEmoji(String emoji) {
+    if (emoji.isEmpty) return;
+    final value = _controller.value;
+    final start = value.selection.start >= 0
+        ? value.selection.start
+        : value.text.length;
+    final end = value.selection.end >= 0 ? value.selection.end : start;
+    final nextText = value.text.replaceRange(start, end, emoji);
+    final nextOffset = start + emoji.length;
+    _controller.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: nextOffset),
+    );
+    _handleTypingChanged(nextText);
+    setState(() {
+      _recentEmojis.remove(emoji);
+      _recentEmojis.insert(0, emoji);
+      if (_recentEmojis.length > 48) {
+        _recentEmojis.removeRange(48, _recentEmojis.length);
+      }
+    });
+    _saveRecentEmojis();
   }
 
   void _showMessageActions(ChatMessage message) {
@@ -1211,7 +1386,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     final isOnline = payload['isOnline'] == true;
     if (widget.chat.isGroup) return;
     if (mounted) {
-      setState(() => _peerOnline = isOnline);
+      setState(() {
+        _peerOnline = isOnline;
+        if (!isOnline) {
+          _peerLastSeenAt = DateTime.now();
+        }
+      });
     }
   }
 
@@ -1432,7 +1612,8 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     return a.createdAt.difference(b.createdAt).inMinutes.abs() <= 6;
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(DateTime value) {
+    final date = value.toLocal();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final target = DateTime(date.year, date.month, date.day);
@@ -1459,12 +1640,35 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     return '${months[date.month - 1]} ${date.day}';
   }
 
-  String _formatTime(DateTime date) {
+  String _formatTime(DateTime value) {
+    final date = value.toLocal();
     final hour = date.hour;
     final minute = date.minute.toString().padLeft(2, '0');
     final suffix = hour >= 12 ? 'PM' : 'AM';
     final hour12 = hour % 12 == 0 ? 12 : hour % 12;
     return '$hour12:$minute $suffix';
+  }
+
+  String _formatActivityStatus() {
+    if (_isGroupChat) {
+      return _peerTyping ? 'Someone is typing...' : 'Group chat';
+    }
+    if (_peerTyping) return 'Typing...';
+    if (_peerOnline) return 'Online';
+
+    final seenAt = _peerLastSeenAt;
+    if (seenAt == null) return 'Active recently';
+
+    final now = DateTime.now();
+    final diff = now.difference(seenAt);
+    if (diff.inDays >= 7) {
+      return 'Last active ${_formatDate(seenAt)}';
+    }
+    if (diff.inDays >= 1) {
+      final days = diff.inDays;
+      return 'Last active $days ${days == 1 ? 'day' : 'days'} ago';
+    }
+    return 'Last active ${_formatTime(seenAt)}';
   }
 
   @override
@@ -1479,11 +1683,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     final initial = widget.chat.name.isNotEmpty
         ? widget.chat.name[0].toUpperCase()
         : 'P';
-    final subtitle = widget.chat.isGroup
-        ? (_peerTyping ? 'Someone is typing...' : 'Group chat')
-        : (_peerTyping
-            ? 'Typing...'
-            : (_peerOnline ? 'Online' : 'Active recently'));
+    final subtitle = _formatActivityStatus();
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -1503,6 +1703,8 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                     subtitle: subtitle,
                     initial: initial,
                     avatarUrl: widget.chat.avatarUrl,
+                    onTap: _openPeerProfile,
+                    onMore: _showThreadOptions,
                   ),
                   Expanded(
                     child: AnimatedSwitcher(
@@ -1584,8 +1786,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                             ),
                     ),
                   ),
-                  AnimatedPadding(
-                    duration: const Duration(milliseconds: 200),
+                  Padding(
                     padding: EdgeInsets.only(
                       left: 12,
                       right: 12,
@@ -1603,6 +1804,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                         _ComposerBar(
                           controller: _controller,
                           focusNode: _composerFocus,
+                          onEmoji: _showEmojiPicker,
                           onSend: () {
                             _sendMessage();
                           },
@@ -1674,12 +1876,16 @@ class _ChatHeader extends StatelessWidget {
     required this.subtitle,
     required this.initial,
     required this.avatarUrl,
+    required this.onTap,
+    required this.onMore,
   });
 
   final String name;
   final String subtitle;
   final String initial;
   final String avatarUrl;
+  final VoidCallback onTap;
+  final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
@@ -1695,56 +1901,68 @@ class _ChatHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
         children: [
-          Row(
-            children: [
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: ClipOval(
-                  child: avatarUrl.trim().isNotEmpty
-                      ? Image.network(avatarUrl, fit: BoxFit.cover)
-                      : Container(
-                          color: PravaColors.accentPrimary
-                              .withValues(alpha: 0.18),
-                          child: Center(
-                            child: Text(
-                              initial,
-                              style: PravaTypography.h3.copyWith(
-                                color: PravaColors.accentPrimary,
-                                fontWeight: FontWeight.w800,
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: ClipOval(
+                    child: avatarUrl.trim().isNotEmpty
+                        ? Image.network(avatarUrl, fit: BoxFit.cover)
+                        : Container(
+                            color: PravaColors.accentPrimary
+                                .withValues(alpha: 0.18),
+                            child: Center(
+                              child: Text(
+                                initial,
+                                style: PravaTypography.h3.copyWith(
+                                  color: PravaColors.accentPrimary,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                             ),
                           ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: PravaTypography.body.copyWith(
+                          color: primary,
+                          fontWeight: FontWeight.w700,
                         ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: PravaTypography.body.copyWith(
-                        color: primary,
-                        fontWeight: FontWeight.w700,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: PravaTypography.caption.copyWith(
-                        color: secondary,
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: PravaTypography.caption.copyWith(
+                          color: secondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                IconButton(
+                  onPressed: onMore,
+                  icon: Icon(
+                    CupertinoIcons.ellipsis_vertical,
+                    color: secondary,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Container(
@@ -2095,12 +2313,14 @@ class _ComposerBar extends StatelessWidget {
   const _ComposerBar({
     required this.controller,
     required this.focusNode,
+    required this.onEmoji,
     required this.onSend,
     required this.onChanged,
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
+  final VoidCallback onEmoji;
   final VoidCallback onSend;
   final ValueChanged<String> onChanged;
 
@@ -2135,7 +2355,7 @@ class _ComposerBar extends StatelessWidget {
                   children: [
                     _ComposerIcon(
                       icon: CupertinoIcons.smiley,
-                      onTap: () {},
+                      onTap: onEmoji,
                     ),
                     Expanded(
                       child: TextField(
@@ -2178,7 +2398,7 @@ class _ComposerBar extends StatelessWidget {
                 }
               },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
+                duration: const Duration(milliseconds: 120),
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
@@ -2357,6 +2577,298 @@ class _ReactionPicker extends StatelessWidget {
     );
   }
 }
+
+class _EmojiPickerSheet extends StatefulWidget {
+  const _EmojiPickerSheet({
+    required this.recent,
+    required this.onSelect,
+  });
+
+  final List<String> recent;
+  final ValueChanged<String> onSelect;
+
+  @override
+  State<_EmojiPickerSheet> createState() => _EmojiPickerSheetState();
+}
+
+class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
+  late final List<String> _recent = List<String>.from(widget.recent);
+  int _selected = 0;
+
+  List<_EmojiCategory> get _categories => [
+        _EmojiCategory(
+          label: 'Recent',
+          icon: Icons.access_time,
+          emojis: _recent,
+        ),
+        ..._emojiCategories,
+      ];
+
+  void _select(String emoji) {
+    widget.onSelect(emoji);
+    setState(() {
+      _recent.remove(emoji);
+      _recent.insert(0, emoji);
+      if (_recent.length > 48) {
+        _recent.removeRange(48, _recent.length);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface =
+        isDark ? PravaColors.darkBgElevated : PravaColors.lightBgElevated;
+    final border =
+        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary =
+        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
+    final secondary =
+        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final categories = _categories;
+    final selected = categories[_selected];
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        height: min(MediaQuery.of(context).size.height * 0.56, 430),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: border)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: secondary.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            SizedBox(
+              height: 52,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: categories.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 4),
+                itemBuilder: (context, index) {
+                  final category = categories[index];
+                  final active = index == _selected;
+                  return IconButton(
+                    tooltip: category.label,
+                    onPressed: () => setState(() => _selected = index),
+                    icon: Icon(
+                      category.icon,
+                      color: active ? PravaColors.accentPrimary : secondary,
+                    ),
+                  );
+                },
+              ),
+            ),
+            Divider(height: 1, color: border),
+            Expanded(
+              child: selected.emojis.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Recently used emojis appear here',
+                        style: PravaTypography.body.copyWith(
+                          color: secondary,
+                        ),
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 22),
+                      physics: const BouncingScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 8,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                      ),
+                      itemCount: selected.emojis.length,
+                      itemBuilder: (context, index) {
+                        final emoji = selected.emojis[index];
+                        return InkWell(
+                          onTap: () => _select(emoji),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Center(
+                            child: Text(
+                              emoji,
+                              style: TextStyle(
+                                fontSize: 26,
+                                color: primary,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmojiCategory {
+  const _EmojiCategory({
+    required this.label,
+    required this.icon,
+    required this.emojis,
+  });
+
+  final String label;
+  final IconData icon;
+  final List<String> emojis;
+}
+
+const _emojiCategories = <_EmojiCategory>[
+  _EmojiCategory(
+    label: 'Smileys',
+    icon: Icons.emoji_emotions_outlined,
+    emojis: [
+      '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣',
+      '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰',
+      '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜',
+      '🤪', '🤨', '🧐', '🤓', '😎', '🥳', '😏', '😒',
+      '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖',
+      '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡',
+      '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰',
+      '😥', '😓', '🤗', '🤔', '🫡', '🤭', '🫢', '🫣',
+      '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯',
+      '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪',
+      '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒',
+      '🤕', '🤑', '🤠', '😈', '👿', '👻', '💀', '☠️',
+      '💩', '🤡', '👹', '👺', '❤️', '🧡', '💛', '💚',
+      '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕',
+      '💞', '💓', '💗', '💖', '💘', '💝', '💟',
+    ],
+  ),
+  _EmojiCategory(
+    label: 'People',
+    icon: Icons.people_outline,
+    emojis: [
+      '👍', '👎', '👌', '🤌', '🤏', '✌️', '🤞', '🫰',
+      '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️',
+      '✋', '🤚', '🖐️', '🖖', '👋', '🤝', '👏', '🙌',
+      '🫶', '👐', '🤲', '🙏', '✍️', '💅', '🤳', '💪',
+      '🦾', '🦵', '🦶', '👂', '🦻', '👃', '🧠', '🫀',
+      '🫁', '🦷', '👀', '👁️', '👅', '👄', '👶', '🧒',
+      '👦', '👧', '🧑', '👱', '👨', '🧔', '👩', '🧓',
+      '👴', '👵', '🙍', '🙎', '🙅', '🙆', '💁', '🙋',
+      '🧏', '🙇', '🤦', '🤷', '👮', '🕵️', '💂', '🥷',
+      '👷', '🫅', '🤴', '👸', '👳', '👲', '🧕', '🤵',
+      '👰', '🤰', '🫃', '🫄', '🤱', '👼', '🎅', '🧑‍🎄',
+    ],
+  ),
+  _EmojiCategory(
+    label: 'Nature',
+    icon: Icons.eco_outlined,
+    emojis: [
+      '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼',
+      '🐻‍❄️', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵',
+      '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤',
+      '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄',
+      '🐝', '🪱', '🐛', '🦋', '🐌', '🐞', '🐜', '🪰',
+      '🪲', '🪳', '🦟', '🦗', '🕷️', '🦂', '🐢', '🐍',
+      '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀',
+      '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊',
+      '🌵', '🎄', '🌲', '🌳', '🌴', '🪵', '🌱', '🌿',
+      '☘️', '🍀', '🎍', '🪴', '🎋', '🍃', '🍂', '🍁',
+      '🍄', '🐚', '🪨', '🌾', '💐', '🌷', '🌹', '🥀',
+      '🌺', '🌸', '🌼', '🌻', '🌞', '🌝', '🌛', '🌜',
+    ],
+  ),
+  _EmojiCategory(
+    label: 'Food',
+    icon: Icons.restaurant_outlined,
+    emojis: [
+      '🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇',
+      '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥',
+      '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶️',
+      '🫑', '🌽', '🥕', '🫒', '🧄', '🧅', '🥔', '🍠',
+      '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳',
+      '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🌭',
+      '🍔', '🍟', '🍕', '🫓', '🥪', '🥙', '🧆', '🌮',
+      '🌯', '🫔', '🥗', '🥘', '🫕', '🍝', '🍜', '🍲',
+      '🍛', '🍣', '🍱', '🥟', '🦪', '🍤', '🍙', '🍚',
+      '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧', '🍨',
+      '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬',
+      '🍫', '🍿', '🍩', '🍪', '🥛', '☕', '🫖', '🍵',
+    ],
+  ),
+  _EmojiCategory(
+    label: 'Travel',
+    icon: Icons.flight_takeoff,
+    emojis: [
+      '🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑',
+      '🚒', '🚐', '🛻', '🚚', '🚛', '🚜', '🛵', '🏍️',
+      '🛺', '🚲', '🛴', '🛹', '🛼', '🚆', '🚇', '🚊',
+      '🚉', '✈️', '🛫', '🛬', '🛩️', '💺', '🚁', '🚀',
+      '🛸', '🚢', '⛵', '🚤', '🛥️', '🛳️', '⛴️', '⚓',
+      '⛽', '🚧', '🚦', '🚥', '🗺️', '🗿', '🗽', '🗼',
+      '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠', '⛲', '⛱️',
+      '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️', '🗻', '🏕️',
+      '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏭', '🏢', '🏬',
+      '🏣', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩',
+    ],
+  ),
+  _EmojiCategory(
+    label: 'Activities',
+    icon: Icons.sports_basketball_outlined,
+    emojis: [
+      '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉',
+      '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍',
+      '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿',
+      '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌',
+      '🎿', '⛷️', '🏂', '🪂', '🏋️', '🤼', '🤸', '⛹️',
+      '🤺', '🤾', '🏌️', '🏇', '🧘', '🏄', '🏊', '🤽',
+      '🚣', '🧗', '🚵', '🚴', '🎯', '🎮', '🎲', '♟️',
+      '🎭', '🎨', '🧩', '🎪', '🎤', '🎧', '🎼', '🎹',
+      '🥁', '🪘', '🎷', '🎺', '🪗', '🎸', '🪕', '🎻',
+      '🎬', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🎗️',
+    ],
+  ),
+  _EmojiCategory(
+    label: 'Objects',
+    icon: Icons.lightbulb_outline,
+    emojis: [
+      '⌚', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️',
+      '🖲️', '🕹️', '🗜️', '💽', '💾', '💿', '📀', '📼',
+      '📷', '📸', '📹', '🎥', '📽️', '🎞️', '📞', '☎️',
+      '📟', '📠', '📺', '📻', '🎙️', '🎚️', '🎛️', '🧭',
+      '⏱️', '⏲️', '⏰', '🕰️', '⌛', '⏳', '📡', '🔋',
+      '🪫', '🔌', '💡', '🔦', '🕯️', '🪔', '🧯', '🛢️',
+      '💸', '💵', '💴', '💶', '💷', '🪙', '💰', '💳',
+      '💎', '⚖️', '🪜', '🧰', '🪛', '🔧', '🔨', '⚒️',
+      '🛠️', '⛏️', '🪚', '🔩', '⚙️', '🪤', '🧱', '⛓️',
+      '🧲', '🔫', '💣', '🧨', '🪓', '🔪', '🗡️', '🛡️',
+      '🚬', '⚰️', '🪦', '⚱️', '🏺', '🔮', '📿', '🧿',
+    ],
+  ),
+  _EmojiCategory(
+    label: 'Symbols',
+    icon: Icons.emoji_symbols_outlined,
+    emojis: [
+      '✅', '☑️', '✔️', '❌', '❎', '➕', '➖', '➗',
+      '✖️', '♾️', '‼️', '⁉️', '❓', '❔', '❕', '❗',
+      '〰️', '💱', '💲', '⚕️', '♻️', '⚜️', '🔱', '📛',
+      '🔰', '⭕', '🟢', '🟡', '🟠', '🔴', '🟣', '🔵',
+      '⚫', '⚪', '🟤', '⬛', '⬜', '◼️', '◻️', '◾',
+      '◽', '▪️', '▫️', '🔶', '🔷', '🔸', '🔹', '🔺',
+      '🔻', '💠', '🔘', '🔳', '🔲', '🏁', '🚩', '🎌',
+      '🏴', '🏳️', '🏳️‍🌈', '🏳️‍⚧️', '🇮🇳', '🇺🇸', '🇬🇧', '🇯🇵',
+      '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣',
+      '8️⃣', '9️⃣', '🔟', '#️⃣', '*️⃣',
+    ],
+  ),
+];
 
 class _SheetAction extends StatelessWidget {
   const _SheetAction({

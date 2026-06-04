@@ -1,5 +1,6 @@
 import type { FastifyRequest } from "fastify";
 
+import { query } from "./pg.js";
 import { HttpError, verifyAccessToken } from "./security.js";
 
 export async function requireAuth(request: FastifyRequest): Promise<void> {
@@ -16,6 +17,10 @@ export async function requireAuth(request: FastifyRequest): Promise<void> {
       email: payload.email,
       username: payload.username,
     };
+    void query(
+      `UPDATE users SET last_seen_at = NOW() WHERE user_id = $1`,
+      [payload.sub]
+    ).catch(() => undefined);
   } catch {
     throw new HttpError(401, "Unauthorized");
   }

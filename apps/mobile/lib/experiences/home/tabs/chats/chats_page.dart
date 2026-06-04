@@ -239,7 +239,9 @@ class _ChatsPageState extends State<ChatsPage> {
       isFavorite: convo.isFavorite,
       isStarred: convo.isStarred,
       isTyping: _typingTimers.containsKey(convo.id),
+      peerUserId: convo.peerUserId,
       avatarUrl: convo.peerAvatarUrl,
+      peerLastSeenAt: convo.peerLastSeenAt,
       lastMessageFromMe: lastMessageFromMe,
       delivery: lastMessageFromMe
           ? MessageDeliveryState.sent
@@ -1212,7 +1214,9 @@ class ChatPreview {
   final bool isFavorite;
   final bool isStarred;
   final bool isTyping;
+  final String peerUserId;
   final String avatarUrl;
+  final DateTime? peerLastSeenAt;
   final bool lastMessageFromMe;
   final MessageDeliveryState delivery;
   final String? lastMessageId;
@@ -1233,7 +1237,9 @@ class ChatPreview {
     this.isFavorite = false,
     this.isStarred = false,
     required this.isTyping,
+    this.peerUserId = '',
     this.avatarUrl = '',
+    this.peerLastSeenAt,
     required this.lastMessageFromMe,
     required this.delivery,
     this.lastMessageId,
@@ -1253,7 +1259,9 @@ class ChatPreview {
     bool? isFavorite,
     bool? isStarred,
     bool? isTyping,
+    String? peerUserId,
     String? avatarUrl,
+    DateTime? peerLastSeenAt,
     bool? lastMessageFromMe,
     MessageDeliveryState? delivery,
     String? lastMessageId,
@@ -1274,7 +1282,9 @@ class ChatPreview {
       isFavorite: isFavorite ?? this.isFavorite,
       isStarred: isStarred ?? this.isStarred,
       isTyping: isTyping ?? this.isTyping,
+      peerUserId: peerUserId ?? this.peerUserId,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      peerLastSeenAt: peerLastSeenAt ?? this.peerLastSeenAt,
       lastMessageFromMe: lastMessageFromMe ?? this.lastMessageFromMe,
       delivery: delivery ?? this.delivery,
       lastMessageId: lastMessageId ?? this.lastMessageId,
