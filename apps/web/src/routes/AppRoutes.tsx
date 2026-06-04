@@ -2,6 +2,9 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useAuth } from '../context/auth-context';
 
+// Landing Page
+import { LandingPage } from '../experiences/landing';
+
 // Auth Pages
 import {
   LoginPage,
@@ -92,7 +95,7 @@ function AuthRedirect() {
 
   return (
     <Navigate
-      to={isAuthenticated ? '/feed' : '/login'}
+      to={isAuthenticated ? '/feed' : '/'}
       state={{ from: location }}
       replace
     />
@@ -111,8 +114,10 @@ const AppRoutes = () => {
       <Route path="/reset-password" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
       <Route path="/set-details" element={<ProtectedRoute><SetDetailsPage /></ProtectedRoute>} />
 
+      {/* Landing Page (Public) */}
+      <Route path="/" element={<LandingPage />} />
+
       {/* Protected Routes */}
-      <Route path="/" element={<AuthRedirect />} />
       <Route path="/feed" element={<ProtectedRoute><FeedPage /></ProtectedRoute>} />
       <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
       <Route path="/chats/archived" element={<ProtectedRoute><ArchivedChatsPage /></ProtectedRoute>} />

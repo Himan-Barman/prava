@@ -11,12 +11,12 @@ interface AppShellProps {
 }
 
 // Routes that don't show the sidebar
-const authRoutes = ['/login', '/signup', '/verify-email', '/set-password', '/forgot-password', '/reset-password', '/set-details'];
+const authRoutes = ['/', '/login', '/signup', '/verify-email', '/set-password', '/forgot-password', '/reset-password', '/set-details'];
 
 export default function AppShell({ children }: AppShellProps) {
   const location = useLocation();
   const { isAuthenticated, isLoading } = useAuth();
-  const isAuthRoute = authRoutes.some(route => location.pathname.startsWith(route));
+  const isAuthRoute = location.pathname === '/' || authRoutes.slice(1).some(route => location.pathname.startsWith(route));
 
   // Dismiss toasts on route change
   useEffect(() => {
