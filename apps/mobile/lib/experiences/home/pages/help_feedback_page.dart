@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -138,12 +136,12 @@ class _HelpFeedbackPageState extends State<HelpFeedbackPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return Scaffold(
       body: Stack(
@@ -152,10 +150,7 @@ class _HelpFeedbackPageState extends State<HelpFeedbackPage> {
           SafeArea(
             child: Column(
               children: [
-                _TopBar(
-                  title: 'Help & feedback',
-                  onBack: () => Navigator.of(context).pop(),
-                ),
+                const _TopBar(title: 'Help & feedback'),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: _SegmentedControl(
@@ -174,48 +169,45 @@ class _HelpFeedbackPageState extends State<HelpFeedbackPage> {
                             key: const ValueKey('help'),
                             primary: primary,
                             secondary: secondary,
-                            border: border,
                             isDark: isDark,
                           )
                         : _section == HelpFeedbackSection.report
-                            ? _ReportSection(
-                                key: const ValueKey('report'),
-                                reportController: _reportController,
-                                category: _reportCategory,
-                                includeLogs: _includeLogs,
-                                onCategoryChanged: (value) {
-                                  HapticFeedback.selectionClick();
-                                  setState(() => _reportCategory = value);
-                                },
-                                onLogsChanged: (value) {
-                                  HapticFeedback.selectionClick();
-                                  setState(() => _includeLogs = value);
-                                },
-                                onSend: _sendReport,
-                                primary: primary,
-                                secondary: secondary,
-                                border: border,
-                                isDark: isDark,
-                              )
-                            : _FeedbackSection(
-                                key: const ValueKey('feedback'),
-                                feedbackController: _feedbackController,
-                                score: _feedbackScore,
-                                allowContact: _allowContact,
-                                onScoreChanged: (value) {
-                                  setState(() => _feedbackScore = value);
-                                },
-                                onAllowContactChanged: (value) {
-                                  HapticFeedback.selectionClick();
-                                  setState(() => _allowContact = value);
-                                },
-                                onSend: _sendFeedback,
-                                label: _feedbackLabel(_feedbackScore),
-                                primary: primary,
-                                secondary: secondary,
-                                border: border,
-                                isDark: isDark,
-                              ),
+                        ? _ReportSection(
+                            key: const ValueKey('report'),
+                            reportController: _reportController,
+                            category: _reportCategory,
+                            includeLogs: _includeLogs,
+                            onCategoryChanged: (value) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _reportCategory = value);
+                            },
+                            onLogsChanged: (value) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _includeLogs = value);
+                            },
+                            onSend: _sendReport,
+                            primary: primary,
+                            secondary: secondary,
+                            isDark: isDark,
+                          )
+                        : _FeedbackSection(
+                            key: const ValueKey('feedback'),
+                            feedbackController: _feedbackController,
+                            score: _feedbackScore,
+                            allowContact: _allowContact,
+                            onScoreChanged: (value) {
+                              setState(() => _feedbackScore = value);
+                            },
+                            onAllowContactChanged: (value) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _allowContact = value);
+                            },
+                            onSend: _sendFeedback,
+                            label: _feedbackLabel(_feedbackScore),
+                            primary: primary,
+                            secondary: secondary,
+                            isDark: isDark,
+                          ),
                   ),
                 ),
               ],
@@ -228,64 +220,38 @@ class _HelpFeedbackPageState extends State<HelpFeedbackPage> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.title, required this.onBack});
+  const _TopBar({required this.title});
 
   final String title;
-  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final surface =
-        isDark ? Colors.black.withValues(alpha: 0.45) : Colors.white.withValues(alpha: 0.8);
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: border),
-            ),
-            child: Row(
-              children: [
-                _IconPill(
-                  icon: CupertinoIcons.back,
-                  onTap: onBack,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: PravaTypography.h3.copyWith(
-                      color: primary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: PravaTypography.h2.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 }
 
 class _SegmentedControl extends StatelessWidget {
-  const _SegmentedControl({
-    required this.value,
-    required this.onChanged,
-  });
+  const _SegmentedControl({required this.value, required this.onChanged});
 
   final HelpFeedbackSection value;
   final ValueChanged<HelpFeedbackSection> onChanged;
@@ -293,10 +259,12 @@ class _SegmentedControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08);
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final surface = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.08);
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return Container(
       padding: const EdgeInsets.all(4),
@@ -357,28 +325,19 @@ class _HelpSection extends StatelessWidget {
     super.key,
     required this.primary,
     required this.secondary,
-    required this.border,
     required this.isDark,
   });
 
   final Color primary;
   final Color secondary;
-  final Color border;
   final bool isDark;
 
   void _showToast(BuildContext context, String message) {
-    PravaToast.show(
-      context,
-      message: message,
-      type: PravaToastType.info,
-    );
+    PravaToast.show(context, message: message, type: PravaToastType.info);
   }
 
   @override
   Widget build(BuildContext context) {
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       children: [
@@ -387,8 +346,6 @@ class _HelpSection extends StatelessWidget {
           subtitle: 'Find answers or talk to the Prava team.',
           primary: primary,
           secondary: secondary,
-          border: border,
-          surface: surface,
           child: Column(
             children: [
               _ActionTile(
@@ -424,8 +381,6 @@ class _HelpSection extends StatelessWidget {
           subtitle: 'Realtime platform health',
           primary: primary,
           secondary: secondary,
-          border: border,
-          surface: surface,
           child: Row(
             children: [
               Container(
@@ -447,8 +402,7 @@ class _HelpSection extends StatelessWidget {
                 ),
               ),
               TextButton(
-                onPressed: () =>
-                    _showToast(context, 'Status page coming soon'),
+                onPressed: () => _showToast(context, 'Status page coming soon'),
                 child: Text(
                   'Details',
                   style: PravaTypography.button.copyWith(
@@ -475,7 +429,6 @@ class _ReportSection extends StatelessWidget {
     required this.onSend,
     required this.primary,
     required this.secondary,
-    required this.border,
     required this.isDark,
   });
 
@@ -487,13 +440,10 @@ class _ReportSection extends StatelessWidget {
   final VoidCallback onSend;
   final Color primary;
   final Color secondary;
-  final Color border;
   final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
     const categories = ['Bug', 'Abuse', 'Payments', 'Other'];
 
     return ListView(
@@ -504,8 +454,6 @@ class _ReportSection extends StatelessWidget {
           subtitle: 'Help us fix issues faster.',
           primary: primary,
           secondary: secondary,
-          border: border,
-          surface: surface,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -555,10 +503,7 @@ class _ReportSection extends StatelessWidget {
                 secondary: secondary,
               ),
               const SizedBox(height: 12),
-              _PrimaryButton(
-                label: 'Send report',
-                onTap: onSend,
-              ),
+              _PrimaryButton(label: 'Send report', onTap: onSend),
             ],
           ),
         ),
@@ -579,7 +524,6 @@ class _FeedbackSection extends StatelessWidget {
     required this.label,
     required this.primary,
     required this.secondary,
-    required this.border,
     required this.isDark,
   });
 
@@ -592,14 +536,10 @@ class _FeedbackSection extends StatelessWidget {
   final String label;
   final Color primary;
   final Color secondary;
-  final Color border;
   final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       children: [
@@ -608,8 +548,6 @@ class _FeedbackSection extends StatelessWidget {
           subtitle: 'Tell us what to improve next.',
           primary: primary,
           secondary: secondary,
-          border: border,
-          surface: surface,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -657,10 +595,7 @@ class _FeedbackSection extends StatelessWidget {
                 secondary: secondary,
               ),
               const SizedBox(height: 12),
-              _PrimaryButton(
-                label: 'Send feedback',
-                onTap: onSend,
-              ),
+              _PrimaryButton(label: 'Send feedback', onTap: onSend),
             ],
           ),
         ),
@@ -675,8 +610,6 @@ class _SectionCard extends StatelessWidget {
     required this.subtitle,
     required this.primary,
     required this.secondary,
-    required this.border,
-    required this.surface,
     required this.child,
   });
 
@@ -684,19 +617,12 @@ class _SectionCard extends StatelessWidget {
   final String subtitle;
   final Color primary;
   final Color secondary;
-  final Color border;
-  final Color surface;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: border),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -743,13 +669,9 @@ class _ActionTile extends StatelessWidget {
       contentPadding: EdgeInsets.zero,
       onTap: onTap,
       leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: PravaColors.accentPrimary.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(icon, size: 18, color: PravaColors.accentPrimary),
+        width: 30,
+        alignment: Alignment.centerLeft,
+        child: Icon(icon, size: 21, color: PravaColors.accentPrimary),
       ),
       title: Text(
         title,
@@ -761,11 +683,6 @@ class _ActionTile extends StatelessWidget {
       subtitle: Text(
         subtitle,
         style: PravaTypography.caption.copyWith(color: secondary),
-      ),
-      trailing: Icon(
-        CupertinoIcons.chevron_right,
-        size: 16,
-        color: secondary,
       ),
     );
   }
@@ -794,14 +711,9 @@ class _ToggleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: PravaColors.accentPrimary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, size: 18, color: PravaColors.accentPrimary),
+        SizedBox(
+          width: 30,
+          child: Icon(icon, size: 21, color: PravaColors.accentPrimary),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -826,7 +738,8 @@ class _ToggleRow extends StatelessWidget {
         Switch.adaptive(
           value: value,
           onChanged: onChanged,
-          activeColor: PravaColors.accentPrimary,
+          activeThumbColor: Colors.white,
+          activeTrackColor: PravaColors.accentPrimary,
         ),
       ],
     );
@@ -834,10 +747,7 @@ class _ToggleRow extends StatelessWidget {
 }
 
 class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({
-    required this.label,
-    required this.onTap,
-  });
+  const _PrimaryButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
@@ -852,10 +762,7 @@ class _PrimaryButton extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           gradient: const LinearGradient(
-            colors: [
-              PravaColors.accentPrimary,
-              PravaColors.accentMuted,
-            ],
+            colors: [PravaColors.accentPrimary, PravaColors.accentMuted],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -870,34 +777,6 @@ class _PrimaryButton extends StatelessWidget {
         child: Text(
           label,
           style: PravaTypography.button.copyWith(color: Colors.white),
-        ),
-      ),
-    );
-  }
-}
-
-class _IconPill extends StatelessWidget {
-  const _IconPill({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.white10 : Colors.black12,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: PravaColors.accentPrimary,
         ),
       ),
     );

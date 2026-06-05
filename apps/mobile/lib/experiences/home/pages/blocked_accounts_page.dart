@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 
@@ -73,125 +71,102 @@ class _BlockedAccountsPageState extends State<BlockedAccountsPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
     return SettingsDetailShell(
       title: 'Blocked accounts',
       child: _loading
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty
-              ? Center(
-                  child: Text(
-                    'No blocked accounts',
-                    style: PravaTypography.body.copyWith(color: secondary),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  itemCount: _items.length,
-                  itemBuilder: (context, index) {
-                    final user = _items[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: BackdropFilter(
-                          filter:
-                              ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: surface,
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: border),
-                            ),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 20,
-                                  backgroundColor:
-                                      PravaColors.accentPrimary.withValues(
-                                    alpha: 0.15,
-                                  ),
-                                  child: Text(
-                                    user.displayName.isNotEmpty
-                                        ? user.displayName
-                                            .substring(0, 1)
-                                            .toUpperCase()
-                                        : 'P',
-                                    style: PravaTypography.body.copyWith(
-                                      color: PravaColors.accentPrimary,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Flexible(
-                                            child: Text(
-                                              user.displayName,
-                                              maxLines: 1,
-                                              overflow:
-                                                  TextOverflow.ellipsis,
-                                              style: PravaTypography.body
-                                                  .copyWith(
-                                                color: primary,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                          if (user.isVerified) ...[
-                                            const SizedBox(width: 6),
-                                            const Icon(
-                                              CupertinoIcons
-                                                  .check_mark_circled_solid,
-                                              size: 16,
-                                              color: PravaColors.accentPrimary,
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '@${user.username}',
-                                        style:
-                                            PravaTypography.caption.copyWith(
-                                          color: secondary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () => _unblock(user),
-                                  child: Text(
-                                    'Unblock',
-                                    style: PravaTypography.button.copyWith(
-                                      color: PravaColors.accentPrimary,
-                                    ),
-                                  ),
-                                ),
-                              ],
+          ? Center(
+              child: Text(
+                'No blocked accounts',
+                style: PravaTypography.body.copyWith(color: secondary),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              itemCount: _items.length,
+              itemBuilder: (context, index) {
+                final user = _items[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundColor: PravaColors.accentPrimary.withValues(
+                            alpha: 0.15,
+                          ),
+                          child: Text(
+                            user.displayName.isNotEmpty
+                                ? user.displayName.substring(0, 1).toUpperCase()
+                                : 'P',
+                            style: PravaTypography.body.copyWith(
+                              color: PravaColors.accentPrimary,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      user.displayName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: PravaTypography.body.copyWith(
+                                        color: primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  if (user.isVerified) ...[
+                                    const SizedBox(width: 6),
+                                    const Icon(
+                                      CupertinoIcons.check_mark_circled_solid,
+                                      size: 16,
+                                      color: PravaColors.accentPrimary,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '@${user.username}',
+                                style: PravaTypography.caption.copyWith(
+                                  color: secondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => _unblock(user),
+                          child: Text(
+                            'Unblock',
+                            style: PravaTypography.button.copyWith(
+                              color: PravaColors.accentPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

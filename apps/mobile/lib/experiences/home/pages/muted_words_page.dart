@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -85,9 +83,7 @@ class _MutedWordsPageState extends State<MutedWordsPage> {
         message: added == null
             ? '"$phrase" is already muted'
             : 'Muted "$phrase"',
-        type: added == null
-            ? PravaToastType.info
-            : PravaToastType.success,
+        type: added == null ? PravaToastType.info : PravaToastType.success,
       );
     } catch (_) {
       if (!mounted) return;
@@ -126,15 +122,12 @@ class _MutedWordsPageState extends State<MutedWordsPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
     return SettingsDetailShell(
       title: 'Muted words',
       child: _loading
@@ -142,53 +135,36 @@ class _MutedWordsPageState extends State<MutedWordsPage> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: BackdropFilter(
-                    filter:
-                        ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: surface,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Add muted word',
-                            style: PravaTypography.h3.copyWith(
-                              color: primary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Hide posts that contain these words.',
-                            style: PravaTypography.bodySmall.copyWith(
-                              color: secondary,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          PravaInput(
-                            controller: _phraseController,
-                            hint: 'Word or phrase',
-                            inputFormatters: [
-                              LengthLimitingTextInputFormatter(120),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          PravaButton(
-                            label: 'Mute phrase',
-                            loading: _saving,
-                            onPressed: _saving ? null : _addPhrase,
-                          ),
-                        ],
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Add muted word',
+                      style: PravaTypography.h3.copyWith(
+                        color: primary,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Hide posts that contain these words.',
+                      style: PravaTypography.bodySmall.copyWith(
+                        color: secondary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    PravaInput(
+                      controller: _phraseController,
+                      hint: 'Word or phrase',
+                      inputFormatters: [LengthLimitingTextInputFormatter(120)],
+                    ),
+                    const SizedBox(height: 12),
+                    PravaButton(
+                      label: 'Mute phrase',
+                      loading: _saving,
+                      onPressed: _saving ? null : _addPhrase,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 if (_items.isEmpty)
@@ -197,42 +173,36 @@ class _MutedWordsPageState extends State<MutedWordsPage> {
                     style: PravaTypography.body.copyWith(color: secondary),
                   )
                 else
-                  ..._items.map((word) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: surface,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: border),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  word.phrase,
-                                  style: PravaTypography.body.copyWith(
-                                    color: primary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                  ..._items.map(
+                    (word) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                word.phrase,
+                                style: PravaTypography.body.copyWith(
+                                  color: primary,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              TextButton(
-                                onPressed: () => _removePhrase(word),
-                                child: Text(
-                                  'Remove',
-                                  style: PravaTypography.button.copyWith(
-                                    color: PravaColors.accentPrimary,
-                                  ),
+                            ),
+                            TextButton(
+                              onPressed: () => _removePhrase(word),
+                              child: Text(
+                                'Remove',
+                                style: PravaTypography.button.copyWith(
+                                  color: PravaColors.accentPrimary,
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      )),
+                      ),
+                    ),
+                  ),
               ],
             ),
     );

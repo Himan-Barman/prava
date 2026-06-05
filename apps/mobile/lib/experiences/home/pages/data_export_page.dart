@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -95,15 +94,12 @@ class _DataExportPageState extends State<DataExportPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
     return SettingsDetailShell(
       title: 'Download your data',
       child: _loading
@@ -111,46 +107,30 @@ class _DataExportPageState extends State<DataExportPage> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: BackdropFilter(
-                    filter:
-                        ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: surface,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Export your data',
-                            style: PravaTypography.h3.copyWith(
-                              color: primary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Generate a JSON export of your profile and settings.',
-                            style: PravaTypography.bodySmall.copyWith(
-                              color: secondary,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          PravaButton(
-                            label: 'Request export',
-                            loading: _requesting,
-                            onPressed:
-                                _requesting ? null : _requestExport,
-                          ),
-                        ],
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Export your data',
+                      style: PravaTypography.h3.copyWith(
+                        color: primary,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Generate a JSON export of your profile and settings.',
+                      style: PravaTypography.bodySmall.copyWith(
+                        color: secondary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    PravaButton(
+                      label: 'Request export',
+                      loading: _requesting,
+                      onPressed: _requesting ? null : _requestExport,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 if (_latest == null)
@@ -159,43 +139,35 @@ class _DataExportPageState extends State<DataExportPage> {
                     style: PravaTypography.body.copyWith(color: secondary),
                   )
                 else
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: surface,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: border),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Latest export',
-                          style: PravaTypography.body.copyWith(
-                            color: primary,
-                            fontWeight: FontWeight.w600,
-                          ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Latest export',
+                        style: PravaTypography.body.copyWith(
+                          color: primary,
+                          fontWeight: FontWeight.w600,
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Status: ${_latest?.status ?? 'unknown'}',
-                          style: PravaTypography.caption.copyWith(
-                            color: secondary,
-                          ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Status: ${_latest?.status ?? 'unknown'}',
+                        style: PravaTypography.caption.copyWith(
+                          color: secondary,
                         ),
-                        Text(
-                          'Created: ${_formatDate(_latest?.createdAt)}',
-                          style: PravaTypography.caption.copyWith(
-                            color: secondary,
-                          ),
+                      ),
+                      Text(
+                        'Created: ${_formatDate(_latest?.createdAt)}',
+                        style: PravaTypography.caption.copyWith(
+                          color: secondary,
                         ),
-                        const SizedBox(height: 12),
-                        PravaButton(
-                          label: 'Copy export JSON',
-                          onPressed: _copyExport,
-                        ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 12),
+                      PravaButton(
+                        label: 'Copy export JSON',
+                        onPressed: _copyExport,
+                      ),
+                    ],
                   ),
               ],
             ),

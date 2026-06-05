@@ -28,85 +28,76 @@ class _SecurityCenterPageState extends State<SecurityCenterPage> {
     final controller = SettingsScope.of(context);
     final settings = controller.state;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
 
     return SettingsDetailShell(
       title: 'Security center',
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: border),
-            ),
-            child: Column(
-              children: [
-                _ToggleTile(
-                  icon: CupertinoIcons.shield_lefthalf_fill,
-                  title: 'Two factor authentication',
-                  subtitle: 'Require a code on login',
-                  value: settings.twoFactor,
-                  onChanged: (value) =>
-                      _update(settings.copyWith(twoFactor: value)),
-                  primary: primary,
-                  secondary: secondary,
-                ),
-                Divider(height: 1, color: border),
-                _ToggleTile(
-                  icon: CupertinoIcons.bell,
-                  title: 'Login alerts',
-                  subtitle: 'Get notified on new logins',
-                  value: settings.loginAlerts,
-                  onChanged: (value) =>
-                      _update(settings.copyWith(loginAlerts: value)),
-                  primary: primary,
-                  secondary: secondary,
-                ),
-                Divider(height: 1, color: border),
-                _ToggleTile(
-                  icon: CupertinoIcons.lock_circle_fill,
-                  title: 'App passcode',
-                  subtitle: 'Require a passcode to open',
-                  value: settings.appLock,
-                  onChanged: (value) =>
-                      _update(settings.copyWith(appLock: value)),
-                  primary: primary,
-                  secondary: secondary,
-                ),
-                Divider(height: 1, color: border),
-                _ToggleTile(
-                  icon: CupertinoIcons.lock_shield,
-                  title: 'Biometric unlock',
-                  subtitle: 'Use face or fingerprint',
-                  value: settings.biometrics,
-                  onChanged: (value) =>
-                      _update(settings.copyWith(biometrics: value)),
-                  primary: primary,
-                  secondary: secondary,
-                ),
-                Divider(height: 1, color: border),
-                _ActionTile(
-                  icon: CupertinoIcons.device_phone_portrait,
-                  title: 'Devices',
-                  subtitle: 'Manage signed in devices',
-                  onTap: () => PravaNavigator.push(
-                    context,
-                    const DevicesPage(),
-                  ),
-                  primary: primary,
-                  secondary: secondary,
-                ),
-              ],
-            ),
+          Column(
+            children: [
+              _ToggleTile(
+                icon: CupertinoIcons.shield_lefthalf_fill,
+                title: 'Two factor authentication',
+                subtitle: 'Require a code on login',
+                value: settings.twoFactor,
+                onChanged: (value) =>
+                    _update(settings.copyWith(twoFactor: value)),
+                primary: primary,
+                secondary: secondary,
+              ),
+              Divider(height: 1, color: border),
+              _ToggleTile(
+                icon: CupertinoIcons.bell,
+                title: 'Login alerts',
+                subtitle: 'Get notified on new logins',
+                value: settings.loginAlerts,
+                onChanged: (value) =>
+                    _update(settings.copyWith(loginAlerts: value)),
+                primary: primary,
+                secondary: secondary,
+              ),
+              Divider(height: 1, color: border),
+              _ToggleTile(
+                icon: CupertinoIcons.lock_circle_fill,
+                title: 'App passcode',
+                subtitle: 'Require a passcode to open',
+                value: settings.appLock,
+                onChanged: (value) =>
+                    _update(settings.copyWith(appLock: value)),
+                primary: primary,
+                secondary: secondary,
+              ),
+              Divider(height: 1, color: border),
+              _ToggleTile(
+                icon: CupertinoIcons.lock_shield,
+                title: 'Biometric unlock',
+                subtitle: 'Use face or fingerprint',
+                value: settings.biometrics,
+                onChanged: (value) =>
+                    _update(settings.copyWith(biometrics: value)),
+                primary: primary,
+                secondary: secondary,
+              ),
+              Divider(height: 1, color: border),
+              _ActionTile(
+                icon: CupertinoIcons.device_phone_portrait,
+                title: 'Devices',
+                subtitle: 'Manage signed in devices',
+                onTap: () => PravaNavigator.push(context, const DevicesPage()),
+                primary: primary,
+                secondary: secondary,
+              ),
+            ],
           ),
         ],
       ),
@@ -139,14 +130,9 @@ class _ToggleTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: PravaColors.accentPrimary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: PravaColors.accentPrimary, size: 18),
+          SizedBox(
+            width: 30,
+            child: Icon(icon, color: PravaColors.accentPrimary, size: 21),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -171,7 +157,8 @@ class _ToggleTile extends StatelessWidget {
           Switch.adaptive(
             value: value,
             onChanged: onChanged,
-            activeColor: PravaColors.accentPrimary,
+            activeThumbColor: Colors.white,
+            activeTrackColor: PravaColors.accentPrimary,
           ),
         ],
       ),
@@ -205,14 +192,9 @@ class _ActionTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: PravaColors.accentPrimary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: PravaColors.accentPrimary, size: 18),
+            SizedBox(
+              width: 30,
+              child: Icon(icon, color: PravaColors.accentPrimary, size: 21),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -233,11 +215,6 @@ class _ActionTile extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-            Icon(
-              CupertinoIcons.chevron_right,
-              size: 16,
-              color: secondary,
             ),
           ],
         ),

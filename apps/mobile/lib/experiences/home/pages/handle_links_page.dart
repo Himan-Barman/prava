@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -172,21 +171,20 @@ class _HandleLinksPageState extends State<HandleLinksPage> {
   String _usernameStatus() {
     if (_checkingUsername) return 'Checking availability...';
     if (_usernameAvailable == null) return 'Username';
-    return _usernameAvailable == true ? 'Username is available' : 'Username is taken';
+    return _usernameAvailable == true
+        ? 'Username is available'
+        : 'Username is taken';
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
     return SettingsDetailShell(
       title: 'Handle and links',
       child: _loading
@@ -199,8 +197,6 @@ class _HandleLinksPageState extends State<HandleLinksPage> {
                   subtitle: _usernameStatus(),
                   primary: primary,
                   secondary: secondary,
-                  border: border,
-                  surface: surface,
                   child: Column(
                     children: [
                       PravaInput(
@@ -219,8 +215,9 @@ class _HandleLinksPageState extends State<HandleLinksPage> {
                         style: PravaTypography.body.copyWith(color: primary),
                         decoration: InputDecoration(
                           hintText: 'Bio',
-                          hintStyle:
-                              PravaTypography.body.copyWith(color: secondary),
+                          hintStyle: PravaTypography.body.copyWith(
+                            color: secondary,
+                          ),
                           border: InputBorder.none,
                           filled: true,
                           fillColor: isDark
@@ -264,8 +261,6 @@ class _SectionCard extends StatelessWidget {
     required this.subtitle,
     required this.primary,
     required this.secondary,
-    required this.border,
-    required this.surface,
     required this.child,
   });
 
@@ -273,43 +268,30 @@ class _SectionCard extends StatelessWidget {
   final String subtitle;
   final Color primary;
   final Color secondary;
-  final Color border;
-  final Color surface;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: border),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: PravaTypography.h3.copyWith(
+              color: primary,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: PravaTypography.h3.copyWith(
-                  color: primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: PravaTypography.bodySmall.copyWith(color: secondary),
-              ),
-              const SizedBox(height: 16),
-              child,
-            ],
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: PravaTypography.bodySmall.copyWith(color: secondary),
           ),
-        ),
+          const SizedBox(height: 16),
+          child,
+        ],
       ),
     );
   }

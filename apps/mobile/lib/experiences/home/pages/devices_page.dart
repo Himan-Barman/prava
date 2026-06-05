@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../../../services/session_service.dart';
@@ -126,15 +124,12 @@ class _DevicesPageState extends State<DevicesPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
     return SettingsDetailShell(
       title: 'Devices',
       child: _loading
@@ -142,48 +137,32 @@ class _DevicesPageState extends State<DevicesPage> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: BackdropFilter(
-                    filter:
-                        ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: surface,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Sessions',
-                            style: PravaTypography.h3.copyWith(
-                              color: primary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Sign out devices you no longer use.',
-                            style: PravaTypography.bodySmall.copyWith(
-                              color: secondary,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          PravaButton(
-                            label: 'Sign out of other devices',
-                            loading: _revoking,
-                            onPressed:
-                                _sessions.length > 1 && !_revoking
-                                    ? _revokeOthers
-                                    : null,
-                          ),
-                        ],
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Sessions',
+                      style: PravaTypography.h3.copyWith(
+                        color: primary,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Sign out devices you no longer use.',
+                      style: PravaTypography.bodySmall.copyWith(
+                        color: secondary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    PravaButton(
+                      label: 'Sign out of other devices',
+                      loading: _revoking,
+                      onPressed: _sessions.length > 1 && !_revoking
+                          ? _revokeOthers
+                          : null,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 if (_sessions.isEmpty)
@@ -193,31 +172,23 @@ class _DevicesPageState extends State<DevicesPage> {
                   )
                 else
                   ..._sessions.map((session) {
-                    final isCurrent =
-                        session.deviceId == _currentDeviceId;
+                    final isCurrent = session.deviceId == _currentDeviceId;
                     final subtitle =
                         'Last active ${_formatDate(session.lastSeenAt ?? session.createdAt)}';
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: surface,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: border),
-                        ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Row(
                           children: [
                             CircleAvatar(
                               radius: 20,
-                              backgroundColor:
-                                  PravaColors.accentPrimary.withValues(
-                                alpha: 0.15,
-                              ),
+                              backgroundColor: PravaColors.accentPrimary
+                                  .withValues(alpha: 0.15),
                               child: Text(
-                                _deviceLabel(session)
-                                    .substring(0, 1)
-                                    .toUpperCase(),
+                                _deviceLabel(
+                                  session,
+                                ).substring(0, 1).toUpperCase(),
                                 style: PravaTypography.body.copyWith(
                                   color: PravaColors.accentPrimary,
                                   fontWeight: FontWeight.w700,
@@ -227,8 +198,7 @@ class _DevicesPageState extends State<DevicesPage> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     _deviceLabel(session),
@@ -240,8 +210,7 @@ class _DevicesPageState extends State<DevicesPage> {
                                   const SizedBox(height: 4),
                                   Text(
                                     subtitle,
-                                    style:
-                                        PravaTypography.caption.copyWith(
+                                    style: PravaTypography.caption.copyWith(
                                       color: secondary,
                                     ),
                                   ),
@@ -258,8 +227,7 @@ class _DevicesPageState extends State<DevicesPage> {
                               )
                             else
                               TextButton(
-                                onPressed: () =>
-                                    _revokeSession(session),
+                                onPressed: () => _revokeSession(session),
                                 child: Text(
                                   'Sign out',
                                   style: PravaTypography.button.copyWith(

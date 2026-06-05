@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -16,8 +14,7 @@ class AccountInformationPage extends StatefulWidget {
   const AccountInformationPage({super.key});
 
   @override
-  State<AccountInformationPage> createState() =>
-      _AccountInformationPageState();
+  State<AccountInformationPage> createState() => _AccountInformationPageState();
 }
 
 class _AccountInformationPageState extends State<AccountInformationPage> {
@@ -89,8 +86,7 @@ class _AccountInformationPageState extends State<AccountInformationPage> {
     final digits = phone.replaceAll(RegExp(r'\D'), '');
     if (digits.isEmpty) return false;
     if (!RegExp(r'^\d{4,14}$').hasMatch(digits)) return false;
-    final countryDigits =
-        country.replaceAll(RegExp(r'\D'), '').trim();
+    final countryDigits = country.replaceAll(RegExp(r'\D'), '').trim();
     return (countryDigits.length + digits.length) <= 15;
   }
 
@@ -122,8 +118,7 @@ class _AccountInformationPageState extends State<AccountInformationPage> {
     setState(() => _savingDetails = true);
 
     try {
-      final normalizedCountry =
-          country.startsWith('+') ? country : '+$country';
+      final normalizedCountry = country.startsWith('+') ? country : '+$country';
       final updated = await _service.updateDetails(
         firstName: firstName,
         lastName: lastName,
@@ -190,15 +185,12 @@ class _AccountInformationPageState extends State<AccountInformationPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
     return SettingsDetailShell(
       title: 'Account information',
       child: _loading
@@ -213,8 +205,6 @@ class _AccountInformationPageState extends State<AccountInformationPage> {
                       : 'Verify your email to secure the account',
                   primary: primary,
                   secondary: secondary,
-                  border: border,
-                  surface: surface,
                   child: Column(
                     children: [
                       PravaInput(
@@ -237,8 +227,6 @@ class _AccountInformationPageState extends State<AccountInformationPage> {
                   subtitle: 'Keep your contact info current.',
                   primary: primary,
                   secondary: secondary,
-                  border: border,
-                  surface: surface,
                   child: Column(
                     children: [
                       Row(
@@ -322,8 +310,6 @@ class _SectionCard extends StatelessWidget {
     required this.subtitle,
     required this.primary,
     required this.secondary,
-    required this.border,
-    required this.surface,
     required this.child,
   });
 
@@ -331,43 +317,30 @@ class _SectionCard extends StatelessWidget {
   final String subtitle;
   final Color primary;
   final Color secondary;
-  final Color border;
-  final Color surface;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: border),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: PravaTypography.h3.copyWith(
+              color: primary,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: PravaTypography.h3.copyWith(
-                  color: primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: PravaTypography.bodySmall.copyWith(color: secondary),
-              ),
-              const SizedBox(height: 16),
-              child,
-            ],
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: PravaTypography.bodySmall.copyWith(color: secondary),
           ),
-        ),
+          const SizedBox(height: 16),
+          child,
+        ],
       ),
     );
   }

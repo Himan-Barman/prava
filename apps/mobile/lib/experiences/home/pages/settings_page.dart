@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,7 +6,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../navigation/prava_navigator.dart';
 import '../../../services/account_service.dart';
 import '../../../services/auth_service.dart';
-import '../../../services/profile_service.dart';
 import '../../../services/settings_service.dart';
 import '../../../shell/settings_controller.dart';
 import '../../../ui-system/background.dart';
@@ -79,18 +76,14 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   final AccountService _accountService = AccountService();
   final AuthService _authService = AuthService();
-  final ProfileService _profileService = ProfileService();
   SettingsController? _settingsController;
 
-  ProfileSummary? _summary;
-  bool _loadingProfile = true;
   String _versionLabel = 'Prava';
   SettingsState _settings = SettingsState.defaults();
 
   @override
   void initState() {
     super.initState();
-    _loadProfile();
     _loadPackageInfo();
   }
 
@@ -110,20 +103,6 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     _settingsController?.removeListener(_handleSettingsUpdate);
     super.dispose();
-  }
-
-  Future<void> _loadProfile() async {
-    try {
-      final summary = await _profileService.fetchMyProfile(limit: 6);
-      if (!mounted) return;
-      setState(() {
-        _summary = summary;
-        _loadingProfile = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _loadingProfile = false);
-    }
   }
 
   Future<void> _loadPackageInfo() async {
@@ -217,31 +196,6 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  String _formatCount(int value) {
-    if (value >= 1000000) {
-      final short = (value / 1000000).toStringAsFixed(
-        value % 1000000 == 0 ? 0 : 1,
-      );
-      return '${short}M';
-    }
-    if (value >= 1000) {
-      final short = (value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1);
-      return '${short}K';
-    }
-    return value.toString();
-  }
-
-  String _themeLabel(int index) {
-    switch (index) {
-      case 1:
-        return 'Light';
-      case 2:
-        return 'Dark';
-      default:
-        return 'System';
-    }
-  }
-
   void _openCategory(_SettingsCategory category) {
     HapticFeedback.selectionClick();
     PravaNavigator.push(
@@ -264,21 +218,9 @@ class _SettingsPageState extends State<SettingsPage> {
     final secondary = isDark
         ? PravaColors.darkTextSecondary
         : PravaColors.lightTextSecondary;
-    final surface = isDark
-        ? PravaColors.darkBgSurface
-        : PravaColors.lightBgSurface;
     final border = isDark
         ? PravaColors.darkBorderSubtle
         : PravaColors.lightBorderSubtle;
-
-    final summary = _summary;
-    final displayName = summary?.user.displayName.isNotEmpty == true
-        ? summary!.user.displayName
-        : 'Prava member';
-    final username = summary?.user.username.isNotEmpty == true
-        ? summary!.user.username
-        : 'prava';
-    final verified = summary?.user.isVerified == true;
 
     return Scaffold(
       body: Stack(
@@ -296,39 +238,12 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: _SettingsTopBar(primary: primary),
                   ),
                 ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
-                    child: _SettingsHeaderCard(
-                      displayName: displayName,
-                      username: username,
-                      verified: verified,
-                      posts: _formatCount(summary?.stats.posts ?? 0),
-                      followers: _formatCount(summary?.stats.followers ?? 0),
-                      following: _formatCount(summary?.stats.following ?? 0),
-                      isDark: isDark,
-                      loading: _loadingProfile,
-                    ),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-                    child: _ControlCenterCard(
-                      settings: _settings,
-                      themeLabel: _themeLabel(_settings.themeIndex),
-                      primary: primary,
-                      secondary: secondary,
-                      surface: surface,
-                      border: border,
-                    ),
-                  ),
-                ),
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 28),
+                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
                   sliver: SliverList.separated(
                     itemCount: _categoryOrder.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, __) =>
+                        Divider(height: 1, color: border),
                     itemBuilder: (context, index) {
                       final category = _categoryOrder[index];
                       final meta = _SettingsCategoryMeta.from(category);
@@ -336,8 +251,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         meta: meta,
                         primary: primary,
                         secondary: secondary,
-                        surface: surface,
-                        border: border,
                         trailing: _categoryTrailing(category, _settings),
                         onTap: () => _openCategory(category),
                       );
@@ -551,9 +464,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
     final secondary = isDark
         ? PravaColors.darkTextSecondary
         : PravaColors.lightTextSecondary;
-    final surface = isDark
-        ? PravaColors.darkBgSurface
-        : PravaColors.lightBgSurface;
     final border = isDark
         ? PravaColors.darkBorderSubtle
         : PravaColors.lightBorderSubtle;
@@ -564,14 +474,11 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
         children: [
-          _CategoryHero(meta: meta, primary: primary, secondary: secondary),
-          const SizedBox(height: 14),
           ..._buildCategorySections(
             context: context,
             category: widget.category,
             primary: primary,
             secondary: secondary,
-            surface: surface,
             border: border,
             isDark: isDark,
           ),
@@ -585,7 +492,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
     required _SettingsCategory category,
     required Color primary,
     required Color secondary,
-    required Color surface,
     required Color border,
     required bool isDark,
   }) {
@@ -595,7 +501,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Account center',
             subtitle: 'Identity and profile controls.',
-            surface: surface,
             border: border,
             children: [
               _SettingsTile(
@@ -626,7 +531,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Visibility',
             subtitle: 'Control what others can see.',
-            surface: surface,
             border: border,
             children: [
               _SettingsToggleTile(
@@ -675,7 +579,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Safety',
             subtitle: 'Filter people and content.',
-            surface: surface,
             border: border,
             children: [
               _SettingsToggleTile(
@@ -714,7 +617,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Login protection',
             subtitle: 'Secure access to your account.',
-            surface: surface,
             border: border,
             children: [
               _SettingsTile(
@@ -752,7 +654,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Device access',
             subtitle: 'Control device-level protection.',
-            surface: surface,
             border: border,
             children: [
               _SettingsToggleTile(
@@ -791,7 +692,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Channels',
             subtitle: 'Choose where alerts arrive.',
-            surface: surface,
             border: border,
             children: [
               _SettingsToggleTile(
@@ -840,7 +740,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Notification types',
             subtitle: 'Fine tune event alerts.',
-            surface: surface,
             border: border,
             children: [
               _SettingsToggleTile(
@@ -901,7 +800,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Appearance',
             subtitle: 'Visual preferences.',
-            surface: surface,
             border: border,
             children: [
               _SettingsTile(
@@ -934,7 +832,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Motion and media',
             subtitle: 'Playback behavior.',
-            surface: surface,
             border: border,
             children: [
               _SettingsToggleTile(
@@ -965,7 +862,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Network and storage',
             subtitle: 'Control downloads and cache.',
-            surface: surface,
             border: border,
             children: [
               _SettingsToggleTile(
@@ -993,7 +889,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 title: 'Cache size',
                 subtitle: _cacheSizeLabel,
                 onTap: () {},
-                showChevron: false,
                 color: primary,
                 secondary: secondary,
               ),
@@ -1022,7 +917,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Support',
             subtitle: 'Help and feedback.',
-            surface: surface,
             border: border,
             children: [
               _SettingsTile(
@@ -1070,7 +964,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Legal',
             subtitle: 'Policies and version.',
-            surface: surface,
             border: border,
             children: [
               _SettingsTile(
@@ -1106,7 +999,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 title: 'App version',
                 subtitle: widget.versionLabel,
                 onTap: () {},
-                showChevron: false,
                 color: primary,
                 secondary: secondary,
               ),
@@ -1118,7 +1010,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Session',
             subtitle: 'Sign out of this device.',
-            surface: surface,
             border: border,
             children: [
               _SettingsTile(
@@ -1136,7 +1027,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
           _SettingsSection(
             title: 'Danger zone',
             subtitle: 'Permanent account action.',
-            surface: surface,
             border: border,
             children: [
               _SettingsTile(
@@ -1273,278 +1163,12 @@ class _SettingsTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        CupertinoButton(
-          padding: EdgeInsets.zero,
-          minimumSize: const Size(40, 40),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Icon(CupertinoIcons.back, size: 24),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          'Settings',
-          style: PravaTypography.h2.copyWith(
-            color: primary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SettingsHeaderCard extends StatelessWidget {
-  const _SettingsHeaderCard({
-    required this.displayName,
-    required this.username,
-    required this.verified,
-    required this.followers,
-    required this.following,
-    required this.posts,
-    required this.isDark,
-    required this.loading,
-  });
-
-  final String displayName;
-  final String username;
-  final bool verified;
-  final String followers;
-  final String following;
-  final String posts;
-  final bool isDark;
-  final bool loading;
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white10
-                : Colors.white.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isDark
-                  ? PravaColors.darkBorderSubtle
-                  : PravaColors.lightBorderSubtle,
-            ),
-          ),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  _SettingsAvatar(
-                    initials: displayName.isNotEmpty
-                        ? displayName.substring(0, 1).toUpperCase()
-                        : 'P',
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                displayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: PravaTypography.h3.copyWith(
-                                  color: primary,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            if (verified) ...[
-                              const SizedBox(width: 6),
-                              const Icon(
-                                CupertinoIcons.check_mark_circled_solid,
-                                size: 16,
-                                color: PravaColors.accentPrimary,
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '@$username',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: PravaTypography.caption.copyWith(
-                            color: secondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              AnimatedOpacity(
-                opacity: loading ? 0.45 : 1,
-                duration: const Duration(milliseconds: 200),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _StatItem(
-                        label: 'Posts',
-                        value: posts,
-                        primary: primary,
-                        secondary: secondary,
-                      ),
-                    ),
-                    Expanded(
-                      child: _StatItem(
-                        label: 'Followers',
-                        value: followers,
-                        primary: primary,
-                        secondary: secondary,
-                      ),
-                    ),
-                    Expanded(
-                      child: _StatItem(
-                        label: 'Following',
-                        value: following,
-                        primary: primary,
-                        secondary: secondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+    return Text(
+      'Settings',
+      style: PravaTypography.h2.copyWith(
+        color: primary,
+        fontWeight: FontWeight.w800,
       ),
-    );
-  }
-}
-
-class _ControlCenterCard extends StatelessWidget {
-  const _ControlCenterCard({
-    required this.settings,
-    required this.themeLabel,
-    required this.primary,
-    required this.secondary,
-    required this.surface,
-    required this.border,
-  });
-
-  final SettingsState settings;
-  final String themeLabel;
-  final Color primary;
-  final Color secondary;
-  final Color surface;
-  final Color border;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Central control',
-            style: PravaTypography.h3.copyWith(
-              color: primary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _ControlStatus(
-                  label: 'Privacy',
-                  value: settings.privateAccount ? 'Private' : 'Public',
-                  icon: CupertinoIcons.lock,
-                  primary: primary,
-                  secondary: secondary,
-                ),
-              ),
-              Expanded(
-                child: _ControlStatus(
-                  label: 'Alerts',
-                  value: settings.pushNotifications ? 'On' : 'Off',
-                  icon: CupertinoIcons.bell,
-                  primary: primary,
-                  secondary: secondary,
-                ),
-              ),
-              Expanded(
-                child: _ControlStatus(
-                  label: 'Theme',
-                  value: themeLabel,
-                  icon: CupertinoIcons.circle_lefthalf_fill,
-                  primary: primary,
-                  secondary: secondary,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ControlStatus extends StatelessWidget {
-  const _ControlStatus({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.primary,
-    required this.secondary,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color primary;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Icon(icon, color: PravaColors.accentPrimary, size: 19),
-        const SizedBox(height: 7),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: PravaTypography.caption.copyWith(
-            color: primary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: PravaTypography.caption.copyWith(color: secondary),
-        ),
-      ],
     );
   }
 }
@@ -1554,8 +1178,6 @@ class _SettingsCategoryTile extends StatelessWidget {
     required this.meta,
     required this.primary,
     required this.secondary,
-    required this.surface,
-    required this.border,
     required this.trailing,
     required this.onTap,
   });
@@ -1563,8 +1185,6 @@ class _SettingsCategoryTile extends StatelessWidget {
   final _SettingsCategoryMeta meta;
   final Color primary;
   final Color secondary;
-  final Color surface;
-  final Color border;
   final String trailing;
   final VoidCallback onTap;
 
@@ -1575,26 +1195,12 @@ class _SettingsCategoryTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
-        child: Ink(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: border),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14),
           child: Row(
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: meta.accent.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(meta.icon, color: meta.accent, size: 22),
-              ),
-              const SizedBox(width: 12),
+              Icon(meta.icon, color: meta.accent, size: 25),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1628,119 +1234,10 @@ class _SettingsCategoryTile extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(width: 6),
-              Icon(CupertinoIcons.chevron_right, size: 16, color: secondary),
             ],
           ),
         ),
       ),
-    );
-  }
-}
-
-class _CategoryHero extends StatelessWidget {
-  const _CategoryHero({
-    required this.meta,
-    required this.primary,
-    required this.secondary,
-  });
-
-  final _SettingsCategoryMeta meta;
-  final Color primary;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: meta.accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(meta.icon, color: meta.accent, size: 26),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  meta.title,
-                  style: PravaTypography.h3.copyWith(
-                    color: primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  meta.subtitle,
-                  style: PravaTypography.caption.copyWith(color: secondary),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsAvatar extends StatelessWidget {
-  const _SettingsAvatar({required this.initials});
-
-  final String initials;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: PravaColors.accentPrimary,
-      ),
-      child: CircleAvatar(
-        radius: 24,
-        backgroundColor: PravaColors.accentPrimary.withValues(alpha: 0.15),
-        child: Text(
-          initials,
-          style: PravaTypography.h3.copyWith(
-            color: PravaColors.accentPrimary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatItem extends StatelessWidget {
-  const _StatItem({
-    required this.label,
-    required this.value,
-    required this.primary,
-    required this.secondary,
-  });
-
-  final String label;
-  final String value;
-  final Color primary;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: PravaTypography.h3.copyWith(
-            color: primary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(label, style: PravaTypography.caption.copyWith(color: secondary)),
-      ],
     );
   }
 }
@@ -1750,14 +1247,12 @@ class _SettingsSection extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.children,
-    required this.surface,
     required this.border,
   });
 
   final String title;
   final String subtitle;
   final List<Widget> children;
-  final Color surface;
   final Color border;
 
   List<Widget> _withDividers() {
@@ -1797,14 +1292,7 @@ class _SettingsSection extends StatelessWidget {
           style: PravaTypography.bodySmall.copyWith(color: secondary),
         ),
         const SizedBox(height: 10),
-        Container(
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: border),
-          ),
-          child: Column(children: _withDividers()),
-        ),
+        Column(children: _withDividers()),
       ],
     );
   }
@@ -1819,7 +1307,6 @@ class _SettingsTile extends StatelessWidget {
     required this.color,
     required this.secondary,
     this.destructive = false,
-    this.showChevron = true,
   });
 
   final IconData icon;
@@ -1829,7 +1316,6 @@ class _SettingsTile extends StatelessWidget {
   final Color color;
   final Color secondary;
   final bool destructive;
-  final bool showChevron;
 
   @override
   Widget build(BuildContext context) {
@@ -1845,15 +1331,7 @@ class _SettingsTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: iconColor, size: 18),
-            ),
+            SizedBox(width: 30, child: Icon(icon, color: iconColor, size: 21)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1878,8 +1356,6 @@ class _SettingsTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (showChevron)
-              Icon(CupertinoIcons.chevron_right, size: 16, color: secondary),
           ],
         ),
       ),
@@ -1912,14 +1388,9 @@ class _SettingsToggleTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: PravaColors.accentPrimary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: PravaColors.accentPrimary, size: 18),
+          SizedBox(
+            width: 30,
+            child: Icon(icon, color: PravaColors.accentPrimary, size: 21),
           ),
           const SizedBox(width: 12),
           Expanded(
