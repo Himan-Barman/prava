@@ -30,18 +30,15 @@ class FriendConnectionUser {
     return FriendConnectionUser(
       id: json['id']?.toString() ?? '',
       username: json['username']?.toString() ?? '',
-      displayName: json['displayName']?.toString() ??
-          json['username']?.toString() ??
-          '',
+      displayName:
+          json['displayName']?.toString() ?? json['username']?.toString() ?? '',
       bio: json['bio']?.toString() ?? '',
       location: json['location']?.toString() ?? '',
       avatarUrl: json['avatarUrl']?.toString() ?? '',
       isVerified: json['isVerified'] == true,
       isOnline: json['isOnline'] == true,
-      lastSeenAt:
-          DateTime.tryParse(json['lastSeenAt']?.toString() ?? ''),
-      createdAt:
-          DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      lastSeenAt: DateTime.tryParse(json['lastSeenAt']?.toString() ?? ''),
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
     );
   }
 }
@@ -97,23 +94,56 @@ class FriendConnectionsResponse {
   }
 }
 
+class ProfileConnectionListResponse {
+  ProfileConnectionListResponse({required this.visible, required this.items});
+
+  final bool visible;
+  final List<FriendConnectionItem> items;
+
+  factory ProfileConnectionListResponse.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'];
+    final items = rawItems is List
+        ? rawItems
+              .whereType<Map<String, dynamic>>()
+              .map(FriendConnectionItem.fromJson)
+              .toList()
+        : <FriendConnectionItem>[];
+
+    return ProfileConnectionListResponse(
+      visible: json['visible'] != false,
+      items: items,
+    );
+  }
+}
+
 class FriendConnectionsService {
   FriendConnectionsService({SecureStore? store})
-      : _client = ApiClient(store ?? SecureStore());
+    : _client = ApiClient(store ?? SecureStore());
 
   final ApiClient _client;
 
-  Future<FriendConnectionsResponse> fetchConnections({
-    int limit = 20,
-  }) async {
+  Future<FriendConnectionsResponse> fetchConnections({int limit = 20}) async {
     final data = await _client.get(
       '/users/me/connections',
       auth: true,
       query: {'limit': limit.toString()},
     );
-    final payload =
-        data is Map<String, dynamic> ? data : <String, dynamic>{};
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
     return FriendConnectionsResponse.fromJson(payload);
+  }
+
+  Future<ProfileConnectionListResponse> fetchProfileConnectionList({
+    required String userId,
+    required String type,
+    int limit = 100,
+  }) async {
+    final data = await _client.get(
+      '/users/$userId/connections',
+      auth: true,
+      query: {'type': type, 'limit': limit.toString()},
+    );
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    return ProfileConnectionListResponse.fromJson(payload);
   }
 
   Future<bool> setFollow(String userId, bool follow) async {
@@ -129,23 +159,14 @@ class FriendConnectionsService {
   }
 
   Future<void> removeFollower(String userId) async {
-    await _client.delete(
-      '/users/$userId/follower',
-      auth: true,
-    );
+    await _client.delete('/users/$userId/follower', auth: true);
   }
 
   Future<void> removeConnection(String userId) async {
-    await _client.delete(
-      '/users/$userId/connection',
-      auth: true,
-    );
+    await _client.delete('/users/$userId/connection', auth: true);
   }
 
   Future<void> blockUser(String userId) async {
-    await _client.post(
-      '/users/$userId/block',
-      auth: true,
-    );
+    await _client.post('/users/$userId/block', auth: true);
   }
 }

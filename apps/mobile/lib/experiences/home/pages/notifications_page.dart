@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import '../../../navigation/prava_navigator.dart';
 import '../../../services/notification_center.dart';
 import '../../../services/notification_service.dart';
-import '../../../services/settings_service.dart';
 import '../../../ui-system/background.dart';
 import '../../../ui-system/colors.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
@@ -26,7 +25,6 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   final NotificationService _service = NotificationService();
-  final SettingsService _settingsService = SettingsService();
   final NotificationCenter _center = NotificationCenter.instance;
   final ScrollController _controller = ScrollController();
 
@@ -37,10 +35,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
   bool _loading = true;
   bool _loadingMore = false;
   bool _markingAll = false;
-  bool _settingsSaving = false;
   String? _cursor;
   NotificationFilter _filter = NotificationFilter.all;
-  SettingsState _settings = SettingsState.defaults();
 
   @override
   void initState() {
@@ -48,7 +44,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
     _center.ensureInitialized();
     _subscription = _center.stream.listen(_onRealtimeNotification);
     _controller.addListener(_onScroll);
-    _loadNotificationControls();
     _loadInitial();
   }
 
@@ -105,56 +100,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> _refresh() async {
-    await Future.wait([_loadInitial(), _loadNotificationControls()]);
-  }
-
-  Future<void> _loadNotificationControls() async {
-    final localSettings = await _settingsService.loadLocal();
-    if (mounted) {
-      setState(() => _settings = localSettings);
-    }
-
-    var settings = localSettings;
-    try {
-      settings = await _settingsService.fetchRemote();
-      await _settingsService.saveLocal(settings);
-    } catch (_) {
-      // Local settings keep the controls responsive when remote settings fail.
-    }
-
-    if (!mounted) return;
-    setState(() => _settings = settings);
-  }
-
-  Future<void> _updateNotificationSettings(SettingsState next) async {
-    if (_settingsSaving) return;
-    HapticFeedback.selectionClick();
-    final previous = _settings;
-    setState(() {
-      _settings = next;
-      _settingsSaving = true;
-    });
-    try {
-      await _settingsService.saveLocal(next);
-      final remote = await _settingsService.saveRemote(next);
-      await _settingsService.saveLocal(remote);
-      if (!mounted) return;
-      setState(() {
-        _settings = remote;
-        _settingsSaving = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _settings = previous;
-        _settingsSaving = false;
-      });
-      PravaToast.show(
-        context,
-        message: 'Unable to update notification settings',
-        type: PravaToastType.error,
-      );
-    }
+    await _loadInitial();
   }
 
   void _onScroll() {
@@ -261,9 +207,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final border = isDark
         ? PravaColors.darkBorderSubtle
         : PravaColors.lightBorderSubtle;
-    final surface = isDark
-        ? PravaColors.darkBgSurface
-        : PravaColors.lightBgSurface;
 
     final items = _visibleItems;
 
@@ -309,51 +252,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
                             _UnreadPill(count: count, isDark: isDark),
                           ],
                         ],
-                      );
-                    },
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                  child: ValueListenableBuilder<int>(
-                    valueListenable: _center.unreadCount,
-                    builder: (_, count, __) {
-                      return _NotificationControlPanel(
-                        settings: _settings,
-                        unreadCount: count,
-                        saving: _settingsSaving,
-                        primary: primary,
-                        secondary: secondary,
-                        border: border,
-                        surface: surface,
-                        isDark: isDark,
-                        onPushChanged: (value) => _updateNotificationSettings(
-                          _settings.copyWith(pushNotifications: value),
-                        ),
-                        onPostsChanged: (value) => _updateNotificationSettings(
-                          _settings.copyWith(notifyPosts: value),
-                        ),
-                        onChatsChanged: (value) => _updateNotificationSettings(
-                          _settings.copyWith(notifyChats: value),
-                        ),
-                        onMentionsChanged: (value) =>
-                            _updateNotificationSettings(
-                              _settings.copyWith(notifyMentions: value),
-                            ),
-                        onFollowsChanged: (value) =>
-                            _updateNotificationSettings(
-                              _settings.copyWith(notifyFollows: value),
-                            ),
-                        onEmailChanged: (value) => _updateNotificationSettings(
-                          _settings.copyWith(emailNotifications: value),
-                        ),
-                        onSoundChanged: (value) => _updateNotificationSettings(
-                          _settings.copyWith(inAppSounds: value),
-                        ),
-                        onHapticsChanged: (value) =>
-                            _updateNotificationSettings(
-                              _settings.copyWith(inAppHaptics: value),
-                            ),
                       );
                     },
                   ),
@@ -457,330 +355,6 @@ class _MarkAllReadButton extends StatelessWidget {
                 size: 23,
                 color: PravaColors.accentPrimary,
               ),
-      ),
-    );
-  }
-}
-
-class _NotificationControlPanel extends StatelessWidget {
-  const _NotificationControlPanel({
-    required this.settings,
-    required this.unreadCount,
-    required this.saving,
-    required this.primary,
-    required this.secondary,
-    required this.border,
-    required this.surface,
-    required this.isDark,
-    required this.onPushChanged,
-    required this.onPostsChanged,
-    required this.onChatsChanged,
-    required this.onMentionsChanged,
-    required this.onFollowsChanged,
-    required this.onEmailChanged,
-    required this.onSoundChanged,
-    required this.onHapticsChanged,
-  });
-
-  final SettingsState settings;
-  final int unreadCount;
-  final bool saving;
-  final Color primary;
-  final Color secondary;
-  final Color border;
-  final Color surface;
-  final bool isDark;
-  final ValueChanged<bool> onPushChanged;
-  final ValueChanged<bool> onPostsChanged;
-  final ValueChanged<bool> onChatsChanged;
-  final ValueChanged<bool> onMentionsChanged;
-  final ValueChanged<bool> onFollowsChanged;
-  final ValueChanged<bool> onEmailChanged;
-  final ValueChanged<bool> onSoundChanged;
-  final ValueChanged<bool> onHapticsChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final inactive = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.black.withValues(alpha: 0.04);
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.tune_rounded,
-                color: PravaColors.accentPrimary,
-                size: 27,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Control panel',
-                      style: PravaTypography.body.copyWith(
-                        color: primary,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Choose what Prava alerts you about.',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: PravaTypography.caption.copyWith(color: secondary),
-                    ),
-                  ],
-                ),
-              ),
-              _NotificationCountPill(count: unreadCount, color: secondary),
-            ],
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final tileWidth = (constraints.maxWidth - 8) / 2;
-              return Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  SizedBox(
-                    width: tileWidth,
-                    child: _DeliveryToggle(
-                      icon: Icons.notifications_rounded,
-                      title: 'Push',
-                      subtitle: 'Device',
-                      value: settings.pushNotifications,
-                      enabled: !saving,
-                      primary: primary,
-                      secondary: secondary,
-                      border: border,
-                      fill: inactive,
-                      onChanged: onPushChanged,
-                    ),
-                  ),
-                  SizedBox(
-                    width: tileWidth,
-                    child: _DeliveryToggle(
-                      icon: Icons.dynamic_feed_rounded,
-                      title: 'Posts',
-                      subtitle: 'Likes, comments',
-                      value: settings.notifyPosts,
-                      enabled: !saving,
-                      primary: primary,
-                      secondary: secondary,
-                      border: border,
-                      fill: inactive,
-                      onChanged: onPostsChanged,
-                    ),
-                  ),
-                  SizedBox(
-                    width: tileWidth,
-                    child: _DeliveryToggle(
-                      icon: Icons.chat_bubble_rounded,
-                      title: 'Chats',
-                      subtitle: 'DMs, groups',
-                      value: settings.notifyChats,
-                      enabled: !saving,
-                      primary: primary,
-                      secondary: secondary,
-                      border: border,
-                      fill: inactive,
-                      onChanged: onChatsChanged,
-                    ),
-                  ),
-                  SizedBox(
-                    width: tileWidth,
-                    child: _DeliveryToggle(
-                      icon: Icons.alternate_email_rounded,
-                      title: 'Mentions',
-                      subtitle: 'Tags',
-                      value: settings.notifyMentions,
-                      enabled: !saving,
-                      primary: primary,
-                      secondary: secondary,
-                      border: border,
-                      fill: inactive,
-                      onChanged: onMentionsChanged,
-                    ),
-                  ),
-                  SizedBox(
-                    width: tileWidth,
-                    child: _DeliveryToggle(
-                      icon: Icons.person_add_alt_1_rounded,
-                      title: 'Follows',
-                      subtitle: 'Requests',
-                      value: settings.notifyFollows,
-                      enabled: !saving,
-                      primary: primary,
-                      secondary: secondary,
-                      border: border,
-                      fill: inactive,
-                      onChanged: onFollowsChanged,
-                    ),
-                  ),
-                  SizedBox(
-                    width: tileWidth,
-                    child: _DeliveryToggle(
-                      icon: Icons.email_rounded,
-                      title: 'Email',
-                      subtitle: 'Digest',
-                      value: settings.emailNotifications,
-                      enabled: !saving,
-                      primary: primary,
-                      secondary: secondary,
-                      border: border,
-                      fill: inactive,
-                      onChanged: onEmailChanged,
-                    ),
-                  ),
-                  SizedBox(
-                    width: tileWidth,
-                    child: _DeliveryToggle(
-                      icon: Icons.volume_up_rounded,
-                      title: 'Sound',
-                      subtitle: 'In-app',
-                      value: settings.inAppSounds,
-                      enabled: !saving,
-                      primary: primary,
-                      secondary: secondary,
-                      border: border,
-                      fill: inactive,
-                      onChanged: onSoundChanged,
-                    ),
-                  ),
-                  SizedBox(
-                    width: tileWidth,
-                    child: _DeliveryToggle(
-                      icon: Icons.vibration_rounded,
-                      title: 'Haptics',
-                      subtitle: 'Feedback',
-                      value: settings.inAppHaptics,
-                      enabled: !saving,
-                      primary: primary,
-                      secondary: secondary,
-                      border: border,
-                      fill: inactive,
-                      onChanged: onHapticsChanged,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NotificationCountPill extends StatelessWidget {
-  const _NotificationCountPill({required this.count, required this.color});
-
-  final int count;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        '$count unread',
-        style: PravaTypography.caption.copyWith(
-          color: color,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-}
-
-class _DeliveryToggle extends StatelessWidget {
-  const _DeliveryToggle({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.enabled,
-    required this.primary,
-    required this.secondary,
-    required this.border,
-    required this.fill,
-    required this.onChanged,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool value;
-  final bool enabled;
-  final Color primary;
-  final Color secondary;
-  final Color border;
-  final Color fill;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 68,
-      padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
-      decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: secondary, size: 23),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: PravaTypography.bodySmall.copyWith(
-                    color: primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: PravaTypography.caption.copyWith(color: secondary),
-                ),
-              ],
-            ),
-          ),
-          Transform.scale(
-            scale: 0.66,
-            child: CupertinoSwitch(
-              value: value,
-              onChanged: enabled ? onChanged : null,
-            ),
-          ),
-        ],
       ),
     );
   }

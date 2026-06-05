@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +19,8 @@ import '../../../../ui-system/feedback/toast_type.dart';
 import '../../../../ui-system/skeleton/profile_skeleton.dart';
 import '../../../../ui-system/typography.dart';
 import '../../../../navigation/prava_navigator.dart';
+import 'profile_content_pages.dart';
+import 'public_profile_page.dart';
 
 class ProfilePageController {
   VoidCallback? _openEditor;
@@ -95,7 +96,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _loadProfile() async {
     setState(() => _loading = true);
     try {
-      final profile = await _profileService.fetchMyProfile(limit: 24);
+      final profile = await _profileService.fetchMyProfile(limit: 50);
       if (!mounted) return;
       setState(() {
         _profile = profile;
@@ -147,6 +148,64 @@ class _ProfilePageState extends State<ProfilePage> {
     return value.toString();
   }
 
+  ProfilePostContentItem _contentItem(ProfileFeedPost post) {
+    return ProfilePostContentItem(
+      body: post.body,
+      createdAt: post.createdAt,
+      likeCount: post.likeCount,
+      commentCount: post.commentCount,
+      shareCount: post.shareCount,
+      mentions: post.mentions,
+      hashtags: post.hashtags,
+    );
+  }
+
+  void _openPostsPage({
+    required String title,
+    required List<ProfileFeedPost> posts,
+    required String emptyTitle,
+    required String emptySubtitle,
+  }) {
+    HapticFeedback.selectionClick();
+    Navigator.of(context, rootNavigator: true).push(
+      PravaNavigator.route(
+        ProfilePostListPage(
+          title: title,
+          posts: posts.map(_contentItem).toList(),
+          emptyTitle: emptyTitle,
+          emptySubtitle: emptySubtitle,
+        ),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
+  void _openConnections(String userId, ProfileConnectionKind kind) {
+    HapticFeedback.selectionClick();
+    Navigator.of(context, rootNavigator: true).push(
+      PravaNavigator.route(
+        ProfileConnectionsPage(
+          userId: userId,
+          kind: kind,
+          title: kind == ProfileConnectionKind.followers
+              ? 'Followers'
+              : 'Following',
+          onOpenProfile: (pageContext, item) {
+            PravaNavigator.push(
+              pageContext,
+              PublicProfilePage(
+                userId: item.user.id,
+                initialIsFollowing: item.isFollowing,
+                initialIsFollowedBy: item.isFollowedBy,
+              ),
+            );
+          },
+        ),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const ProfileSkeleton();
@@ -195,6 +254,17 @@ class _ProfilePageState extends State<ProfilePage> {
               primary: primary,
               secondary: secondary,
               border: border,
+              onPostsTap: () => _openPostsPage(
+                title: 'Posts',
+                posts: profile.posts,
+                emptyTitle: 'No posts yet',
+                emptySubtitle:
+                    'Text and emoji posts from your feed will show here.',
+              ),
+              onFollowersTap: () =>
+                  _openConnections(user.id, ProfileConnectionKind.followers),
+              onFollowingTap: () =>
+                  _openConnections(user.id, ProfileConnectionKind.following),
             ),
           ),
           SliverToBoxAdapter(
@@ -295,11 +365,13 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ] else if (_contentTab == _ProfileContentTab.mentions)
             SliverToBoxAdapter(
-              child: _ProfileMentionsList(
-                mentions: profile.mentions,
+              child: _ProfilePostsList(
+                posts: profile.mentionedPosts,
                 primary: primary,
                 secondary: secondary,
                 border: border,
+                emptyTitle: 'No mention posts yet',
+                emptySubtitle: 'Posts that mention you will show here.',
               ),
             )
           else
@@ -309,6 +381,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 primary: primary,
                 secondary: secondary,
                 border: border,
+                emptyTitle: 'No posts yet',
+                emptySubtitle:
+                    'Text and emoji posts from your feed will show here.',
               ),
             ),
         ],
@@ -343,6 +418,9 @@ class _ProfileHero extends StatelessWidget {
     required this.primary,
     required this.secondary,
     required this.border,
+    required this.onPostsTap,
+    required this.onFollowersTap,
+    required this.onFollowingTap,
   });
 
   final String displayName;
@@ -356,6 +434,9 @@ class _ProfileHero extends StatelessWidget {
   final Color primary;
   final Color secondary;
   final Color border;
+  final VoidCallback onPostsTap;
+  final VoidCallback onFollowersTap;
+  final VoidCallback onFollowingTap;
 
   @override
   Widget build(BuildContext context) {
@@ -419,16 +500,19 @@ class _ProfileHero extends StatelessWidget {
                           label: 'posts',
                           value: posts,
                           primary: primary,
+                          onTap: onPostsTap,
                         ),
                         _ProfileCount(
                           label: 'followers',
                           value: followers,
                           primary: primary,
+                          onTap: onFollowersTap,
                         ),
                         _ProfileCount(
                           label: 'following',
                           value: following,
                           primary: primary,
+                          onTap: onFollowingTap,
                         ),
                       ],
                     ),
@@ -548,94 +632,22 @@ class _ProfileTabButton extends StatelessWidget {
   }
 }
 
-class _ProfileMentionsList extends StatelessWidget {
-  const _ProfileMentionsList({
-    required this.mentions,
-    required this.primary,
-    required this.secondary,
-    required this.border,
-  });
-
-  final List<ProfileMentionSummary> mentions;
-  final Color primary;
-  final Color secondary;
-  final Color border;
-
-  @override
-  Widget build(BuildContext context) {
-    if (mentions.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(24, 42, 24, 28),
-        child: Column(
-          children: [
-            Icon(CupertinoIcons.at, size: 34, color: secondary),
-            const SizedBox(height: 12),
-            Text(
-              'No mentions yet',
-              style: PravaTypography.h3.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'People you mention in posts will show here.',
-              textAlign: TextAlign.center,
-              style: PravaTypography.body.copyWith(color: secondary),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: mentions.map((mention) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: border),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '@${mention.username}',
-                  style: PravaTypography.bodySmall.copyWith(
-                    color: primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${mention.postCount}',
-                  style: PravaTypography.caption.copyWith(color: secondary),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
 class _ProfilePostsList extends StatelessWidget {
   const _ProfilePostsList({
     required this.posts,
     required this.primary,
     required this.secondary,
     required this.border,
+    required this.emptyTitle,
+    required this.emptySubtitle,
   });
 
   final List<ProfileFeedPost> posts;
   final Color primary;
   final Color secondary;
   final Color border;
+  final String emptyTitle;
+  final String emptySubtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -647,7 +659,7 @@ class _ProfilePostsList extends StatelessWidget {
             Icon(CupertinoIcons.text_bubble, size: 34, color: secondary),
             const SizedBox(height: 12),
             Text(
-              'No posts yet',
+              emptyTitle,
               style: PravaTypography.h3.copyWith(
                 color: primary,
                 fontWeight: FontWeight.w800,
@@ -655,7 +667,7 @@ class _ProfilePostsList extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Text and emoji posts from your feed will show here.',
+              emptySubtitle,
               textAlign: TextAlign.center,
               style: PravaTypography.body.copyWith(color: secondary),
             ),
@@ -800,30 +812,38 @@ class _ProfileCount extends StatelessWidget {
     required this.label,
     required this.value,
     required this.primary,
+    required this.onTap,
   });
 
   final String label;
   final String value;
   final Color primary;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Text.rich(
-        TextSpan(
-          children: [
-            TextSpan(
-              text: value,
-              style: PravaTypography.body.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w800,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: value,
+                style: PravaTypography.body.copyWith(
+                  color: primary,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
-            TextSpan(
-              text: ' $label',
-              style: PravaTypography.body.copyWith(color: primary),
-            ),
-          ],
+              TextSpan(
+                text: ' $label',
+                style: PravaTypography.body.copyWith(color: primary),
+              ),
+            ],
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ),
     );
@@ -1073,9 +1093,6 @@ class _ProfileEditPageState extends State<_ProfileEditPage> {
     final secondary = isDark
         ? PravaColors.darkTextSecondary
         : PravaColors.lightTextSecondary;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
     final surface = isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
     final account = _account;
 
@@ -1939,8 +1956,9 @@ class _ProfileFieldEditPageState extends State<_ProfileFieldEditPage> {
 
   String _counterText() {
     if (widget.field.boolean) return '';
-    if (widget.field.phone)
+    if (widget.field.phone) {
       return _phoneController.text.trim().length.toString();
+    }
     return '${_controller.text.trim().length}/${widget.field.maxLength}';
   }
 }
@@ -2318,8 +2336,8 @@ class _AvatarCropPageState extends State<_AvatarCropPage> {
     final maxX = math.max(0, (baseW * scale - previewSize) / 2);
     final maxY = math.max(0, (baseH * scale - previewSize) / 2);
     return Offset(
-      (offset.dx.clamp(-maxX, maxX) as num).toDouble(),
-      (offset.dy.clamp(-maxY, maxY) as num).toDouble(),
+      offset.dx.clamp(-maxX, maxX).toDouble(),
+      offset.dy.clamp(-maxY, maxY).toDouble(),
     );
   }
 

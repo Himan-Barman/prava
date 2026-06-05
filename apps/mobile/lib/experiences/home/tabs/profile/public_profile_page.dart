@@ -2,6 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../navigation/prava_navigator.dart';
+import '../../../../services/chat_service.dart';
 import '../../../../services/profile_visibility.dart';
 import '../../../../services/public_profile_service.dart';
 import '../../../../ui-system/background.dart';
@@ -9,6 +11,9 @@ import '../../../../ui-system/colors.dart';
 import '../../../../ui-system/feedback/prava_toast.dart';
 import '../../../../ui-system/feedback/toast_type.dart';
 import '../../../../ui-system/typography.dart';
+import '../chats/chat_thread_page.dart';
+import '../chats/chats_page.dart';
+import 'profile_content_pages.dart';
 
 class PublicProfilePage extends StatefulWidget {
   const PublicProfilePage({
@@ -28,12 +33,16 @@ class PublicProfilePage extends StatefulWidget {
 
 class _PublicProfilePageState extends State<PublicProfilePage> {
   final PublicProfileService _profileService = PublicProfileService();
+  final ChatService _chatService = ChatService();
 
   PublicProfileSummary? _summary;
   bool _loading = true;
   bool _pendingFollow = false;
+  bool _openingChat = false;
   bool _following = false;
   bool _followedBy = false;
+  _PublicProfileContentTab _contentTab = _PublicProfileContentTab.all;
+  final Set<String> _collapsedSections = {};
 
   @override
   void initState() {
@@ -109,6 +118,55 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     }
   }
 
+  Future<void> _openChat() async {
+    final summary = _summary;
+    if (_openingChat || summary == null || summary.user.id.isEmpty) return;
+    HapticFeedback.selectionClick();
+    setState(() => _openingChat = true);
+    try {
+      final user = summary.user;
+      final conversationId = await _chatService.createDm(otherUserId: user.id);
+      if (!mounted) return;
+      if (conversationId == null || conversationId.isEmpty) {
+        throw Exception('Conversation not created');
+      }
+      await Navigator.of(context, rootNavigator: true).push(
+        PravaNavigator.route(
+          ChatThreadPage(
+            chat: ChatPreview(
+              id: conversationId,
+              name: _displayName(user),
+              lastMessage: 'No messages yet',
+              time: 'New',
+              unreadCount: 0,
+              isGroup: false,
+              isOnline: false,
+              isMuted: false,
+              isPinned: false,
+              isFavorite: false,
+              isStarred: false,
+              isTyping: false,
+              peerUserId: user.id,
+              avatarUrl: user.avatarUrl,
+              lastMessageFromMe: false,
+              delivery: MessageDeliveryState.read,
+            ),
+          ),
+          fullscreenDialog: true,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: 'Unable to open chat',
+        type: PravaToastType.error,
+      );
+    } finally {
+      if (mounted) setState(() => _openingChat = false);
+    }
+  }
+
   String _displayName(PublicProfileUser user) {
     return user.displayName.isNotEmpty ? user.displayName : user.username;
   }
@@ -117,19 +175,18 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     final parts = name.trim().split(RegExp(r'\s+'));
     if (parts.isEmpty || parts.first.isEmpty) return '?';
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts[0].substring(0, 1) + parts[1].substring(0, 1))
-        .toUpperCase();
+    return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
   }
 
   String _formatCount(int value) {
     if (value >= 1000000) {
-      final short =
-          (value / 1000000).toStringAsFixed(value % 1000000 == 0 ? 0 : 1);
+      final short = (value / 1000000).toStringAsFixed(
+        value % 1000000 == 0 ? 0 : 1,
+      );
       return '${short}M';
     }
     if (value >= 1000) {
-      final short =
-          (value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1);
+      final short = (value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1);
       return '${short}K';
     }
     return value.toString();
@@ -160,39 +217,100 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     return 'Public profile';
   }
 
-  List<_PublicStat> _stats(PublicProfileSummary summary) {
-    final visibility = summary.visibility;
-    String shown(String key, int value) {
-      return visibility.canSee(key) ? _formatCount(value) : '--';
-    }
+  String _shownStat(ProfileVisibility visibility, String key, int value) {
+    return visibility.canSee(key) ? _formatCount(value) : '--';
+  }
 
-    return [
-      _PublicStat(label: 'Posts', value: shown('posts', summary.stats.posts)),
-      _PublicStat(
-        label: 'Followers',
-        value: shown('followers', summary.stats.followers),
+  ProfilePostContentItem _contentItem(PublicProfilePost post) {
+    return ProfilePostContentItem(
+      body: post.body,
+      createdAt: post.createdAt,
+      likeCount: post.likeCount,
+      commentCount: post.commentCount,
+      shareCount: post.shareCount,
+      mentions: post.mentions,
+      hashtags: post.hashtags,
+    );
+  }
+
+  void _openPostsPage(PublicProfileSummary summary) {
+    final visible = summary.visibility.canSee('posts');
+    HapticFeedback.selectionClick();
+    Navigator.of(context, rootNavigator: true).push(
+      PravaNavigator.route(
+        ProfilePostListPage(
+          title: 'Posts',
+          posts: visible
+              ? summary.posts.map(_contentItem).toList()
+              : <ProfilePostContentItem>[],
+          emptyTitle: visible ? 'No public posts' : 'Posts are private',
+          emptySubtitle: visible
+              ? 'Public posts from this profile will appear here.'
+              : 'This profile owner limits who can see posts.',
+        ),
+        fullscreenDialog: true,
       ),
-      _PublicStat(
-        label: 'Following',
-        value: shown('following', summary.stats.following),
+    );
+  }
+
+  void _openConnections(
+    PublicProfileSummary summary,
+    ProfileConnectionKind kind,
+  ) {
+    HapticFeedback.selectionClick();
+    Navigator.of(context, rootNavigator: true).push(
+      PravaNavigator.route(
+        ProfileConnectionsPage(
+          userId: summary.user.id,
+          kind: kind,
+          title: kind == ProfileConnectionKind.followers
+              ? 'Followers'
+              : 'Following',
+          onOpenProfile: (pageContext, item) {
+            PravaNavigator.push(
+              pageContext,
+              PublicProfilePage(
+                userId: item.user.id,
+                initialIsFollowing: item.isFollowing,
+                initialIsFollowedBy: item.isFollowedBy,
+              ),
+            );
+          },
+        ),
+        fullscreenDialog: true,
       ),
-      _PublicStat(label: 'Likes', value: shown('likes', summary.stats.likes)),
-    ];
+    );
+  }
+
+  void _setTab(_PublicProfileContentTab value) {
+    if (_contentTab == value) return;
+    HapticFeedback.selectionClick();
+    setState(() => _contentTab = value);
+  }
+
+  void _toggleSection(String key) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_collapsedSections.contains(key)) {
+        _collapsedSections.remove(key);
+      } else {
+        _collapsedSections.add(key);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final elevated =
-        isDark ? PravaColors.darkBgElevated : PravaColors.lightBgElevated;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
 
     return Scaffold(
       body: Stack(
@@ -202,8 +320,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
             child: _buildBody(
               primary: primary,
               secondary: secondary,
-              surface: surface,
-              elevated: elevated,
               border: border,
             ),
           ),
@@ -215,8 +331,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
   Widget _buildBody({
     required Color primary,
     required Color secondary,
-    required Color surface,
-    required Color elevated,
     required Color border,
   }) {
     final summary = _summary;
@@ -237,6 +351,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     final displayName = _displayName(user);
     final visibility = summary.visibility;
     final postsHidden = !visibility.canSee('posts');
+    final titleUsername = user.username.isEmpty
+        ? displayName
+        : '@${user.username}';
 
     return RefreshIndicator(
       color: PravaColors.accentPrimary,
@@ -248,123 +365,192 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: _TopBar(
-                primary: primary,
-                border: border,
-                onBack: () => Navigator.of(context).pop(),
-              ),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              child: _TopBar(title: titleUsername, primary: primary),
             ),
           ),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: _PublicHeaderCard(
-                displayName: displayName,
-                username: user.username,
-                initials: _initials(displayName),
-                verified: user.isVerified,
-                relationship: _relationshipLabel(),
-                bio: user.bio,
-                bioVisible: visibility.canSee('bio'),
-                following: _following,
-                followedBy: _followedBy,
-                pendingFollow: _pendingFollow,
-                primary: primary,
-                secondary: secondary,
-                surface: elevated,
-                border: border,
-                onFollow: _toggleFollow,
+            child: _PublicProfileHero(
+              displayName: displayName,
+              initials: _initials(displayName),
+              avatarUrl: user.avatarUrl,
+              verified: user.isVerified,
+              relationship: _relationshipLabel(),
+              bio: user.bio,
+              bioVisible: visibility.canSee('bio'),
+              posts: _shownStat(visibility, 'posts', summary.stats.posts),
+              followers: _shownStat(
+                visibility,
+                'followers',
+                summary.stats.followers,
               ),
+              following: _shownStat(
+                visibility,
+                'following',
+                summary.stats.following,
+              ),
+              isFriend: _following && _followedBy,
+              followingUser: _following,
+              followedByUser: _followedBy,
+              pendingFollow: _pendingFollow,
+              openingChat: _openingChat,
+              primary: primary,
+              secondary: secondary,
+              border: border,
+              onFollow: _toggleFollow,
+              onMessage: _openChat,
+              onPostsTap: () => _openPostsPage(summary),
+              onFollowersTap: () =>
+                  _openConnections(summary, ProfileConnectionKind.followers),
+              onFollowingTap: () =>
+                  _openConnections(summary, ProfileConnectionKind.following),
             ),
           ),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: _PublicStatsCard(
-                stats: _stats(summary),
-                primary: primary,
-                secondary: secondary,
-                surface: surface,
-                border: border,
-              ),
+            child: _PublicProfileTabBar(
+              value: _contentTab,
+              primary: primary,
+              secondary: secondary,
+              border: border,
+              onChanged: _setTab,
             ),
           ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: _PublicAboutCard(
-                location: user.location,
-                website: user.website,
-                joined: _formatJoined(user.createdAt),
-                visibility: visibility,
-                primary: primary,
-                secondary: secondary,
-                surface: surface,
-                border: border,
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-              child: Text(
-                'Posts',
-                style: PravaTypography.h3.copyWith(
-                  color: primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-          if (postsHidden)
+          if (_contentTab == _PublicProfileContentTab.all) ...[
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                child: _LockedState(
-                  title: 'Posts are private',
-                  subtitle: 'This profile owner limits who can see posts.',
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                child: _PublicProfileSection(
+                  title: 'Category',
                   primary: primary,
-                  secondary: secondary,
-                  surface: surface,
-                  border: border,
+                  collapsed: _collapsedSections.contains('category'),
+                  onToggle: () => _toggleSection('category'),
+                  children: [
+                    _PublicInfoRow(
+                      icon: Icons.category_rounded,
+                      title: user.category.trim().isEmpty
+                          ? 'Creator'
+                          : user.category.trim(),
+                      value: '',
+                      primary: primary,
+                      secondary: secondary,
+                    ),
+                    _PublicInfoRow(
+                      icon: CupertinoIcons.sparkles,
+                      title: 'AI creator',
+                      value: user.aiCreator ? 'Yes' : 'No',
+                      primary: primary,
+                      secondary: secondary,
+                    ),
+                  ],
                 ),
               ),
-            )
-          else if (summary.posts.isEmpty)
+            ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                child: _LockedState(
-                  title: 'No public posts',
-                  subtitle: 'Public posts from this profile will appear here.',
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                child: _PublicProfileSection(
+                  title: 'Personal details',
                   primary: primary,
-                  secondary: secondary,
-                  surface: surface,
-                  border: border,
-                  locked: false,
+                  collapsed: _collapsedSections.contains('personal'),
+                  onToggle: () => _toggleSection('personal'),
+                  children: [
+                    if (visibility.canSee('location'))
+                      _PublicInfoRow(
+                        icon: CupertinoIcons.location,
+                        title: user.location.trim().isEmpty
+                            ? 'Location'
+                            : user.location.trim(),
+                        value: user.location.trim().isEmpty ? '-' : '',
+                        primary: primary,
+                        secondary: secondary,
+                      )
+                    else
+                      _HiddenInfoRow(
+                        label: ProfileVisibility.fieldLabel('location'),
+                        primary: primary,
+                        secondary: secondary,
+                      ),
+                    if (visibility.canSee('location'))
+                      _PublicInfoRow(
+                        icon: CupertinoIcons.house,
+                        title: user.hometown.trim().isEmpty
+                            ? 'Hometown'
+                            : user.hometown.trim(),
+                        value: user.hometown.trim().isEmpty ? '-' : '',
+                        primary: primary,
+                        secondary: secondary,
+                      ),
+                    if (visibility.canSee('joined'))
+                      _PublicInfoRow(
+                        icon: CupertinoIcons.calendar,
+                        title: _formatJoined(user.createdAt).isEmpty
+                            ? 'Joined'
+                            : _formatJoined(user.createdAt),
+                        value: _formatJoined(user.createdAt).isEmpty ? '-' : '',
+                        primary: primary,
+                        secondary: secondary,
+                      )
+                    else
+                      _HiddenInfoRow(
+                        label: ProfileVisibility.fieldLabel('joined'),
+                        primary: primary,
+                        secondary: secondary,
+                      ),
+                  ],
                 ),
               ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              sliver: SliverList.builder(
-                itemCount: summary.posts.length * 2 - 1,
-                itemBuilder: (context, index) {
-                  if (index.isOdd) return const SizedBox(height: 12);
-                  final post = summary.posts[index ~/ 2];
-                  return _PublicPostCard(
-                    post: post,
-                    timestamp: _formatRelativeTime(post.createdAt),
-                    primary: primary,
-                    secondary: secondary,
-                    surface: elevated,
-                    border: border,
-                    formatCount: _formatCount,
-                  );
-                },
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                child: _PublicProfileSection(
+                  title: 'Links',
+                  primary: primary,
+                  collapsed: _collapsedSections.contains('links'),
+                  onToggle: () => _toggleSection('links'),
+                  children: [
+                    if (visibility.canSee('website'))
+                      _PublicInfoRow(
+                        icon: CupertinoIcons.link,
+                        title: user.website.trim().isEmpty
+                            ? 'Website'
+                            : user.website.trim(),
+                        value: user.website.trim().isEmpty ? '-' : '',
+                        primary: primary,
+                        secondary: secondary,
+                      )
+                    else
+                      _HiddenInfoRow(
+                        label: ProfileVisibility.fieldLabel('website'),
+                        primary: primary,
+                        secondary: secondary,
+                      ),
+                  ],
+                ),
               ),
+            ),
+          ] else
+            SliverToBoxAdapter(
+              child: postsHidden
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 34, 20, 28),
+                      child: _LockedState(
+                        title: 'Posts are private',
+                        subtitle:
+                            'This profile owner limits who can see posts.',
+                        primary: primary,
+                        secondary: secondary,
+                        border: border,
+                      ),
+                    )
+                  : _PublicPostsList(
+                      posts: summary.posts,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                      formatCount: _formatCount,
+                      formatTime: _formatRelativeTime,
+                    ),
             ),
         ],
       ),
@@ -372,101 +558,100 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
   }
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.primary,
-    required this.border,
-    required this.onBack,
-  });
+enum _PublicProfileContentTab { all, posts }
 
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.title, required this.primary});
+
+  final String title;
   final Color primary;
-  final Color border;
-  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        GestureDetector(
-          onTap: onBack,
-          child: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white10
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: border),
-            ),
-            child: Icon(CupertinoIcons.back, color: primary, size: 20),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          'Profile',
-          style: PravaTypography.h3.copyWith(
-            color: primary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
+    return Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: PravaTypography.h3.copyWith(
+        color: primary,
+        letterSpacing: 0,
+        fontWeight: FontWeight.w800,
+      ),
     );
   }
 }
 
-class _PublicHeaderCard extends StatelessWidget {
-  const _PublicHeaderCard({
+class _PublicProfileHero extends StatelessWidget {
+  const _PublicProfileHero({
     required this.displayName,
-    required this.username,
     required this.initials,
+    required this.avatarUrl,
     required this.verified,
     required this.relationship,
     required this.bio,
     required this.bioVisible,
+    required this.posts,
+    required this.followers,
     required this.following,
-    required this.followedBy,
+    required this.isFriend,
+    required this.followingUser,
+    required this.followedByUser,
     required this.pendingFollow,
+    required this.openingChat,
     required this.primary,
     required this.secondary,
-    required this.surface,
     required this.border,
     required this.onFollow,
+    required this.onMessage,
+    required this.onPostsTap,
+    required this.onFollowersTap,
+    required this.onFollowingTap,
   });
 
   final String displayName;
-  final String username;
   final String initials;
+  final String avatarUrl;
   final bool verified;
   final String relationship;
   final String bio;
   final bool bioVisible;
-  final bool following;
-  final bool followedBy;
+  final String posts;
+  final String followers;
+  final String following;
+  final bool isFriend;
+  final bool followingUser;
+  final bool followedByUser;
   final bool pendingFollow;
+  final bool openingChat;
   final Color primary;
   final Color secondary;
-  final Color surface;
   final Color border;
   final VoidCallback onFollow;
+  final VoidCallback onMessage;
+  final VoidCallback onPostsTap;
+  final VoidCallback onFollowersTap;
+  final VoidCallback onFollowingTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: border),
-      ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _Avatar(initials: initials),
-              const SizedBox(width: 14),
+              _PublicProfileAvatar(
+                initials: initials,
+                url: avatarUrl,
+                size: 92,
+                borderColor: surface,
+              ),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -480,7 +665,8 @@ class _PublicHeaderCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: PravaTypography.h2.copyWith(
                               color: primary,
-                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
@@ -489,47 +675,68 @@ class _PublicHeaderCard extends StatelessWidget {
                           const Icon(
                             CupertinoIcons.check_mark_circled_solid,
                             color: PravaColors.accentPrimary,
-                            size: 18,
+                            size: 17,
                           ),
                         ],
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '@$username',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: PravaTypography.bodySmall.copyWith(
-                        color: secondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
                     const SizedBox(height: 8),
                     _RelationshipPill(label: relationship, color: secondary),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _PublicProfileCount(
+                          label: 'posts',
+                          value: posts,
+                          primary: primary,
+                          onTap: onPostsTap,
+                        ),
+                        _PublicProfileCount(
+                          label: 'followers',
+                          value: followers,
+                          primary: primary,
+                          onTap: onFollowersTap,
+                        ),
+                        _PublicProfileCount(
+                          label: 'following',
+                          value: following,
+                          primary: primary,
+                          onTap: onFollowingTap,
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          if (!bioVisible)
-            _HiddenLine(label: 'Bio hidden by privacy', secondary: secondary)
-          else if (bio.trim().isNotEmpty)
-            Text(
-              bio.trim(),
-              style: PravaTypography.body.copyWith(color: primary),
-            )
-          else
-            Text(
-              'No public bio.',
-              style: PravaTypography.bodySmall.copyWith(color: secondary),
-            ),
-          const SizedBox(height: 16),
-          _FollowButton(
-            following: following,
-            followedBy: followedBy,
-            pending: pendingFollow,
-            onTap: onFollow,
+          if (!bioVisible || bio.trim().isNotEmpty) ...[
+            const SizedBox(height: 14),
+            if (!bioVisible)
+              _InlinePrivateLine(
+                label: 'Bio hidden by privacy',
+                color: secondary,
+              )
+            else
+              Text(
+                bio.trim(),
+                style: PravaTypography.body.copyWith(
+                  color: primary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+          ],
+          const SizedBox(height: 18),
+          _RelationActions(
+            isFriend: isFriend,
+            following: followingUser,
+            followedBy: followedByUser,
+            pendingFollow: pendingFollow,
+            openingChat: openingChat,
+            border: border,
+            primary: primary,
+            onFollow: onFollow,
+            onMessage: onMessage,
           ),
         ],
       ),
@@ -537,67 +744,211 @@ class _PublicHeaderCard extends StatelessWidget {
   }
 }
 
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.initials});
+class _PublicProfileTabBar extends StatelessWidget {
+  const _PublicProfileTabBar({
+    required this.value,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.onChanged,
+  });
 
-  final String initials;
+  final _PublicProfileContentTab value;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final ValueChanged<_PublicProfileContentTab> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 32,
-      backgroundColor: PravaColors.accentPrimary.withValues(alpha: 0.14),
-      child: Text(
-        initials,
-        style: PravaTypography.h3.copyWith(
-          color: PravaColors.accentPrimary,
-          fontWeight: FontWeight.w700,
-        ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 6, 18, 8),
+      child: Row(
+        children: [
+          _PublicProfileTabButton(
+            label: 'All',
+            selected: value == _PublicProfileContentTab.all,
+            primary: primary,
+            secondary: secondary,
+            border: border,
+            onTap: () => onChanged(_PublicProfileContentTab.all),
+          ),
+          const SizedBox(width: 10),
+          _PublicProfileTabButton(
+            label: 'Posts',
+            selected: value == _PublicProfileContentTab.posts,
+            primary: primary,
+            secondary: secondary,
+            border: border,
+            onTap: () => onChanged(_PublicProfileContentTab.posts),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _FollowButton extends StatelessWidget {
-  const _FollowButton({
-    required this.following,
-    required this.followedBy,
-    required this.pending,
+class _PublicProfileTabButton extends StatelessWidget {
+  const _PublicProfileTabButton({
+    required this.label,
+    required this.selected,
+    required this.primary,
+    required this.secondary,
+    required this.border,
     required this.onTap,
   });
 
-  final bool following;
-  final bool followedBy;
-  final bool pending;
+  final String label;
+  final bool selected;
+  final Color primary;
+  final Color secondary;
+  final Color border;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final isFriend = following && followedBy;
-    final label = isFriend
-        ? 'Friends'
-        : (following ? 'Following' : (followedBy ? 'Follow back' : 'Follow'));
-    final isActive = !following;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: 40,
+          decoration: BoxDecoration(
+            color: selected
+                ? PravaColors.accentPrimary.withValues(alpha: 0.16)
+                : Colors.transparent,
+            border: Border.all(
+              color: selected ? PravaColors.accentPrimary : border,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: PravaTypography.button.copyWith(
+                color: selected ? PravaColors.accentPrimary : secondary,
+                letterSpacing: 0,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
+class _RelationActions extends StatelessWidget {
+  const _RelationActions({
+    required this.isFriend,
+    required this.following,
+    required this.followedBy,
+    required this.pendingFollow,
+    required this.openingChat,
+    required this.border,
+    required this.primary,
+    required this.onFollow,
+    required this.onMessage,
+  });
+
+  final bool isFriend;
+  final bool following;
+  final bool followedBy;
+  final bool pendingFollow;
+  final bool openingChat;
+  final Color border;
+  final Color primary;
+  final VoidCallback onFollow;
+  final VoidCallback onMessage;
+
+  String get _followLabel {
+    if (isFriend) return 'Friends';
+    if (following) return 'Following';
+    if (followedBy) return 'Follow back';
+    return 'Follow';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isFriend) {
+      return Row(
+        children: [
+          Expanded(
+            child: _PublicActionButton(
+              label: 'Message',
+              filled: true,
+              loading: openingChat,
+              onTap: openingChat ? null : onMessage,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _PublicActionButton(
+              label: _followLabel,
+              filled: false,
+              loading: pendingFollow,
+              border: border,
+              primary: primary,
+              onTap: pendingFollow ? null : onFollow,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return _PublicActionButton(
+      label: _followLabel,
+      filled: !following,
+      loading: pendingFollow,
+      border: border,
+      primary: primary,
+      onTap: pendingFollow ? null : onFollow,
+    );
+  }
+}
+
+class _PublicActionButton extends StatelessWidget {
+  const _PublicActionButton({
+    required this.label,
+    required this.filled,
+    required this.loading,
+    required this.onTap,
+    this.border,
+    this.primary,
+  });
+
+  final String label;
+  final bool filled;
+  final bool loading;
+  final VoidCallback? onTap;
+  final Color? border;
+  final Color? primary;
+
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: pending ? null : onTap,
+      onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        height: 48,
+        height: 44,
         decoration: BoxDecoration(
-          color: isActive
-              ? PravaColors.accentPrimary
-              : PravaColors.accentPrimary.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(16),
+          color: filled ? PravaColors.accentPrimary : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+          border: filled ? null : Border.all(color: border ?? Colors.white24),
         ),
         child: Center(
-          child: pending
-              ? const CupertinoActivityIndicator(radius: 9)
+          child: loading
+              ? CupertinoActivityIndicator(
+                  radius: 9,
+                  color: filled ? Colors.white : PravaColors.accentPrimary,
+                )
               : Text(
                   label,
                   style: PravaTypography.button.copyWith(
-                    color: isActive ? Colors.white : PravaColors.accentPrimary,
-                    fontWeight: FontWeight.w700,
+                    color: filled
+                        ? Colors.white
+                        : (primary ?? PravaColors.accentPrimary),
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
         ),
@@ -606,156 +957,303 @@ class _FollowButton extends StatelessWidget {
   }
 }
 
-class _PublicStatsCard extends StatelessWidget {
-  const _PublicStatsCard({
-    required this.stats,
-    required this.primary,
-    required this.secondary,
-    required this.surface,
-    required this.border,
+class _PublicProfileAvatar extends StatelessWidget {
+  const _PublicProfileAvatar({
+    required this.initials,
+    required this.url,
+    required this.size,
+    required this.borderColor,
   });
 
-  final List<_PublicStat> stats;
-  final Color primary;
-  final Color secondary;
-  final Color surface;
-  final Color border;
+  final String initials;
+  final String url;
+  final double size;
+  final Color borderColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      width: size,
+      height: size,
       decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
+        shape: BoxShape.circle,
+        border: Border.all(color: borderColor, width: 4),
       ),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: stats.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 2.7,
+      child: ClipOval(
+        child: url.trim().isEmpty
+            ? Container(
+                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                child: Center(
+                  child: Text(
+                    initials,
+                    style: PravaTypography.h2.copyWith(
+                      color: PravaColors.accentPrimary,
+                      letterSpacing: 0,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              )
+            : Image.network(url, fit: BoxFit.cover),
+      ),
+    );
+  }
+}
+
+class _PublicProfileCount extends StatelessWidget {
+  const _PublicProfileCount({
+    required this.label,
+    required this.value,
+    required this.primary,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final Color primary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: value,
+                style: PravaTypography.body.copyWith(
+                  color: primary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              TextSpan(
+                text: ' $label',
+                style: PravaTypography.body.copyWith(color: primary),
+              ),
+            ],
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
-        itemBuilder: (context, index) {
-          final stat = stats[index];
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white10
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-            ),
+      ),
+    );
+  }
+}
+
+class _PublicProfileSection extends StatelessWidget {
+  const _PublicProfileSection({
+    required this.title,
+    required this.children,
+    required this.primary,
+    required this.collapsed,
+    required this.onToggle,
+  });
+
+  final String title;
+  final List<Widget> children;
+  final Color primary;
+  final bool collapsed;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
-                    stat.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PravaTypography.caption.copyWith(color: secondary),
+                    title,
+                    style: PravaTypography.h3.copyWith(
+                      color: primary,
+                      letterSpacing: 0,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  stat.value,
-                  style: PravaTypography.h3.copyWith(
+                AnimatedRotation(
+                  turns: collapsed ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: Icon(
+                    CupertinoIcons.chevron_up,
                     color: primary,
-                    fontWeight: FontWeight.w700,
+                    size: 20,
                   ),
                 ),
               ],
             ),
-          );
-        },
-      ),
+          ),
+        ),
+        AnimatedCrossFade(
+          firstChild: Column(children: children),
+          secondChild: const SizedBox.shrink(),
+          crossFadeState: collapsed
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 180),
+        ),
+      ],
     );
   }
 }
 
-class _PublicAboutCard extends StatelessWidget {
-  const _PublicAboutCard({
-    required this.location,
-    required this.website,
-    required this.joined,
-    required this.visibility,
+class _PublicInfoRow extends StatelessWidget {
+  const _PublicInfoRow({
+    required this.icon,
+    required this.title,
+    required this.value,
     required this.primary,
     required this.secondary,
-    required this.surface,
-    required this.border,
   });
 
-  final String location;
-  final String website;
-  final String joined;
-  final ProfileVisibility visibility;
+  final IconData icon;
+  final String title;
+  final String value;
   final Color primary;
   final Color secondary;
-  final Color surface;
-  final Color border;
 
   @override
   Widget build(BuildContext context) {
-    final rows = <Widget>[];
-
-    void addVisible(String key, IconData icon, String label) {
-      if (!visibility.canSee(key)) {
-        rows.add(_HiddenDetail(label: ProfileVisibility.fieldLabel(key), secondary: secondary));
-        rows.add(const SizedBox(height: 10));
-        return;
-      }
-      if (label.trim().isEmpty) return;
-      rows.add(_DetailRow(icon: icon, label: label, primary: primary, secondary: secondary));
-      rows.add(const SizedBox(height: 10));
-    }
-
-    addVisible('location', CupertinoIcons.location_solid, location);
-    addVisible('website', CupertinoIcons.link, website);
-    addVisible('joined', CupertinoIcons.calendar, joined);
-    if (rows.isNotEmpty) rows.removeLast();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
-      child: Column(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Public Details',
-            style: PravaTypography.h3.copyWith(
-              color: primary,
-              fontWeight: FontWeight.w700,
+          SizedBox(width: 38, child: Icon(icon, size: 24, color: primary)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.bodyLarge.copyWith(
+                    color: primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (value.trim().isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: PravaTypography.body.copyWith(color: secondary),
+                  ),
+                ],
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          if (rows.isEmpty)
-            Text(
-              'No public details.',
-              style: PravaTypography.bodySmall.copyWith(color: secondary),
-            )
-          else
-            ...rows,
         ],
       ),
     );
   }
 }
 
-class _PublicPostCard extends StatelessWidget {
-  const _PublicPostCard({
+class _HiddenInfoRow extends StatelessWidget {
+  const _HiddenInfoRow({
+    required this.label,
+    required this.primary,
+    required this.secondary,
+  });
+
+  final String label;
+  final Color primary;
+  final Color secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PublicInfoRow(
+      icon: CupertinoIcons.lock_fill,
+      title: label,
+      value: 'Hidden by privacy',
+      primary: primary,
+      secondary: secondary,
+    );
+  }
+}
+
+class _PublicPostsList extends StatelessWidget {
+  const _PublicPostsList({
+    required this.posts,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.formatCount,
+    required this.formatTime,
+  });
+
+  final List<PublicProfilePost> posts;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final String Function(int) formatCount;
+  final String Function(DateTime) formatTime;
+
+  @override
+  Widget build(BuildContext context) {
+    if (posts.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(24, 42, 24, 28),
+        child: Column(
+          children: [
+            Icon(CupertinoIcons.text_bubble, size: 34, color: secondary),
+            const SizedBox(height: 12),
+            Text(
+              'No public posts',
+              style: PravaTypography.h3.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Public posts from this profile will appear here.',
+              textAlign: TextAlign.center,
+              style: PravaTypography.body.copyWith(color: secondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      child: Column(
+        children: posts
+            .map(
+              (post) => _PublicPostRow(
+                post: post,
+                timestamp: formatTime(post.createdAt),
+                primary: primary,
+                secondary: secondary,
+                border: border,
+                formatCount: formatCount,
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _PublicPostRow extends StatelessWidget {
+  const _PublicPostRow({
     required this.post,
     required this.timestamp,
     required this.primary,
     required this.secondary,
-    required this.surface,
     required this.border,
     required this.formatCount,
   });
@@ -764,88 +1262,54 @@ class _PublicPostCard extends StatelessWidget {
   final String timestamp;
   final Color primary;
   final Color secondary;
-  final Color surface;
   final Color border;
   final String Function(int) formatCount;
 
   @override
   Widget build(BuildContext context) {
+    final body = post.body.trim().isEmpty ? 'Text post' : post.body.trim();
     final tags = <String>[
       ...post.hashtags.map((tag) => tag.startsWith('#') ? tag : '#$tag'),
       ...post.mentions.map((tag) => tag.startsWith('@') ? tag : '@$tag'),
     ];
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
+        border: Border(bottom: BorderSide(color: border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            timestamp,
-            style: PravaTypography.caption.copyWith(color: secondary),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            post.body,
-            style: PravaTypography.body.copyWith(
+            body,
+            style: PravaTypography.bodyLarge.copyWith(
               color: primary,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w500,
             ),
           ),
           if (tags.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: tags
-                  .take(6)
-                  .map(
-                    (tag) => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: PravaColors.accentPrimary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        tag,
-                        style: PravaTypography.caption.copyWith(
-                          color: PravaColors.accentPrimary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(),
+              children: tags.take(6).map((tag) {
+                return Text(
+                  tag,
+                  style: PravaTypography.caption.copyWith(
+                    color: PravaColors.accentPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                );
+              }).toList(),
             ),
           ],
-          const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _PostMetric(
-                icon: CupertinoIcons.heart,
-                label: formatCount(post.likeCount),
-                color: secondary,
-              ),
-              _PostMetric(
-                icon: CupertinoIcons.chat_bubble,
-                label: formatCount(post.commentCount),
-                color: secondary,
-              ),
-              _PostMetric(
-                icon: CupertinoIcons.arrowshape_turn_up_right,
-                label: formatCount(post.shareCount),
-                color: secondary,
-              ),
-            ],
+          const SizedBox(height: 8),
+          Text(
+            '$timestamp - ${formatCount(post.likeCount)} likes - '
+            '${formatCount(post.commentCount)} comments',
+            style: PravaTypography.bodySmall.copyWith(color: secondary),
           ),
         ],
       ),
@@ -859,52 +1323,43 @@ class _LockedState extends StatelessWidget {
     required this.subtitle,
     required this.primary,
     required this.secondary,
-    required this.surface,
     required this.border,
-    this.locked = true,
   });
 
   final String title;
   final String subtitle;
   final Color primary;
   final Color secondary;
-  final Color surface;
   final Color border;
-  final bool locked;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 18),
       decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
+        border: Border(bottom: BorderSide(color: border)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            locked ? CupertinoIcons.lock_fill : CupertinoIcons.doc_text,
-            size: 18,
-            color: secondary,
-          ),
-          const SizedBox(width: 10),
+          Icon(CupertinoIcons.lock_fill, size: 20, color: secondary),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: PravaTypography.body.copyWith(
+                  style: PravaTypography.bodyLarge.copyWith(
                     color: primary,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: PravaTypography.bodySmall.copyWith(color: secondary),
+                  style: PravaTypography.body.copyWith(color: secondary),
                 ),
               ],
             ),
@@ -915,89 +1370,8 @@ class _LockedState extends StatelessWidget {
   }
 }
 
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.primary,
-    required this.secondary,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color primary;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: secondary),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
-            overflow: TextOverflow.ellipsis,
-            style: PravaTypography.bodySmall.copyWith(
-              color: primary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _HiddenDetail extends StatelessWidget {
-  const _HiddenDetail({
-    required this.label,
-    required this.secondary,
-  });
-
-  final String label;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    return _HiddenLine(label: '$label hidden by privacy', secondary: secondary);
-  }
-}
-
-class _HiddenLine extends StatelessWidget {
-  const _HiddenLine({
-    required this.label,
-    required this.secondary,
-  });
-
-  final String label;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(CupertinoIcons.lock_fill, size: 14, color: secondary),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: PravaTypography.bodySmall.copyWith(color: secondary),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _RelationshipPill extends StatelessWidget {
-  const _RelationshipPill({
-    required this.label,
-    required this.color,
-  });
+  const _RelationshipPill({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -1021,14 +1395,9 @@ class _RelationshipPill extends StatelessWidget {
   }
 }
 
-class _PostMetric extends StatelessWidget {
-  const _PostMetric({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
+class _InlinePrivateLine extends StatelessWidget {
+  const _InlinePrivateLine({required this.label, required this.color});
 
-  final IconData icon;
   final String label;
   final Color color;
 
@@ -1036,13 +1405,14 @@ class _PostMetric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: PravaTypography.caption.copyWith(
-            color: color,
-            fontWeight: FontWeight.w600,
+        Icon(CupertinoIcons.lock_fill, size: 14, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: PravaTypography.bodySmall.copyWith(color: color),
           ),
         ),
       ],
@@ -1070,37 +1440,66 @@ class _PublicProfileError extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          Icon(
+            CupertinoIcons.person_crop_circle_badge_exclam,
+            size: 42,
+            color: secondary,
+          ),
+          const SizedBox(height: 14),
           Text(
             'Profile unavailable',
             style: PravaTypography.h3.copyWith(
               color: primary,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             'This profile could not be loaded right now.',
             textAlign: TextAlign.center,
-            style: PravaTypography.bodySmall.copyWith(color: secondary),
+            style: PravaTypography.body.copyWith(color: secondary),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
-                child: CupertinoButton(
-                  color: PravaColors.accentPrimary,
-                  onPressed: onRetry,
-                  child: const Text('Retry'),
+                child: GestureDetector(
+                  onTap: onRetry,
+                  child: Container(
+                    height: 48,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: PravaColors.accentPrimary,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      'Retry',
+                      style: PravaTypography.button.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: CupertinoButton(
-                  color: secondary.withValues(alpha: 0.18),
-                  onPressed: onBack,
-                  child: Text(
-                    'Back',
-                    style: PravaTypography.button.copyWith(color: primary),
+                child: GestureDetector(
+                  onTap: onBack,
+                  child: Container(
+                    height: 48,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: secondary.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      'Back',
+                      style: PravaTypography.button.copyWith(
+                        color: primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1110,11 +1509,4 @@ class _PublicProfileError extends StatelessWidget {
       ),
     );
   }
-}
-
-class _PublicStat {
-  const _PublicStat({required this.label, required this.value});
-
-  final String label;
-  final String value;
 }

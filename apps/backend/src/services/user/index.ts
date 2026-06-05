@@ -371,6 +371,20 @@ async function buildProfileMentions(userId: string, limit: number) {
     .slice(0, limit);
 }
 
+async function buildMentionedPosts(username: string, limit: number) {
+  const normalized = normalizeUsername(username);
+  if (!normalized) return [];
+
+  return queryMany(
+    `SELECT *
+     FROM posts
+     WHERE mentions ? $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [normalized, limit]
+  );
+}
+
 function mapConnectionItem(user: any, rel: any) {
   return {
     id: user.user_id,
@@ -461,7 +475,7 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
   const visible = visibility.visible as Record<string, boolean>;
   const details = user.details || {};
 
-  const [stats, posts, tags, mentions] = await Promise.all([
+  const [stats, posts, tags, mentions, mentionedPosts] = await Promise.all([
     buildStats(targetUserId),
     visible.posts
       ? queryMany(
@@ -475,6 +489,7 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
       : Promise.resolve([]),
     visible.posts ? buildProfileTags(targetUserId, limit) : Promise.resolve([]),
     visible.posts ? buildProfileMentions(targetUserId, limit) : Promise.resolve([]),
+    isSelf ? buildMentionedPosts(user.username, limit) : Promise.resolve([]),
   ]);
 
   const summary = {
@@ -505,6 +520,7 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
     posts: posts.map(mapProfilePost),
     tags: tags.map(mapProfileTag),
     mentions: mentions.map(mapProfileMention),
+    mentionedPosts: mentionedPosts.map(mapProfilePost),
     visibility,
     relationship,
   };
@@ -1193,6 +1209,111 @@ export default async function userService(app: any) {
       sent,
       friends,
     };
+  });
+
+  app.get("/:userId/connections", { preHandler: requireAuth }, async (request: any) => {
+    const targetUserId = String(request.params.userId || "").trim();
+    ensure(targetUserId.length >= 8, 400, "Invalid user");
+    const type = String(request.query?.type || "followers") === "following"
+      ? "following"
+      : "followers";
+    const limit = parseLimit(request.query?.limit, 50, 1, 100);
+
+    await ensureNotBlocked(request.user.userId, targetUserId);
+
+    const targetUser = await queryOne(
+      `SELECT user_id FROM users WHERE user_id = $1 AND deleted_at IS NULL`,
+      [targetUserId]
+    );
+    ensure(!!targetUser, 404, "User not found");
+
+    const isSelf = request.user.userId === targetUserId;
+    const [settingsDoc, isFollowing, isFollowedBy] = await Promise.all([
+      queryOne(
+        `SELECT settings FROM user_settings WHERE user_id = $1`,
+        [targetUserId]
+      ),
+      isSelf
+        ? Promise.resolve(null)
+        : queryOne(
+            `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
+            [request.user.userId, targetUserId]
+          ),
+      isSelf
+        ? Promise.resolve(null)
+        : queryOne(
+            `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
+            [targetUserId, request.user.userId]
+          ),
+    ]);
+    const relationship: ProfileRelationship = {
+      isSelf,
+      isFollowing: !!isFollowing,
+      isFollowedBy: !!isFollowedBy,
+      isFriend: !!isFollowing && !!isFollowedBy,
+    };
+    const settings = mergeSettings(settingsDoc?.settings || {});
+    const visibility = buildProfileVisibility(settings, relationship);
+    const visible = visibility.visible as Record<string, boolean>;
+
+    if (!visible[type]) {
+      return { type, visible: false, items: [] };
+    }
+
+    const rows = type === "followers"
+      ? await queryMany(
+          `SELECT follower_id AS user_id, created_at
+           FROM follows
+           WHERE following_id = $1
+           ORDER BY created_at DESC
+           LIMIT $2`,
+          [targetUserId, limit]
+        )
+      : await queryMany(
+          `SELECT following_id AS user_id, created_at
+           FROM follows
+           WHERE follower_id = $1
+           ORDER BY created_at DESC
+           LIMIT $2`,
+          [targetUserId, limit]
+        );
+
+    const userIds = rows.map((row) => row.user_id).filter(Boolean);
+    const users = await loadUsersByIds(userIds);
+    const userMap = new Map(users.map((user) => [user.user_id, user]));
+
+    const [viewerFollowingRows, viewerFollowedByRows] = userIds.length === 0
+      ? [[], []]
+      : await Promise.all([
+          queryMany(
+            `SELECT following_id
+             FROM follows
+             WHERE follower_id = $1 AND following_id = ANY($2::text[])`,
+            [request.user.userId, userIds]
+          ),
+          queryMany(
+            `SELECT follower_id
+             FROM follows
+             WHERE follower_id = ANY($1::text[]) AND following_id = $2`,
+            [userIds, request.user.userId]
+          ),
+        ]);
+    const followingSet = new Set(viewerFollowingRows.map((row: any) => row.following_id));
+    const followedBySet = new Set(viewerFollowedByRows.map((row: any) => row.follower_id));
+
+    const items = rows
+      .map((row) => {
+        const user = userMap.get(row.user_id);
+        if (!user) return null;
+        return mapConnectionItem(user, {
+          isFollowing: followingSet.has(row.user_id),
+          isFollowedBy: followedBySet.has(row.user_id),
+          since: row.created_at,
+        });
+      })
+      .filter(Boolean);
+
+    return { type, visible: true, items };
   });
 
   app.get("/me/profile", { preHandler: requireAuth }, async (request: any) => {

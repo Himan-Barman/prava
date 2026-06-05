@@ -204,6 +204,7 @@ class ProfileSummary {
     required this.posts,
     required this.tags,
     required this.mentions,
+    required this.mentionedPosts,
     required this.liked,
     required this.visibility,
   });
@@ -213,6 +214,7 @@ class ProfileSummary {
   final List<ProfileFeedPost> posts;
   final List<ProfileTagSummary> tags;
   final List<ProfileMentionSummary> mentions;
+  final List<ProfileFeedPost> mentionedPosts;
   final List<ProfileFeedPost> liked;
   final ProfileVisibility visibility;
 
@@ -222,6 +224,10 @@ class ProfileSummary {
         .map(ProfileFeedPost.fromJson)
         .toList();
     final liked = (json['liked'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(ProfileFeedPost.fromJson)
+        .toList();
+    final mentionedPosts = (json['mentionedPosts'] as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
         .map(ProfileFeedPost.fromJson)
         .toList();
@@ -244,6 +250,7 @@ class ProfileSummary {
       posts: posts,
       tags: tags,
       mentions: mentions,
+      mentionedPosts: mentionedPosts,
       liked: liked,
       visibility: ProfileVisibility.fromSummaryJson(
         json['visibility'] as Map<String, dynamic>?,

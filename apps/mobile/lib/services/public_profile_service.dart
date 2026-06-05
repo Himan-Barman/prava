@@ -10,6 +10,12 @@ class PublicProfileUser {
     required this.bio,
     required this.location,
     required this.website,
+    required this.avatarUrl,
+    required this.coverUrl,
+    required this.pinnedDetails,
+    required this.category,
+    required this.aiCreator,
+    required this.hometown,
     required this.isVerified,
     required this.createdAt,
   });
@@ -20,6 +26,12 @@ class PublicProfileUser {
   final String bio;
   final String location;
   final String website;
+  final String avatarUrl;
+  final String coverUrl;
+  final String pinnedDetails;
+  final String category;
+  final bool aiCreator;
+  final String hometown;
   final bool isVerified;
   final DateTime? createdAt;
 
@@ -31,9 +43,14 @@ class PublicProfileUser {
       bio: json['bio']?.toString() ?? '',
       location: json['location']?.toString() ?? '',
       website: json['website']?.toString() ?? '',
+      avatarUrl: json['avatarUrl']?.toString() ?? '',
+      coverUrl: json['coverUrl']?.toString() ?? '',
+      pinnedDetails: json['pinnedDetails']?.toString() ?? '',
+      category: json['category']?.toString() ?? '',
+      aiCreator: json['aiCreator'] == true,
+      hometown: json['hometown']?.toString() ?? '',
       isVerified: json['isVerified'] == true,
-      createdAt:
-          DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
     );
   }
 }
@@ -94,7 +111,8 @@ class PublicProfilePost {
     return PublicProfilePost(
       id: json['id']?.toString() ?? '',
       body: json['body']?.toString() ?? '',
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
       likeCount: json['likeCount'] is int
           ? json['likeCount'] as int
@@ -111,6 +129,37 @@ class PublicProfilePost {
       hashtags: (json['hashtags'] as List<dynamic>? ?? [])
           .map((value) => value.toString())
           .toList(),
+    );
+  }
+}
+
+class PublicProfileMentionSummary {
+  PublicProfileMentionSummary({
+    required this.username,
+    required this.postCount,
+    required this.rankScore,
+    required this.lastPostAt,
+  });
+
+  final String username;
+  final int postCount;
+  final int rankScore;
+  final DateTime? lastPostAt;
+
+  factory PublicProfileMentionSummary.fromJson(Map<String, dynamic> json) {
+    return PublicProfileMentionSummary(
+      username:
+          json['username']?.toString() ??
+          json['mention']?.toString() ??
+          json['tag']?.toString() ??
+          '',
+      postCount: json['postCount'] is int
+          ? json['postCount'] as int
+          : int.tryParse(json['postCount']?.toString() ?? '') ?? 0,
+      rankScore: json['rankScore'] is int
+          ? json['rankScore'] as int
+          : int.tryParse(json['rankScore']?.toString() ?? '') ?? 0,
+      lastPostAt: DateTime.tryParse(json['lastPostAt']?.toString() ?? ''),
     );
   }
 }
@@ -137,6 +186,7 @@ class PublicProfileSummary {
     required this.user,
     required this.stats,
     required this.posts,
+    required this.mentions,
     required this.relationship,
     required this.visibility,
   });
@@ -144,6 +194,7 @@ class PublicProfileSummary {
   final PublicProfileUser user;
   final PublicProfileStats stats;
   final List<PublicProfilePost> posts;
+  final List<PublicProfileMentionSummary> mentions;
   final PublicProfileRelationship relationship;
   final ProfileVisibility visibility;
 
@@ -151,6 +202,11 @@ class PublicProfileSummary {
     final posts = (json['posts'] as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
         .map(PublicProfilePost.fromJson)
+        .toList();
+    final mentions = (json['mentions'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(PublicProfileMentionSummary.fromJson)
+        .where((mention) => mention.username.isNotEmpty)
         .toList();
 
     return PublicProfileSummary(
@@ -161,6 +217,7 @@ class PublicProfileSummary {
         json['stats'] as Map<String, dynamic>? ?? {},
       ),
       posts: posts,
+      mentions: mentions,
       relationship: PublicProfileRelationship.fromJson(
         json['relationship'] as Map<String, dynamic>? ?? {},
       ),
@@ -173,7 +230,7 @@ class PublicProfileSummary {
 
 class PublicProfileService {
   PublicProfileService({SecureStore? store})
-      : _client = ApiClient(store ?? SecureStore());
+    : _client = ApiClient(store ?? SecureStore());
 
   final ApiClient _client;
 
@@ -187,9 +244,7 @@ class PublicProfileService {
       query: {'limit': limit.toString()},
     );
 
-    final payload = data is Map<String, dynamic>
-        ? data
-        : <String, dynamic>{};
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
     return PublicProfileSummary.fromJson(payload);
   }
 
