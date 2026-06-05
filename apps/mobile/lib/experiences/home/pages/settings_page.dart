@@ -227,34 +227,39 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           PravaBackground(isDark: isDark),
           SafeArea(
-            child: CustomScrollView(
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
-                    child: _SettingsTopBar(primary: primary),
-                  ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
+                  child: _SettingsTopBar(primary: primary),
                 ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
-                  sliver: SliverList.separated(
-                    itemCount: _categoryOrder.length,
-                    separatorBuilder: (_, __) =>
-                        Divider(height: 1, color: border),
-                    itemBuilder: (context, index) {
-                      final category = _categoryOrder[index];
-                      final meta = _SettingsCategoryMeta.from(category);
-                      return _SettingsCategoryTile(
-                        meta: meta,
-                        primary: primary,
-                        secondary: secondary,
-                        trailing: _categoryTrailing(category, _settings),
-                        onTap: () => _openCategory(category),
-                      );
-                    },
+                Expanded(
+                  child: CustomScrollView(
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
+                        sliver: SliverList.separated(
+                          itemCount: _categoryOrder.length,
+                          separatorBuilder: (_, __) =>
+                              Divider(height: 1, color: border),
+                          itemBuilder: (context, index) {
+                            final category = _categoryOrder[index];
+                            final meta = _SettingsCategoryMeta.from(category);
+                            return _SettingsCategoryTile(
+                              meta: meta,
+                              primary: primary,
+                              secondary: secondary,
+                              trailing: _categoryTrailing(category, _settings),
+                              onTap: () => _openCategory(category),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -516,8 +521,8 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
               ),
               _SettingsTile(
                 icon: CupertinoIcons.at,
-                title: 'Handle and links',
-                subtitle: 'Username and profile links',
+                title: 'Username',
+                subtitle: 'Search and change your username',
                 onTap: () =>
                     PravaNavigator.push(context, const HandleLinksPage()),
                 color: primary,

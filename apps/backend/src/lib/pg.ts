@@ -115,12 +115,14 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       details         JSONB DEFAULT NULL,
       is_verified     BOOLEAN NOT NULL DEFAULT FALSE,
       email_verified_at TIMESTAMPTZ DEFAULT NULL,
+      username_changed_at TIMESTAMPTZ DEFAULT NULL,
       deleted_at      TIMESTAMPTZ DEFAULT NULL,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS username_changed_at TIMESTAMPTZ DEFAULT NULL;
     CREATE INDEX IF NOT EXISTS idx_users_display_name_lower ON users (display_name_lower);
     CREATE INDEX IF NOT EXISTS idx_users_created_at ON users (created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_users_last_seen_at ON users (last_seen_at DESC);

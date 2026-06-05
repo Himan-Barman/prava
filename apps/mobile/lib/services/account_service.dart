@@ -22,6 +22,9 @@ class AccountInfo {
     required this.hometown,
     required this.isVerified,
     required this.emailVerifiedAt,
+    required this.usernameChangedAt,
+    required this.nextUsernameChangeAt,
+    required this.canChangeUsername,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -45,6 +48,9 @@ class AccountInfo {
   final String hometown;
   final bool isVerified;
   final DateTime? emailVerifiedAt;
+  final DateTime? usernameChangedAt;
+  final DateTime? nextUsernameChangeAt;
+  final bool canChangeUsername;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -71,17 +77,22 @@ class AccountInfo {
       emailVerifiedAt: DateTime.tryParse(
         json['emailVerifiedAt']?.toString() ?? '',
       ),
-      createdAt:
-          DateTime.tryParse(json['createdAt']?.toString() ?? ''),
-      updatedAt:
-          DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
+      usernameChangedAt: DateTime.tryParse(
+        json['usernameChangedAt']?.toString() ?? '',
+      ),
+      nextUsernameChangeAt: DateTime.tryParse(
+        json['nextUsernameChangeAt']?.toString() ?? '',
+      ),
+      canChangeUsername: json['canChangeUsername'] != false,
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? ''),
     );
   }
 }
 
 class AccountService {
   AccountService({SecureStore? store})
-      : _client = ApiClient(store ?? SecureStore());
+    : _client = ApiClient(store ?? SecureStore());
 
   final ApiClient _client;
 
@@ -94,11 +105,7 @@ class AccountService {
   }
 
   Future<AccountInfo> updateEmail(String email) async {
-    await _client.put(
-      '/users/me/email',
-      auth: true,
-      body: {'email': email},
-    );
+    await _client.put('/users/me/email', auth: true, body: {'email': email});
     return fetchAccountInfo();
   }
 
@@ -123,6 +130,7 @@ class AccountService {
 
   Future<AccountInfo> updateHandle({
     String? username,
+    String? password,
     String? displayName,
     String? bio,
     String? location,
@@ -130,17 +138,21 @@ class AccountService {
   }) async {
     final body = <String, dynamic>{};
     if (username != null) body['username'] = username;
+    if (password != null) body['password'] = password;
     if (displayName != null) body['displayName'] = displayName;
     if (bio != null) body['bio'] = bio;
     if (location != null) body['location'] = location;
     if (website != null) body['website'] = website;
 
-    await _client.put(
-      '/users/me/handle',
-      auth: true,
-      body: body,
-    );
+    await _client.put('/users/me/handle', auth: true, body: body);
     return fetchAccountInfo();
+  }
+
+  Future<AccountInfo> changeUsername({
+    required String username,
+    required String password,
+  }) {
+    return updateHandle(username: username, password: password);
   }
 
   Future<AccountInfo> updateProfileDetails({

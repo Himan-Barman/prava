@@ -10,6 +10,7 @@ import {
   normalizeUsername,
   now,
   toIso,
+  verifyPassword,
 } from "../../lib/security.js";
 
 const PROFILE_VISIBILITY_VALUES = ["everyone", "followers", "friends", "onlyMe"] as const;
@@ -55,6 +56,8 @@ const DEFAULT_SETTINGS = {
   textScale: 1,
   languageLabel: "English",
 };
+
+const USERNAME_CHANGE_COOLDOWN_MONTHS = 3;
 
 const FALLBACK_LOCATIONS = [
   { city: "Kolkata", state: "West Bengal", country: "India" },
@@ -258,6 +261,23 @@ function escapeLike(value: string): string {
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function nextUsernameChangeDate(value: unknown): Date | null {
+  if (!value) {
+    return null;
+  }
+  const changedAt = value instanceof Date ? value : new Date(value as string | number);
+  if (Number.isNaN(changedAt.getTime())) {
+    return null;
+  }
+  const next = new Date(changedAt);
+  next.setMonth(next.getMonth() + USERNAME_CHANGE_COOLDOWN_MONTHS);
+  return next;
+}
+
+function mentionReplacePattern(username: string): string {
+  return `(^|[^a-zA-Z0-9_.])@${escapeRegex(username)}([^a-zA-Z0-9_.]|$)`;
 }
 
 async function ensureUserExists(userId: string): Promise<void> {
@@ -556,6 +576,8 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
 
 function accountPayload(user: any) {
   const details = user.details || {};
+  const nextUsernameChange = nextUsernameChangeDate(user.username_changed_at);
+  const canChangeUsername = !nextUsernameChange || now() >= nextUsernameChange;
   return {
     id: user.user_id,
     email: user.email,
@@ -576,6 +598,9 @@ function accountPayload(user: any) {
     hometown: details.hometown || "",
     isVerified: user.is_verified === true,
     emailVerifiedAt: toIso(user.email_verified_at),
+    usernameChangedAt: toIso(user.username_changed_at),
+    nextUsernameChangeAt: toIso(nextUsernameChange),
+    canChangeUsername,
     createdAt: toIso(user.created_at),
     updatedAt: toIso(user.updated_at),
   };
@@ -852,68 +877,165 @@ export default async function userService(app: any) {
 
   app.put("/me/handle", { preHandler: requireAuth }, async (request: any) => {
     const body = request.body || {};
-    const fields: string[] = [];
-    const params: unknown[] = [request.user.userId];
+    const requestedUsername = body.username === undefined
+      ? undefined
+      : normalizeUsername(body.username);
+    if (requestedUsername !== undefined) {
+      ensure(isValidUsername(requestedUsername), 400, "Invalid username");
+    }
 
-    const setField = (column: string, value: unknown) => {
-      params.push(value);
-      fields.push(`${column} = $${params.length}`);
-    };
-
-    if (body.username !== undefined) {
-      const usernameLower = normalizeUsername(body.username);
-      ensure(isValidUsername(usernameLower), 400, "Invalid username");
-
-      const duplicate = await queryOne(
-        `SELECT user_id FROM users WHERE username_lower = $1 AND user_id <> $2`,
-        [usernameLower, request.user.userId]
+    const updatedUser = await withTransaction(async (client) => {
+      const currentResult = await client.query(
+        `SELECT * FROM users WHERE user_id = $1 FOR UPDATE`,
+        [request.user.userId]
       );
-      if (duplicate) {
-        throw new HttpError(409, "Username already exists");
+      const currentUser = currentResult.rows[0];
+      if (!currentUser) {
+        throw new HttpError(404, "User not found");
       }
 
-      setField("username", usernameLower);
-      setField("username_lower", usernameLower);
-    }
+      const fields: string[] = [];
+      const params: unknown[] = [request.user.userId];
+      const ts = now();
 
-    if (body.displayName !== undefined) {
-      const displayName = String(body.displayName || "").trim();
-      ensure(displayName.length > 0 && displayName.length <= 120, 400, "Invalid display name");
-      setField("display_name", displayName);
-      setField("display_name_lower", displayName.toLowerCase());
-    }
+      const setField = (column: string, value: unknown) => {
+        params.push(value);
+        fields.push(`${column} = $${params.length}`);
+      };
 
-    if (body.bio !== undefined) {
-      setField("bio", String(body.bio || "").trim().slice(0, 2000));
-    }
+      if (requestedUsername !== undefined && requestedUsername !== currentUser.username_lower) {
+        const password = String(body.password || "");
+        ensure(password.length > 0, 400, "Password is required");
+        ensure(verifyPassword(password, currentUser.password_hash), 401, "Password is incorrect");
 
-    if (body.location !== undefined) {
-      setField("location", String(body.location || "").trim().slice(0, 120));
-    }
+        const nextChange = nextUsernameChangeDate(currentUser.username_changed_at);
+        if (nextChange && ts < nextChange) {
+          throw new HttpError(
+            429,
+            `Username can be changed again after ${nextChange.toISOString()}`
+          );
+        }
 
-    if (body.website !== undefined) {
-      setField("website", String(body.website || "").trim().slice(0, 240));
-    }
+        const duplicate = await client.query(
+          `SELECT user_id FROM users WHERE username_lower = $1 AND user_id <> $2`,
+          [requestedUsername, request.user.userId]
+        );
+        if ((duplicate.rowCount ?? 0) > 0) {
+          throw new HttpError(409, "Username already exists");
+        }
 
-    setField("updated_at", now());
+        const reservation = await client.query(
+          `SELECT email_lower
+           FROM username_reservations
+           WHERE username_lower = $1
+             AND expires_at > $2
+             AND email_lower <> $3
+           LIMIT 1`,
+          [requestedUsername, ts, currentUser.email_lower]
+        );
+        if ((reservation.rowCount ?? 0) > 0) {
+          throw new HttpError(409, "Username is reserved");
+        }
 
-    try {
-      await query(
-        `UPDATE users SET ${fields.join(", ")} WHERE user_id = $1`,
-        params
-      );
-    } catch (error: any) {
-      if (error.code === "23505") {
-        throw new HttpError(409, "Username already exists");
+        const oldUsername = normalizeUsername(currentUser.username_lower || currentUser.username);
+        const oldUsernameWithAt = `@${oldUsername}`;
+        const pattern = mentionReplacePattern(oldUsername);
+        const replacement = `\\1@${requestedUsername}\\2`;
+
+        setField("username", requestedUsername);
+        setField("username_lower", requestedUsername);
+        setField("username_changed_at", ts);
+
+        await client.query(
+          `UPDATE posts
+           SET body = regexp_replace(body, $1, $2, 'gi'),
+               mentions = COALESCE(
+                 (
+                   SELECT jsonb_agg(
+                     CASE
+                       WHEN lower(item.value) = $3 OR lower(item.value) = $6 THEN to_jsonb($4::text)
+                       ELSE to_jsonb(item.value)
+                     END
+                   )
+                   FROM jsonb_array_elements_text(posts.mentions) AS item(value)
+                 ),
+                 '[]'::jsonb
+               ),
+               updated_at = $5
+           WHERE body ~* $1 OR mentions ? $3 OR mentions ? $6`,
+          [pattern, replacement, oldUsername, requestedUsername, ts, oldUsernameWithAt]
+        );
+
+        await client.query(
+          `UPDATE comments
+           SET body = regexp_replace(body, $1, $2, 'gi')
+           WHERE body ~* $1`,
+          [pattern, replacement]
+        );
+
+        await client.query(
+          `UPDATE messages
+           SET body = regexp_replace(body, $1, $2, 'gi'),
+               updated_at = $3
+           WHERE body ~* $1`,
+          [pattern, replacement, ts]
+        );
+
+        await client.query(
+          `UPDATE conversations
+           SET last_message_body = regexp_replace(last_message_body, $1, $2, 'gi'),
+               updated_at = $3
+           WHERE last_message_body ~* $1`,
+          [pattern, replacement, ts]
+        );
+
+        await client.query(
+          `DELETE FROM username_reservations WHERE username_lower = $1`,
+          [requestedUsername]
+        );
       }
-      throw error;
-    }
 
-    const user = await queryOne(`SELECT * FROM users WHERE user_id = $1`, [request.user.userId]);
-    if (!user) {
+      if (body.displayName !== undefined) {
+        const displayName = String(body.displayName || "").trim();
+        ensure(displayName.length > 0 && displayName.length <= 120, 400, "Invalid display name");
+        setField("display_name", displayName);
+        setField("display_name_lower", displayName.toLowerCase());
+      }
+
+      if (body.bio !== undefined) {
+        setField("bio", String(body.bio || "").trim().slice(0, 2000));
+      }
+
+      if (body.location !== undefined) {
+        setField("location", String(body.location || "").trim().slice(0, 120));
+      }
+
+      if (body.website !== undefined) {
+        setField("website", String(body.website || "").trim().slice(0, 240));
+      }
+
+      setField("updated_at", ts);
+
+      try {
+        await client.query(
+          `UPDATE users SET ${fields.join(", ")} WHERE user_id = $1`,
+          params
+        );
+      } catch (error: any) {
+        if (error.code === "23505") {
+          throw new HttpError(409, "Username already exists");
+        }
+        throw error;
+      }
+
+      const updatedResult = await client.query(`SELECT * FROM users WHERE user_id = $1`, [request.user.userId]);
+      return updatedResult.rows[0];
+    });
+
+    if (!updatedUser) {
       throw new HttpError(404, "User not found");
     }
-    return { profile: accountPayload(user) };
+    return { profile: accountPayload(updatedUser) };
   });
 
   app.delete("/me", { preHandler: requireAuth }, async (request: any) => {
