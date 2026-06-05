@@ -189,11 +189,16 @@ class UserSearchService {
   Future<List<UserSearchResult>> searchUsers(
     String query, {
     int limit = 20,
+    bool includeSelf = false,
   }) async {
     final data = await _client.get(
       '/users/search',
       auth: true,
-      query: {'query': query, 'limit': limit.toString()},
+      query: {
+        'query': query,
+        'limit': limit.toString(),
+        if (includeSelf) 'includeSelf': 'true',
+      },
     );
 
     final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};

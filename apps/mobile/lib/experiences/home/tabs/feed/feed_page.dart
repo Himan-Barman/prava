@@ -60,6 +60,13 @@ class _FeedPageState extends State<FeedPage> {
   static const int _pageSize = 20;
   String _currentFeedMode() => _segmentIndex == 1 ? 'following' : 'for-you';
 
+  FeedAuthor? get _composerAuthor {
+    for (final post in _posts) {
+      if (post.author.id == _userId) return post.author;
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -494,26 +501,30 @@ class _FeedPageState extends State<FeedPage> {
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
               ),
-              child: SafeArea(
-                top: false,
-                child: _ComposerCard(
-                  controller: _composerController,
-                  account: _composerAccount,
-                  feedService: _feedService,
-                  userSearchService: _userSearchService,
-                  onPost: () async {
-                    final create = _createPost();
-                    setSheetState(() {});
-                    final posted = await create;
-                    if (!sheetContext.mounted) return;
-                    if (posted) {
-                      Navigator.of(sheetContext).pop();
-                    } else {
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: SafeArea(
+                  top: false,
+                  child: _ComposerCard(
+                    controller: _composerController,
+                    account: _composerAccount,
+                    author: _composerAuthor,
+                    feedService: _feedService,
+                    userSearchService: _userSearchService,
+                    onPost: () async {
+                      final create = _createPost();
                       setSheetState(() {});
-                    }
-                  },
-                  isPosting: _posting,
-                  wordCount: _wordCount,
+                      final posted = await create;
+                      if (!sheetContext.mounted) return;
+                      if (posted) {
+                        Navigator.of(sheetContext).pop();
+                      } else {
+                        setSheetState(() {});
+                      }
+                    },
+                    isPosting: _posting,
+                    wordCount: _wordCount,
+                  ),
                 ),
               ),
             );
@@ -540,7 +551,11 @@ class _FeedPageState extends State<FeedPage> {
 
     HapticFeedback.selectionClick();
     try {
-      final results = await _userSearchService.searchUsers(handle, limit: 8);
+      final results = await _userSearchService.searchUsers(
+        handle,
+        limit: 8,
+        includeSelf: true,
+      );
       UserSearchResult? user;
       for (final item in results) {
         if (item.username.toLowerCase() == handle) {
@@ -548,7 +563,7 @@ class _FeedPageState extends State<FeedPage> {
           break;
         }
       }
-      if (!mounted || user == null || user.id.isEmpty || user.id == _userId) {
+      if (!mounted || user == null || user.id.isEmpty) {
         return;
       }
       Navigator.of(context, rootNavigator: true).push(
@@ -1082,7 +1097,11 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
 
     HapticFeedback.selectionClick();
     try {
-      final results = await _userSearchService.searchUsers(handle, limit: 8);
+      final results = await _userSearchService.searchUsers(
+        handle,
+        limit: 8,
+        includeSelf: true,
+      );
       UserSearchResult? user;
       for (final item in results) {
         if (item.username.toLowerCase() == handle) {
@@ -1090,7 +1109,7 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
           break;
         }
       }
-      if (!mounted || user == null || user.id.isEmpty || user.id == _userId) {
+      if (!mounted || user == null || user.id.isEmpty) {
         return;
       }
       Navigator.of(context, rootNavigator: true).push(
@@ -1318,6 +1337,7 @@ class _ComposerCard extends StatefulWidget {
   const _ComposerCard({
     required this.controller,
     required this.account,
+    required this.author,
     required this.feedService,
     required this.userSearchService,
     required this.onPost,
@@ -1327,6 +1347,7 @@ class _ComposerCard extends StatefulWidget {
 
   final TextEditingController controller;
   final AccountInfo? account;
+  final FeedAuthor? author;
   final FeedService feedService;
   final UserSearchService userSearchService;
   final VoidCallback onPost;
@@ -1390,17 +1411,12 @@ class _ComposerCardState extends State<_ComposerCard> {
       _activeToken = token;
       _mentionSuggestions = <UserSearchResult>[];
       _hashtagSuggestions = <SmartHashtagResult>[];
-      _suggesting = token.symbol == '#' || token.query.length >= 2;
+      _suggesting = true;
     });
-
-    if (token.symbol == '@' && token.query.length < 2) {
-      setState(() => _suggesting = false);
-      return;
-    }
 
     final request = ++_suggestionRequest;
     _suggestionTimer = Timer(
-      const Duration(milliseconds: 180),
+      const Duration(milliseconds: 80),
       () => unawaited(_loadSuggestions(token, request)),
     );
   }
@@ -1436,6 +1452,7 @@ class _ComposerCardState extends State<_ComposerCard> {
         final users = await widget.userSearchService.searchUsers(
           token.query,
           limit: 6,
+          includeSelf: true,
         );
         if (!mounted || request != _suggestionRequest) return;
         setState(() {
@@ -1532,7 +1549,7 @@ class _ComposerCardState extends State<_ComposerCard> {
       duration: const Duration(milliseconds: 160),
       curve: Curves.easeOutCubic,
       margin: const EdgeInsets.only(top: 12),
-      constraints: const BoxConstraints(maxHeight: 220),
+      constraints: const BoxConstraints(maxHeight: 156),
       decoration: BoxDecoration(
         color: PravaColors.accentPrimary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(18),
@@ -1610,32 +1627,42 @@ class _ComposerCardState extends State<_ComposerCard> {
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _ComposerAvatar(account: widget.account),
+              _ComposerAvatar(account: widget.account, author: widget.author),
               const SizedBox(width: 12),
               Expanded(
-                child: TextField(
-                  controller: widget.controller,
-                  minLines: 2,
-                  maxLines: 5,
-                  textInputAction: TextInputAction.newline,
-                  style: PravaTypography.body.copyWith(color: primary),
-                  decoration: InputDecoration(
-                    hintText: 'Share something premium... ',
-                    hintStyle: PravaTypography.body.copyWith(color: secondary),
-                    border: InputBorder.none,
-                    isDense: true,
+                child: SizedBox(
+                  height: 118,
+                  child: TextField(
+                    controller: widget.controller,
+                    minLines: null,
+                    maxLines: null,
+                    expands: true,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    textAlignVertical: TextAlignVertical.top,
+                    scrollPhysics: const BouncingScrollPhysics(),
+                    style: PravaTypography.body.copyWith(color: primary),
+                    decoration: InputDecoration(
+                      hintText: 'Share something premium...',
+                      hintStyle: PravaTypography.body.copyWith(
+                        color: secondary,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
           _buildSuggestions(primary, secondary, border),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
           Row(
             children: [
               Expanded(
@@ -1725,17 +1752,26 @@ class _ComposerToken {
 }
 
 class _ComposerAvatar extends StatelessWidget {
-  const _ComposerAvatar({required this.account});
+  const _ComposerAvatar({required this.account, required this.author});
 
   final AccountInfo? account;
+  final FeedAuthor? author;
 
   @override
   Widget build(BuildContext context) {
-    final avatarUrl = account?.avatarUrl.trim() ?? '';
+    final avatarUrl =
+        (account?.avatarUrl.trim().isNotEmpty == true
+                ? account!.avatarUrl
+                : author?.avatarUrl ?? '')
+            .trim();
     final name =
         (account?.displayName.isNotEmpty == true
                 ? account!.displayName
-                : account?.username ?? '')
+                : author?.displayName.isNotEmpty == true
+                ? author!.displayName
+                : account?.username.isNotEmpty == true
+                ? account!.username
+                : author?.username ?? '')
             .trim();
 
     return SizedBox(

@@ -256,6 +256,10 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function ensureUserExists(userId: string): Promise<void> {
   const user = await queryOne(
     `SELECT user_id FROM users WHERE user_id = $1 AND deleted_at IS NULL`,
@@ -374,14 +378,17 @@ async function buildProfileMentions(userId: string, limit: number) {
 async function buildMentionedPosts(username: string, limit: number) {
   const normalized = normalizeUsername(username);
   if (!normalized) return [];
+  const mentionPattern = `(^|\\s)@${escapeRegex(normalized)}([^a-zA-Z0-9_.]|$)`;
 
   return queryMany(
     `SELECT *
      FROM posts
      WHERE mentions ? $1
+        OR mentions ? $2
+        OR body ~* $3
      ORDER BY created_at DESC
-     LIMIT $2`,
-    [normalized, limit]
+     LIMIT $4`,
+    [normalized, `@${normalized}`, mentionPattern, limit]
   );
 }
 
@@ -929,22 +936,34 @@ export default async function userService(app: any) {
 
   app.get("/search", { preHandler: requireAuth }, async (request: any) => {
     const search = String(request.query?.query || "").trim().toLowerCase().replace(/^@+/, "");
-    if (search.length < 2 || !/^[a-z0-9_.]+$/.test(search)) {
+    if (search.length > 0 && !/^[a-z0-9_.]+$/.test(search)) {
       return { results: [] };
     }
 
     const limit = parseLimit(request.query?.limit, 20, 1, 25);
+    const includeSelf = String(request.query?.includeSelf || "") === "true";
     const prefix = `${escapeLike(search)}%`;
-    const rows = await queryMany(
-      `SELECT user_id, username, display_name, avatar_url, is_verified
-       FROM users
-       WHERE user_id <> $1
-         AND deleted_at IS NULL
-         AND (username_lower LIKE $2 ESCAPE '\\' OR display_name_lower LIKE $2 ESCAPE '\\')
-       ORDER BY username_lower ASC
-       LIMIT $3`,
-      [request.user.userId, prefix, limit]
-    );
+    const rows =
+      search.length === 0
+        ? await queryMany(
+            `SELECT user_id, username, display_name, avatar_url, is_verified
+             FROM users
+             WHERE ($2::boolean OR user_id <> $1)
+               AND deleted_at IS NULL
+             ORDER BY is_verified DESC, created_at DESC
+             LIMIT $3`,
+            [request.user.userId, includeSelf, limit]
+          )
+        : await queryMany(
+            `SELECT user_id, username, display_name, avatar_url, is_verified
+             FROM users
+             WHERE ($3::boolean OR user_id <> $1)
+               AND deleted_at IS NULL
+               AND (username_lower LIKE $2 ESCAPE '\\' OR display_name_lower LIKE $2 ESCAPE '\\')
+             ORDER BY username_lower ASC
+             LIMIT $4`,
+            [request.user.userId, prefix, includeSelf, limit]
+          );
 
     if (rows.length === 0) {
       return { results: [] };

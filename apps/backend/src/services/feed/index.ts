@@ -241,40 +241,44 @@ async function shouldCreateNotification(userId: string, categoryKey: string) {
 
 async function createNotification({ userId, actorUserId, type, title, body, data, categoryKey }: { userId: string; actorUserId: string; type: string; title: string; body: string; data: Record<string, unknown>; categoryKey: string }) {
   if (!userId || userId === actorUserId) return;
-  if (!(await shouldCreateNotification(userId, categoryKey))) return;
-  const notificationId = generateId();
-  const createdAt = now();
-  await query(
-    `INSERT INTO notifications (
-       notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)`,
-    [notificationId, userId, actorUserId, type, title, body, JSON.stringify(data), createdAt]
-  );
+  try {
+    if (!(await shouldCreateNotification(userId, categoryKey))) return;
+    const notificationId = generateId();
+    const createdAt = now();
+    await query(
+      `INSERT INTO notifications (
+         notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)`,
+      [notificationId, userId, actorUserId, type, title, body, JSON.stringify(data), createdAt]
+    );
 
-  const actor = await queryOne(
-    `SELECT user_id, username, display_name, is_verified
-     FROM users
-     WHERE user_id = $1`,
-    [actorUserId]
-  );
-  publishToUsers([userId], "NOTIFICATION_PUSH", {
-    id: notificationId,
-    type,
-    title,
-    body,
-    createdAt: toIso(createdAt),
-    readAt: null,
-    data,
-    actor: actor
-      ? {
-          id: actor.user_id,
-          username: actor.username,
-          displayName: actor.display_name || actor.username,
-          isVerified: actor.is_verified === true
-        }
-      : null
-  });
+    const actor = await queryOne(
+      `SELECT user_id, username, display_name, is_verified
+       FROM users
+       WHERE user_id = $1`,
+      [actorUserId]
+    );
+    publishToUsers([userId], "NOTIFICATION_PUSH", {
+      id: notificationId,
+      type,
+      title,
+      body,
+      createdAt: toIso(createdAt),
+      readAt: null,
+      data,
+      actor: actor
+        ? {
+            id: actor.user_id,
+            username: actor.username,
+            displayName: actor.display_name || actor.username,
+            isVerified: actor.is_verified === true
+          }
+        : null
+    });
+  } catch {
+    // Notification failures must not block likes, comments, shares, or posts.
+  }
 }
 
 async function notifyMentionedUsers({ usernames, actorUserId, postId, commentId }: { usernames: string[]; actorUserId: string; postId: string; commentId?: string }) {
