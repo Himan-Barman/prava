@@ -23,6 +23,8 @@ class HomeTopBar extends StatelessWidget {
   final VoidCallback? onProfileEdit;
 
   static const _tabTitles = ['Prava', 'Chats', 'Friends', 'Profile'];
+  static const double _height = 44;
+  static const double _actionLaneWidth = 124;
 
   @override
   Widget build(BuildContext context) {
@@ -38,89 +40,142 @@ class HomeTopBar extends StatelessWidget {
         : 'Prava';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 10, 4),
-      child: Row(
-        children: [
-          /// Brand / tab title
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            child: Text(
-              title,
-              key: ValueKey(title),
-              style: PravaTypography.h2.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0,
-                color: primaryText,
-              ),
-            ),
-          ),
-
-          const Spacer(),
-
-          if (tabIndex == 1) ...[
-            _ChatTopMenuButton(onSelected: onChatMenuSelected),
-          ] else if (tabIndex == 2) ...[
-            const SizedBox.shrink(),
-          ] else if (tabIndex == 3) ...[
-            _TopIconButton(
-              icon: Icons.edit_rounded,
-              onPressed: () {
-                HapticFeedback.selectionClick();
-                onProfileEdit?.call();
-              },
-            ),
-          ] else ...[
-            /// Search
-            _TopIconButton(
-              icon: Icons.search_rounded,
-              onPressed: () {
-                HapticFeedback.selectionClick();
-                PravaNavigator.push(
-                  context,
-                  const SearchPage(),
-                  fullscreenDialog: true,
-                );
-              },
-            ),
-
-            /// Notifications
-            ValueListenableBuilder<int>(
-              valueListenable: NotificationCenter.instance.unreadCount,
-              builder: (context, count, _) {
-                return _NotificationBell(
-                  count: count,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    PravaNavigator.push(
-                      context,
-                      const NotificationsPage(),
-                      fullscreenDialog: true,
+      padding: const EdgeInsets.fromLTRB(16, 6, 10, 4),
+      child: SizedBox(
+        height: _height,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: _height,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  layoutBuilder: (currentChild, previousChildren) {
+                    return Stack(
+                      alignment: Alignment.centerLeft,
+                      children: [
+                        ...previousChildren,
+                        if (currentChild != null) currentChild,
+                      ],
                     );
                   },
-                );
-              },
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(opacity: animation, child: child);
+                  },
+                  child: Align(
+                    key: ValueKey(title),
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PravaTypography.h2.copyWith(
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0,
+                        color: primaryText,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: _actionLaneWidth,
+              height: _height,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                layoutBuilder: (currentChild, previousChildren) {
+                  return Stack(
+                    alignment: Alignment.centerRight,
+                    children: [
+                      ...previousChildren,
+                      if (currentChild != null) currentChild,
+                    ],
+                  );
+                },
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                child: Align(
+                  key: ValueKey(tabIndex),
+                  alignment: Alignment.centerRight,
+                  child: _buildActions(context),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-            /// Overflow menu
-            _TopIconButton(
-              icon: Icons.menu_rounded,
-              onPressed: () {
+  Widget _buildActions(BuildContext context) {
+    if (tabIndex == 1) {
+      return _ChatTopMenuButton(onSelected: onChatMenuSelected);
+    }
+
+    if (tabIndex == 2) {
+      return const SizedBox.shrink();
+    }
+
+    if (tabIndex == 3) {
+      return _TopIconButton(
+        icon: Icons.edit_rounded,
+        onPressed: () {
+          HapticFeedback.selectionClick();
+          onProfileEdit?.call();
+        },
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _TopIconButton(
+          icon: Icons.search_rounded,
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            PravaNavigator.push(
+              context,
+              const SearchPage(),
+              fullscreenDialog: true,
+            );
+          },
+        ),
+        ValueListenableBuilder<int>(
+          valueListenable: NotificationCenter.instance.unreadCount,
+          builder: (context, count, _) {
+            return _NotificationBell(
+              count: count,
+              onTap: () {
                 HapticFeedback.selectionClick();
                 PravaNavigator.push(
                   context,
-                  const SettingsPage(),
+                  const NotificationsPage(),
                   fullscreenDialog: true,
                 );
               },
-            ),
-          ],
-        ],
-      ),
+            );
+          },
+        ),
+        _TopIconButton(
+          icon: Icons.menu_rounded,
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            PravaNavigator.push(
+              context,
+              const SettingsPage(),
+              fullscreenDialog: true,
+            );
+          },
+        ),
+      ],
     );
   }
 }

@@ -363,22 +363,25 @@ class _FriendsPageState extends State<FriendsPage> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? Colors.white10
-                        : Colors.white.withValues(alpha: 0.75),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: border),
-                  ),
-                  child: CupertinoSearchTextField(
-                    controller: _searchController,
-                    placeholder: _searchPlaceholder(),
-                    backgroundColor: Colors.transparent,
+            child: SizedBox(
+              height: 44,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white10
+                          : Colors.white.withValues(alpha: 0.75),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: border),
+                    ),
+                    child: CupertinoSearchTextField(
+                      controller: _searchController,
+                      placeholder: _searchPlaceholder(),
+                      backgroundColor: Colors.transparent,
+                    ),
                   ),
                 ),
               ),
