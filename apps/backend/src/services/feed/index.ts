@@ -76,6 +76,7 @@ function mapFeedPost(post: any, author: any, liked: boolean, followed: boolean) 
     likeCount: Number(post.like_count || 0),
     commentCount: Number(post.comment_count || 0),
     shareCount: Number(post.share_count || 0),
+    readCount: Number(post.read_count || 0),
     rankScore: Number(post.rank_score || 0),
     liked,
     followed,
@@ -110,6 +111,17 @@ function mapFeedComment(comment: any, author: any, liked: boolean) {
   };
 }
 
+async function recordPostReads(postIds: string[], userId: string) {
+  if (postIds.length === 0) return;
+  await query(
+    `INSERT INTO post_reads (post_id, user_id, first_read_at, last_read_at)
+     SELECT UNNEST($1::text[]), $2, NOW(), NOW()
+     ON CONFLICT (post_id, user_id)
+     DO UPDATE SET last_read_at = EXCLUDED.last_read_at`,
+    [postIds, userId]
+  );
+}
+
 async function hydrateFeedPosts(posts: any[], currentUserId: string) {
   if (posts.length === 0) {
     return [];
@@ -119,8 +131,11 @@ async function hydrateFeedPosts(posts: any[], currentUserId: string) {
   const authorIds = [...new Set(posts.map((post) => post.author_id))];
   const authorSql = placeholders(authorIds.length);
   const postSql = placeholders(postIds.length, 2);
+  const readPostSql = placeholders(postIds.length);
 
-  const [authors, likes, follows] = await Promise.all([
+  await recordPostReads(postIds, currentUserId);
+
+  const [authors, likes, follows, reads] = await Promise.all([
     queryMany(
       `SELECT user_id, username, display_name, avatar_url
        FROM users
@@ -138,15 +153,26 @@ async function hydrateFeedPosts(posts: any[], currentUserId: string) {
          AND following_id IN (${placeholders(authorIds.length, 2)})`,
       [currentUserId, ...authorIds]
     ),
+    queryMany(
+      `SELECT post_id, COUNT(*)::int AS read_count
+       FROM post_reads
+       WHERE post_id IN (${readPostSql})
+       GROUP BY post_id`,
+      postIds
+    ),
   ]);
 
   const authorMap = new Map(authors.map((a) => [a.user_id, a]));
   const likedSet = new Set(likes.map((l) => l.post_id));
   const followedSet = new Set(follows.map((f) => f.following_id));
+  const readMap = new Map(reads.map((r) => [r.post_id, Number(r.read_count || 0)]));
 
   return posts.map((post) =>
     mapFeedPost(
-      post,
+      {
+        ...post,
+        read_count: readMap.get(post.post_id) || 0,
+      },
       authorMap.get(post.author_id),
       likedSet.has(post.post_id),
       followedSet.has(post.author_id)
@@ -433,6 +459,7 @@ export default async function feedService(app: any) {
       ]
     );
     await writePostTags(postId, request.user.userId, hashtags, createdAt);
+    await recordPostReads([postId], request.user.userId);
 
     const author = await queryOne(
       `SELECT user_id, username, display_name, avatar_url FROM users WHERE user_id = $1`,
@@ -447,6 +474,7 @@ export default async function feedService(app: any) {
         like_count: 0,
         comment_count: 0,
         share_count: 0,
+        read_count: 1,
         rank_score: 0,
         mentions,
         hashtags,

@@ -1782,6 +1782,12 @@ class _PostCard extends StatelessWidget {
                   active: false,
                   onTap: onShare,
                 ),
+                _ActionButton(
+                  icon: CupertinoIcons.eye,
+                  label: post.readCount.toString(),
+                  active: false,
+                  onTap: () {},
+                ),
               ],
             ),
           ],
@@ -2029,13 +2035,23 @@ class _CommentSheetState extends State<_CommentSheet> {
   }) {
     final replies = <String, List<FeedComment>>{};
     final roots = <FeedComment>[];
+    final byId = <String, FeedComment>{
+      for (final comment in _comments) comment.id: comment,
+    };
 
     for (final comment in _comments) {
       final parentId = comment.parentCommentId;
       if (parentId == null || parentId.isEmpty) {
         roots.add(comment);
       } else {
-        replies.putIfAbsent(parentId, () => <FeedComment>[]).add(comment);
+        var rootId = parentId;
+        var parent = byId[rootId];
+        while (parent?.parentCommentId != null &&
+            parent!.parentCommentId!.isNotEmpty) {
+          rootId = parent.parentCommentId!;
+          parent = byId[rootId];
+        }
+        replies.putIfAbsent(rootId, () => <FeedComment>[]).add(comment);
       }
     }
 
@@ -2044,24 +2060,38 @@ class _CommentSheetState extends State<_CommentSheet> {
       bucket.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     }
 
-    List<Widget> branch(FeedComment comment, int depth) {
+    List<Widget> branch(FeedComment comment) {
       final children = replies[comment.id] ?? <FeedComment>[];
       return [
         _CommentTile(
           comment: comment,
-          depth: depth,
+          depth: 0,
+          replyToAuthor: null,
           primary: primary,
           secondary: secondary,
           timeAgo: _formatTimeAgo(comment.createdAt),
           onAuthorTap: () => widget.onAuthorTap(comment.author),
+          onMentionTap: widget.onAuthorTap,
           onLike: () => _toggleCommentLike(comment),
           onReply: () => _startReply(comment),
         ),
-        for (final child in children) ...branch(child, depth + 1),
+        for (final child in children)
+          _CommentTile(
+            comment: child,
+            depth: 1,
+            replyToAuthor: byId[child.parentCommentId]?.author,
+            primary: primary,
+            secondary: secondary,
+            timeAgo: _formatTimeAgo(child.createdAt),
+            onAuthorTap: () => widget.onAuthorTap(child.author),
+            onMentionTap: widget.onAuthorTap,
+            onLike: () => _toggleCommentLike(child),
+            onReply: () => _startReply(child),
+          ),
       ];
     }
 
-    return [for (final root in roots) ...branch(root, 0)];
+    return [for (final root in roots) ...branch(root)];
   }
 
   @override
@@ -2241,20 +2271,24 @@ class _CommentTile extends StatelessWidget {
   const _CommentTile({
     required this.comment,
     required this.depth,
+    required this.replyToAuthor,
     required this.primary,
     required this.secondary,
     required this.timeAgo,
     required this.onAuthorTap,
+    required this.onMentionTap,
     required this.onLike,
     required this.onReply,
   });
 
   final FeedComment comment;
   final int depth;
+  final FeedAuthor? replyToAuthor;
   final Color primary;
   final Color secondary;
   final String timeAgo;
   final VoidCallback onAuthorTap;
+  final ValueChanged<FeedAuthor> onMentionTap;
   final VoidCallback onLike;
   final VoidCallback onReply;
 
@@ -2322,9 +2356,11 @@ class _CommentTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  comment.body,
-                  style: PravaTypography.body.copyWith(color: primary),
+                _CommentBody(
+                  body: comment.body,
+                  primary: primary,
+                  replyToAuthor: replyToAuthor,
+                  onMentionTap: onMentionTap,
                 ),
                 const SizedBox(height: 6),
                 Row(
@@ -2384,6 +2420,86 @@ class _CommentTile extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CommentBody extends StatefulWidget {
+  const _CommentBody({
+    required this.body,
+    required this.primary,
+    required this.replyToAuthor,
+    required this.onMentionTap,
+  });
+
+  final String body;
+  final Color primary;
+  final FeedAuthor? replyToAuthor;
+  final ValueChanged<FeedAuthor> onMentionTap;
+
+  @override
+  State<_CommentBody> createState() => _CommentBodyState();
+}
+
+class _CommentBodyState extends State<_CommentBody> {
+  TapGestureRecognizer? _mentionRecognizer;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncRecognizer();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CommentBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.replyToAuthor?.id != widget.replyToAuthor?.id) {
+      _syncRecognizer();
+    }
+  }
+
+  @override
+  void dispose() {
+    _mentionRecognizer?.dispose();
+    super.dispose();
+  }
+
+  void _syncRecognizer() {
+    _mentionRecognizer?.dispose();
+    final author = widget.replyToAuthor;
+    _mentionRecognizer = author == null
+        ? null
+        : (TapGestureRecognizer()..onTap = () => widget.onMentionTap(author));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final author = widget.replyToAuthor;
+    final body = widget.body.trim();
+    if (author == null) {
+      return Text(
+        body,
+        style: PravaTypography.body.copyWith(color: widget.primary),
+      );
+    }
+
+    return RichText(
+      text: TextSpan(
+        children: [
+          TextSpan(
+            text: '@${author.username} ',
+            recognizer: _mentionRecognizer,
+            style: PravaTypography.body.copyWith(
+              color: PravaColors.accentPrimary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          TextSpan(
+            text: body,
+            style: PravaTypography.body.copyWith(color: widget.primary),
           ),
         ],
       ),

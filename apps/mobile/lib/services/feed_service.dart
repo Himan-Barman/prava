@@ -60,6 +60,7 @@ class FeedPost {
     required this.likeCount,
     required this.commentCount,
     required this.shareCount,
+    required this.readCount,
     required this.rankScore,
     required this.liked,
     required this.followed,
@@ -74,6 +75,7 @@ class FeedPost {
   int likeCount;
   int commentCount;
   int shareCount;
+  int readCount;
   int rankScore;
   bool liked;
   bool followed;
@@ -97,6 +99,9 @@ class FeedPost {
       shareCount: json['shareCount'] is int
           ? json['shareCount'] as int
           : int.tryParse(json['shareCount']?.toString() ?? '') ?? 0,
+      readCount: json['readCount'] is int
+          ? json['readCount'] as int
+          : int.tryParse(json['readCount']?.toString() ?? '') ?? 0,
       rankScore: json['rankScore'] is int
           ? json['rankScore'] as int
           : int.tryParse(json['rankScore']?.toString() ?? '') ?? 0,
