@@ -78,7 +78,12 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   );
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileChromeVisible?: boolean;
+  showMobileBottomNav?: boolean;
+}
+
+export function Sidebar({ mobileChromeVisible = true, showMobileBottomNav = true }: SidebarProps) {
   const { isDark, toggleTheme } = useTheme();
   const { logout } = useAuth();
   const location = useLocation();
@@ -160,13 +165,14 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop/Tablet Sidebar - ALWAYS Collapsed/Compact (Icon Only) */}
-      <aside className="hidden tablet:flex laptop:flex desktop:flex fixed left-0 top-0 h-screen w-[80px] p-4 border-r border-prava-light-border dark:border-prava-dark-border bg-prava-light-bg/80 dark:bg-prava-dark-bg/80 backdrop-blur-2xl z-40">
+      <aside className="hidden tablet:flex laptop:flex desktop:flex fixed left-0 top-0 h-screen w-[72px] p-3 border-r border-prava-light-border dark:border-prava-dark-border bg-prava-light-bg/84 dark:bg-prava-dark-bg/84 backdrop-blur-2xl z-40">
         <SidebarContent collapsed={true} />
       </aside>
 
       {/* Mobile Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 tablet:hidden laptop:hidden desktop:hidden z-50 px-4 pb-safe">
-        <div className="flex items-center justify-around py-2 px-2 rounded-t-[24px] bg-white/90 dark:bg-[#090909]/92 backdrop-blur-2xl border-t border-x border-prava-light-border/70 dark:border-white/10 shadow-[0_-8px_30px_rgba(0,0,0,0.14)]">
+      {showMobileBottomNav && (
+      <nav className={`app-mobile-bottom-nav fixed bottom-0 left-0 right-0 tablet:hidden laptop:hidden desktop:hidden z-50 ${mobileChromeVisible ? 'app-mobile-bottom-nav--visible' : 'app-mobile-bottom-nav--hidden'}`}>
+        <div className="mx-[14px] mb-[8px] flex h-[58px] items-center justify-around rounded-[22px] bg-white/86 px-1.5 py-1 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] dark:bg-black/35 shadow-[0_10px_24px_rgba(0,0,0,0.10)] dark:shadow-[0_10px_24px_rgba(0,0,0,0.24)]">
           {mainNavItems.map((item) => {
             const isActive = location.pathname === item.path ||
               (item.path !== '/' && location.pathname.startsWith(item.path));
@@ -175,37 +181,27 @@ export function Sidebar() {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`group flex min-w-14 flex-col items-center gap-1 rounded-[14px] px-1.5 py-1.5 transition-colors
+                className={`group flex flex-1 flex-col items-center rounded-[14px] px-1 py-0.5 transition-colors
                   ${isActive
                     ? 'text-prava-accent'
                     : 'text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary'
                   }
                 `}
               >
-                <span className={`grid h-9 min-w-14 place-items-center rounded-full transition-all duration-300 ${
+                <span className={`grid h-[30px] w-12 place-items-center rounded-full transition-all duration-200 ${
                   isActive
                     ? 'bg-prava-accent/15 dark:bg-prava-accent/25'
                     : 'group-hover:bg-black/5 dark:group-hover:bg-white/10'
                 }`}>
                   {item.icon}
                 </span>
-                <span className="text-[10px] font-bold">{item.label}</span>
+                <span className={`mt-0.5 text-[11px] leading-none ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
               </Link>
             );
           })}
-
-          {/* More Button */}
-          <button
-            onClick={() => setMobileOpen(true)}
-            className="flex min-w-14 flex-col items-center gap-1 rounded-[14px] px-1.5 py-1.5 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary"
-          >
-            <span className="grid h-9 min-w-14 place-items-center rounded-full transition-colors hover:bg-black/5 dark:hover:bg-white/10">
-              <Menu className="w-6 h-6" strokeWidth={3} />
-            </span>
-            <span className="text-[10px] font-bold">More</span>
-          </button>
         </div>
       </nav>
+      )}
 
       {/* Mobile Menu Overlay */}
       <AnimatePresence>

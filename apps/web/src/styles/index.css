@@ -164,6 +164,178 @@ html, body, #root {
   min-height: 100dvh;
 }
 
+/* App shell compact system. Landing page classes below stay isolated. */
+.prava-app {
+  background: #ffffff;
+}
+
+.dark .prava-app {
+  background: #0c0c0c;
+}
+
+.prava-app .prava-gradient-bg {
+  display: none;
+}
+
+.prava-app .max-w-2xl {
+  max-width: 620px;
+}
+
+.prava-app .max-w-6xl {
+  max-width: 1040px;
+}
+
+.prava-app button,
+.prava-app a,
+.prava-app input,
+.prava-app textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-mobile-topbar {
+  display: block;
+  max-height: calc(54px + env(safe-area-inset-top, 0px));
+  overflow: hidden;
+  transition:
+    max-height 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-mobile-topbar--hidden {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.app-mobile-topbar__inner {
+  height: 54px;
+  padding: 6px 10px 4px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-mobile-topbar__inner h1 {
+  flex: 1;
+  min-width: 0;
+  color: #0c0c0c;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dark .app-mobile-topbar__inner h1 {
+  color: #f2f2f2;
+}
+
+.app-mobile-topbar__actions {
+  width: 124px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.app-mobile-topbar__actions a,
+.app-mobile-topbar__actions button {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: #0c0c0c;
+  border-radius: 999px;
+  transition: background-color 140ms ease;
+}
+
+.dark .app-mobile-topbar__actions a,
+.dark .app-mobile-topbar__actions button {
+  color: #f2f2f2;
+}
+
+.app-mobile-topbar__actions a:active,
+.app-mobile-topbar__actions button:active {
+  background: rgba(91, 140, 255, 0.12);
+}
+
+.app-mobile-bottom-nav {
+  transition:
+    opacity 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-mobile-bottom-nav--hidden {
+  opacity: 0;
+  transform: translateY(84px);
+  pointer-events: none;
+}
+
+.feed-mode-control,
+.feed-compose-fab {
+  transition:
+    opacity 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-height 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mobile-chrome-hidden .feed-mode-control {
+  max-height: 0;
+  margin-bottom: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateY(-8px);
+}
+
+.mobile-chrome-hidden .feed-compose-fab {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(92px) scale(0.94);
+}
+
+@media (max-width: 500px) {
+  .prava-app .prava-app-content {
+    padding: 6px 16px 10px;
+  }
+
+  .prava-main-tab .prava-app-content {
+    padding-top: 0;
+  }
+
+  .prava-main-tab .prava-tab-page-header {
+    display: none;
+  }
+
+  .prava-app .max-w-2xl,
+  .prava-app .max-w-6xl {
+    max-width: 100%;
+  }
+
+  .prava-app .text-h1 {
+    font-size: 24px;
+    line-height: 1.12;
+  }
+
+  .prava-app .text-h2 {
+    font-size: 19px;
+  }
+
+  .prava-app .text-h3 {
+    font-size: 16px;
+  }
+
+  .prava-app .glass-card,
+  .prava-app [class*="rounded-\\[24px\\]"] {
+    border-radius: 18px;
+  }
+}
+
 /* Responsive container sizing */
 .container-auth {
   @apply w-full max-w-[440px] mx-auto px-6;

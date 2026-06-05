@@ -18,12 +18,12 @@ export function GlassCard({
     <div
       className={`
         relative overflow-hidden
-        px-5 py-6 sm:px-6 sm:py-7
-        rounded-[24px]
+        px-4 py-4 sm:px-5 sm:py-5
+        rounded-[18px]
         backdrop-blur-[18px]
         bg-white/90 dark:bg-white/[0.06]
         border border-black/[0.08] dark:border-white/[0.12]
-        shadow-[0_14px_40px_rgba(15,20,40,0.08)] dark:shadow-[0_14px_40px_rgba(0,0,0,0.4)]
+        shadow-[0_10px_28px_rgba(15,20,40,0.07)] dark:shadow-[0_10px_28px_rgba(0,0,0,0.36)]
         ${className}
       `}
     >
@@ -38,7 +38,7 @@ export function GlassCard({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
-        duration: 0.56,
+        duration: 0.32,
         ease: [0.4, 0, 0.2, 1],
         delay
       }}

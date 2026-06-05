@@ -29,7 +29,7 @@ export function PravaButton({
 
   const baseClasses = `
     relative flex items-center justify-center gap-2 
-    px-6 py-3.5 rounded-[16px] font-semibold text-[14px] tracking-[0.3px]
+    px-5 py-2.5 rounded-[14px] font-semibold text-[13px] tracking-normal
     transition-all duration-200 ease-out
     focus:outline-none focus:ring-2 focus:ring-prava-accent/40 focus:ring-offset-2
     disabled:cursor-not-allowed

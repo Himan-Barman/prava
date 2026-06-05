@@ -21,14 +21,14 @@ export const PravaInput = forwardRef<HTMLInputElement, PravaInputProps>(
         )}
         <div className="relative">
           {prefixIcon && (
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
               {prefixIcon}
             </div>
           )}
           <input
             ref={ref}
             className={`
-              w-full px-4 py-3.5 rounded-[16px] text-body
+              w-full px-3.5 py-2.5 rounded-[14px] text-body
               bg-prava-light-surface dark:bg-prava-dark-surface
               border transition-all duration-200
               text-prava-light-text-primary dark:text-prava-dark-text-primary
@@ -38,14 +38,14 @@ export const PravaInput = forwardRef<HTMLInputElement, PravaInputProps>(
                 ? 'border-prava-error focus:ring-prava-error/35 focus:border-prava-error'
                 : 'border-prava-light-border dark:border-prava-dark-border'
               }
-              ${prefixIcon ? 'pl-12' : ''}
-              ${suffixIcon ? 'pr-12' : ''}
+              ${prefixIcon ? 'pl-10' : ''}
+              ${suffixIcon ? 'pr-10' : ''}
               ${className}
             `}
             {...props}
           />
           {suffixIcon && (
-            <div className="absolute right-4 top-1/2 -translate-y-1/2">
+            <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
               {suffixIcon}
             </div>
           )}

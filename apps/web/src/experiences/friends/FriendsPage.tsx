@@ -96,7 +96,7 @@ export default function FriendsPage() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-6"
+        className="prava-tab-page-header mb-5"
       >
         <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
           Connections

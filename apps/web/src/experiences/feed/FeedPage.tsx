@@ -297,7 +297,7 @@ export default function FeedPage() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="mb-5"
+          className="prava-tab-page-header mb-5"
         >
           <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
             Prava
@@ -313,7 +313,7 @@ export default function FeedPage() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
-          className="sticky top-4 z-30 mb-5 flex justify-center"
+          className="feed-mode-control sticky top-4 z-30 mb-5 flex justify-center"
         >
           <div className="inline-grid grid-cols-2 gap-1 p-1 rounded-[18px] bg-prava-light-surface/92 dark:bg-prava-dark-surface/92 backdrop-blur-2xl border border-prava-light-border/70 dark:border-prava-dark-border/70">
             {modes.map((mode) => (
@@ -377,10 +377,10 @@ export default function FeedPage() {
       <button
         type="button"
         onClick={() => setComposerOpen(true)}
-        className="fixed bottom-24 right-5 tablet:bottom-8 tablet:right-8 z-40 grid h-16 w-16 place-items-center rounded-full bg-prava-accent text-white shadow-[0_16px_32px_rgba(0,0,0,0.22)] transition-transform hover:scale-105 active:scale-95"
+        className="feed-compose-fab fixed bottom-[86px] right-5 tablet:bottom-8 tablet:right-8 z-40 grid h-14 w-14 place-items-center rounded-full bg-prava-accent text-white shadow-[0_14px_28px_rgba(0,0,0,0.20)] transition-transform hover:scale-105 active:scale-95"
         aria-label="Write post"
       >
-        <PencilLine className="w-8 h-8" strokeWidth={3} />
+        <PencilLine className="w-7 h-7" strokeWidth={3} />
       </button>
 
       <AnimatePresence>

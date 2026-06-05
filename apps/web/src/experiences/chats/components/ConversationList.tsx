@@ -162,7 +162,7 @@ export function ConversationList({ activeId, onSelect, onNewChat }: Conversation
   return (
     <div className="h-full flex flex-col">
       <div className="mb-4 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="prava-tab-page-header flex items-center justify-between">
           <h1 className="text-2xl font-bold text-prava-light-text-primary dark:text-prava-dark-text-primary">
             Chats
           </h1>
