@@ -1,13 +1,7 @@
 import { query, queryMany, queryOne, withTransaction } from "../../lib/pg.js";
 import { requireAuth } from "../../lib/auth.js";
-import {
-  HttpError,
-  ensure,
-  generateId,
-  now,
-  toIso,
-} from "../../lib/security.js";
-import { publishToFeedSubscribers } from "../realtime/hub.js";
+import { HttpError, ensure, generateId, now, toIso } from "../../lib/security.js";
+import { publishToFeedSubscribers, publishToUsers } from "../realtime/hub.js";
 
 const MAX_POST_WORDS = 200;
 const MAX_POST_CHARS = 1600;
@@ -32,7 +26,10 @@ function wordCount(value: string): number {
 }
 
 function normalizeBody(value: unknown, maxWords: number, maxChars: number, label: string): string {
-  const body = String(value || "").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  const body = String(value || "")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
   ensure(body.length > 0, 400, `${label} cannot be empty`);
   ensure(body.length <= maxChars, 400, `${label} is too long`);
   ensure(wordCount(body) <= maxWords, 400, `${label} must be under ${maxWords} words`);
@@ -53,7 +50,8 @@ function placeholders(count: number, offset = 1): string {
 }
 
 function extractMatches(body: string, symbol: string): string[] {
-  const pattern = new RegExp(`(?:^|\\s)${escapeRegex(symbol)}([a-zA-Z0-9_]{2,32})`, "g");
+  const charset = symbol === "@" ? "a-zA-Z0-9_." : "a-zA-Z0-9_";
+  const pattern = new RegExp(`(?:^|\\s)${escapeRegex(symbol)}([${charset}]{2,32})`, "g");
   const out = new Set<string>();
   for (const match of body.matchAll(pattern)) {
     out.add(String(match[1] || "").toLowerCase());
@@ -87,8 +85,8 @@ function mapFeedPost(post: any, author: any, liked: boolean, followed: boolean) 
       id: author?.user_id || post.author_id,
       username: author?.username || "unknown",
       displayName: author?.display_name || author?.username || "Unknown",
-      avatarUrl: author?.avatar_url || "",
-    },
+      avatarUrl: author?.avatar_url || ""
+    }
   };
 }
 
@@ -106,8 +104,8 @@ function mapFeedComment(comment: any, author: any, liked: boolean) {
       id: author?.user_id || comment.author_id,
       username: author?.username || "unknown",
       displayName: author?.display_name || author?.username || "Unknown",
-      avatarUrl: author?.avatar_url || "",
-    },
+      avatarUrl: author?.avatar_url || ""
+    }
   };
 }
 
@@ -142,10 +140,7 @@ async function hydrateFeedPosts(posts: any[], currentUserId: string) {
        WHERE user_id IN (${authorSql})`,
       authorIds
     ),
-    queryMany(
-      `SELECT post_id FROM post_likes WHERE user_id = $1 AND post_id IN (${postSql})`,
-      [currentUserId, ...postIds]
-    ),
+    queryMany(`SELECT post_id FROM post_likes WHERE user_id = $1 AND post_id IN (${postSql})`, [currentUserId, ...postIds]),
     queryMany(
       `SELECT following_id
        FROM follows
@@ -159,7 +154,7 @@ async function hydrateFeedPosts(posts: any[], currentUserId: string) {
        WHERE post_id IN (${readPostSql})
        GROUP BY post_id`,
       postIds
-    ),
+    )
   ]);
 
   const authorMap = new Map(authors.map((a) => [a.user_id, a]));
@@ -171,7 +166,7 @@ async function hydrateFeedPosts(posts: any[], currentUserId: string) {
     mapFeedPost(
       {
         ...post,
-        read_count: readMap.get(post.post_id) || 0,
+        read_count: readMap.get(post.post_id) || 0
       },
       authorMap.get(post.author_id),
       likedSet.has(post.post_id),
@@ -201,19 +196,13 @@ async function hydrateFeedComments(comments: any[], currentUserId: string) {
        WHERE user_id = $1
          AND comment_id IN (${placeholders(commentIds.length, 2)})`,
       [currentUserId, ...commentIds]
-    ),
+    )
   ]);
 
   const authorMap = new Map(authors.map((author) => [author.user_id, author]));
   const likedSet = new Set(likes.map((like) => like.comment_id));
 
-  return comments.map((comment) =>
-    mapFeedComment(
-      comment,
-      authorMap.get(comment.author_id),
-      likedSet.has(comment.comment_id)
-    )
-  );
+  return comments.map((comment) => mapFeedComment(comment, authorMap.get(comment.author_id), likedSet.has(comment.comment_id)));
 }
 
 async function writePostTags(postId: string, authorId: string, tags: string[], createdAt: Date) {
@@ -245,62 +234,50 @@ async function writePostTags(postId: string, authorId: string, tags: string[], c
 }
 
 async function shouldCreateNotification(userId: string, categoryKey: string) {
-  const row = await queryOne(
-    `SELECT settings FROM user_settings WHERE user_id = $1`,
-    [userId]
-  );
+  const row = await queryOne(`SELECT settings FROM user_settings WHERE user_id = $1`, [userId]);
   const settings = row?.settings || {};
   return settings.pushNotifications !== false && settings[categoryKey] !== false;
 }
 
-async function createNotification({
-  userId,
-  actorUserId,
-  type,
-  title,
-  body,
-  data,
-  categoryKey,
-}: {
-  userId: string;
-  actorUserId: string;
-  type: string;
-  title: string;
-  body: string;
-  data: Record<string, unknown>;
-  categoryKey: string;
-}) {
+async function createNotification({ userId, actorUserId, type, title, body, data, categoryKey }: { userId: string; actorUserId: string; type: string; title: string; body: string; data: Record<string, unknown>; categoryKey: string }) {
   if (!userId || userId === actorUserId) return;
   if (!(await shouldCreateNotification(userId, categoryKey))) return;
+  const notificationId = generateId();
+  const createdAt = now();
   await query(
     `INSERT INTO notifications (
        notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)`,
-    [
-      generateId(),
-      userId,
-      actorUserId,
-      type,
-      title,
-      body,
-      JSON.stringify(data),
-      now(),
-    ]
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)`,
+    [notificationId, userId, actorUserId, type, title, body, JSON.stringify(data), createdAt]
   );
+
+  const actor = await queryOne(
+    `SELECT user_id, username, display_name, is_verified
+     FROM users
+     WHERE user_id = $1`,
+    [actorUserId]
+  );
+  publishToUsers([userId], "NOTIFICATION_PUSH", {
+    id: notificationId,
+    type,
+    title,
+    body,
+    createdAt: toIso(createdAt),
+    readAt: null,
+    data,
+    actor: actor
+      ? {
+          id: actor.user_id,
+          username: actor.username,
+          displayName: actor.display_name || actor.username,
+          isVerified: actor.is_verified === true
+        }
+      : null
+  });
 }
 
-async function notifyMentionedUsers({
-  usernames,
-  actorUserId,
-  postId,
-  commentId,
-}: {
-  usernames: string[];
-  actorUserId: string;
-  postId: string;
-  commentId?: string;
-}) {
+async function notifyMentionedUsers({ usernames, actorUserId, postId, commentId }: { usernames: string[]; actorUserId: string; postId: string; commentId?: string }) {
   const unique = [...new Set(usernames.map((item) => item.toLowerCase()))];
   if (unique.length === 0) return;
   const users = await queryMany(
@@ -314,11 +291,9 @@ async function notifyMentionedUsers({
       actorUserId,
       type: "mention",
       title: "New mention",
-      body: commentId
-        ? "Someone mentioned you in a comment"
-        : "Someone mentioned you in a post",
+      body: commentId ? "Someone mentioned you in a comment" : "Someone mentioned you in a post",
       data: { postId, commentId: commentId || null },
-      categoryKey: "notifyMentions",
+      categoryKey: "notifyMentions"
     });
   }
 }
@@ -377,14 +352,8 @@ export default async function feedService(app: any) {
     }
     params.push(limit);
 
-    const followingFilter =
-      mode === "following"
-        ? "AND (p.author_id = $1 OR f.following_id IS NOT NULL)"
-        : "";
-    const orderBy =
-      mode === "following"
-        ? "p.created_at DESC"
-        : "rank_score DESC, p.created_at DESC";
+    const followingFilter = mode === "following" ? "AND (p.author_id = $1 OR f.following_id IS NOT NULL)" : "";
+    const orderBy = mode === "following" ? "p.created_at DESC" : "rank_score DESC, p.created_at DESC";
 
     const posts = await queryMany(
       `SELECT p.*,
@@ -433,7 +402,7 @@ export default async function feedService(app: any) {
       tag: row.tag,
       postCount: Number(row.post_count || 0),
       rankScore: Number(row.rank_score || 0),
-      lastPostAt: toIso(row.last_post_at),
+      lastPostAt: toIso(row.last_post_at)
     }));
   });
 
@@ -448,23 +417,12 @@ export default async function feedService(app: any) {
     await query(
       `INSERT INTO posts (post_id, author_id, body, media_urls, mentions, hashtags, like_count, comment_count, share_count, share_of_post_id, created_at, updated_at)
        VALUES ($1, $2, $3, '[]', $4, $5, 0, 0, 0, NULL, $6, $7)`,
-      [
-        postId,
-        request.user.userId,
-        body,
-        JSON.stringify(mentions),
-        JSON.stringify(hashtags),
-        createdAt,
-        createdAt,
-      ]
+      [postId, request.user.userId, body, JSON.stringify(mentions), JSON.stringify(hashtags), createdAt, createdAt]
     );
     await writePostTags(postId, request.user.userId, hashtags, createdAt);
     await recordPostReads([postId], request.user.userId);
 
-    const author = await queryOne(
-      `SELECT user_id, username, display_name, avatar_url FROM users WHERE user_id = $1`,
-      [request.user.userId]
-    );
+    const author = await queryOne(`SELECT user_id, username, display_name, avatar_url FROM users WHERE user_id = $1`, [request.user.userId]);
 
     const post = mapFeedPost(
       {
@@ -478,7 +436,7 @@ export default async function feedService(app: any) {
         rank_score: 0,
         mentions,
         hashtags,
-        author_id: request.user.userId,
+        author_id: request.user.userId
       },
       author,
       false,
@@ -489,7 +447,7 @@ export default async function feedService(app: any) {
     await notifyMentionedUsers({
       usernames: mentions,
       actorUserId: request.user.userId,
-      postId,
+      postId
     });
     return post;
   });
@@ -498,27 +456,18 @@ export default async function feedService(app: any) {
     const postId = String(request.params.postId || "").trim();
     ensure(postId.length >= 8, 400, "Invalid post");
 
-    const post = await queryOne(
-      `SELECT post_id, author_id, like_count FROM posts WHERE post_id = $1`,
-      [postId]
-    );
+    const post = await queryOne(`SELECT post_id, author_id, like_count FROM posts WHERE post_id = $1`, [postId]);
     if (!post) {
       throw new HttpError(404, "Post not found");
     }
 
-    const existing = await queryOne(
-      `SELECT post_id FROM post_likes WHERE post_id = $1 AND user_id = $2`,
-      [postId, request.user.userId]
-    );
+    const existing = await queryOne(`SELECT post_id FROM post_likes WHERE post_id = $1 AND user_id = $2`, [postId, request.user.userId]);
 
     const ts = now();
     let liked = false;
     await withTransaction(async (client) => {
       if (existing) {
-        await client.query(
-          `DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`,
-          [postId, request.user.userId]
-        );
+        await client.query(`DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`, [postId, request.user.userId]);
         await client.query(
           `UPDATE posts
            SET like_count = GREATEST(like_count - 1, 0), updated_at = $2
@@ -536,10 +485,7 @@ export default async function feedService(app: any) {
         [postId, request.user.userId, ts]
       );
       if ((inserted.rowCount || 0) > 0) {
-        await client.query(
-          `UPDATE posts SET like_count = like_count + 1, updated_at = $2 WHERE post_id = $1`,
-          [postId, ts]
-        );
+        await client.query(`UPDATE posts SET like_count = like_count + 1, updated_at = $2 WHERE post_id = $1`, [postId, ts]);
       }
       liked = true;
     });
@@ -549,7 +495,7 @@ export default async function feedService(app: any) {
       postId,
       userId: request.user.userId,
       liked,
-      likeCount: Math.max(0, Number(updated?.like_count || 0)),
+      likeCount: Math.max(0, Number(updated?.like_count || 0))
     };
     if (liked) {
       await createNotification({
@@ -559,7 +505,7 @@ export default async function feedService(app: any) {
         title: "New like",
         body: "Someone liked your post",
         data: { postId },
-        categoryKey: "notifyPosts",
+        categoryKey: "notifyPosts"
       });
     }
     publishToFeedSubscribers("FEED_LIKE", payload);
@@ -591,19 +537,13 @@ export default async function feedService(app: any) {
     const mentions = extractMatches(body, "@");
     const parentCommentId = String(request.body?.parentCommentId || "").trim() || null;
 
-    const post = await queryOne(
-      `SELECT post_id, author_id FROM posts WHERE post_id = $1`,
-      [postId]
-    );
+    const post = await queryOne(`SELECT post_id, author_id FROM posts WHERE post_id = $1`, [postId]);
     if (!post) {
       throw new HttpError(404, "Post not found");
     }
     if (parentCommentId) {
       ensure(parentCommentId.length >= 8, 400, "Invalid comment");
-      const parent = await queryOne(
-        `SELECT comment_id FROM comments WHERE comment_id = $1 AND post_id = $2`,
-        [parentCommentId, postId]
-      );
+      const parent = await queryOne(`SELECT comment_id FROM comments WHERE comment_id = $1 AND post_id = $2`, [parentCommentId, postId]);
       if (!parent) {
         throw new HttpError(404, "Comment not found");
       }
@@ -618,22 +558,13 @@ export default async function feedService(app: any) {
          VALUES ($1, $2, $3, $4, $5, 0, 0, $6)`,
         [commentId, postId, parentCommentId, request.user.userId, body, createdAt]
       );
-      await client.query(
-        `UPDATE posts SET comment_count = comment_count + 1, updated_at = $2 WHERE post_id = $1`,
-        [postId, createdAt]
-      );
+      await client.query(`UPDATE posts SET comment_count = comment_count + 1, updated_at = $2 WHERE post_id = $1`, [postId, createdAt]);
       if (parentCommentId) {
-        await client.query(
-          `UPDATE comments SET reply_count = reply_count + 1 WHERE comment_id = $1`,
-          [parentCommentId]
-        );
+        await client.query(`UPDATE comments SET reply_count = reply_count + 1 WHERE comment_id = $1`, [parentCommentId]);
       }
     });
 
-    const [author, postStats] = await Promise.all([
-      queryOne(`SELECT user_id, username, display_name, avatar_url FROM users WHERE user_id = $1`, [request.user.userId]),
-      queryOne(`SELECT comment_count FROM posts WHERE post_id = $1`, [postId]),
-    ]);
+    const [author, postStats] = await Promise.all([queryOne(`SELECT user_id, username, display_name, avatar_url FROM users WHERE user_id = $1`, [request.user.userId]), queryOne(`SELECT comment_count FROM posts WHERE post_id = $1`, [postId])]);
 
     const payload = {
       postId,
@@ -647,32 +578,30 @@ export default async function feedService(app: any) {
           body,
           like_count: 0,
           reply_count: 0,
-          created_at: createdAt,
+          created_at: createdAt
         },
         author,
         false
-      ),
+      )
     };
     await createNotification({
       userId: post.author_id,
       actorUserId: request.user.userId,
       type: parentCommentId ? "reply" : "comment",
       title: parentCommentId ? "New reply" : "New comment",
-      body: parentCommentId
-        ? "Someone replied on your post"
-        : "Someone commented on your post",
+      body: parentCommentId ? "Someone replied on your post" : "Someone commented on your post",
       data: { postId, commentId, parentCommentId },
-      categoryKey: "notifyPosts",
+      categoryKey: "notifyPosts"
     });
     await notifyMentionedUsers({
       usernames: mentions,
       actorUserId: request.user.userId,
       postId,
-      commentId,
+      commentId
     });
     publishToFeedSubscribers("FEED_COMMENT", {
       postId,
-      commentCount: payload.commentCount,
+      commentCount: payload.commentCount
     });
     return payload;
   });
@@ -683,31 +612,19 @@ export default async function feedService(app: any) {
     ensure(postId.length >= 8, 400, "Invalid post");
     ensure(commentId.length >= 8, 400, "Invalid comment");
 
-    const comment = await queryOne(
-      `SELECT comment_id, like_count FROM comments WHERE comment_id = $1 AND post_id = $2`,
-      [commentId, postId]
-    );
+    const comment = await queryOne(`SELECT comment_id, like_count FROM comments WHERE comment_id = $1 AND post_id = $2`, [commentId, postId]);
     if (!comment) {
       throw new HttpError(404, "Comment not found");
     }
 
-    const existing = await queryOne(
-      `SELECT comment_id FROM comment_likes WHERE comment_id = $1 AND user_id = $2`,
-      [commentId, request.user.userId]
-    );
+    const existing = await queryOne(`SELECT comment_id FROM comment_likes WHERE comment_id = $1 AND user_id = $2`, [commentId, request.user.userId]);
 
     const ts = now();
     let liked = false;
     await withTransaction(async (client) => {
       if (existing) {
-        await client.query(
-          `DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2`,
-          [commentId, request.user.userId]
-        );
-        await client.query(
-          `UPDATE comments SET like_count = GREATEST(like_count - 1, 0) WHERE comment_id = $1`,
-          [commentId]
-        );
+        await client.query(`DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2`, [commentId, request.user.userId]);
+        await client.query(`UPDATE comments SET like_count = GREATEST(like_count - 1, 0) WHERE comment_id = $1`, [commentId]);
         liked = false;
         return;
       }
@@ -719,25 +636,19 @@ export default async function feedService(app: any) {
         [commentId, request.user.userId, ts]
       );
       if ((inserted.rowCount || 0) > 0) {
-        await client.query(
-          `UPDATE comments SET like_count = like_count + 1 WHERE comment_id = $1`,
-          [commentId]
-        );
+        await client.query(`UPDATE comments SET like_count = like_count + 1 WHERE comment_id = $1`, [commentId]);
       }
       liked = true;
     });
 
-    const updated = await queryOne(
-      `SELECT like_count FROM comments WHERE comment_id = $1`,
-      [commentId]
-    );
+    const updated = await queryOne(`SELECT like_count FROM comments WHERE comment_id = $1`, [commentId]);
 
     return {
       postId,
       commentId,
       userId: request.user.userId,
       liked,
-      likeCount: Math.max(0, Number(updated?.like_count || 0)),
+      likeCount: Math.max(0, Number(updated?.like_count || 0))
     };
   });
 
@@ -750,10 +661,7 @@ export default async function feedService(app: any) {
       throw new HttpError(404, "Post not found");
     }
 
-    const existing = await queryOne(
-      `SELECT post_id FROM posts WHERE author_id = $1 AND share_of_post_id = $2`,
-      [request.user.userId, postId]
-    );
+    const existing = await queryOne(`SELECT post_id FROM posts WHERE author_id = $1 AND share_of_post_id = $2`, [request.user.userId, postId]);
 
     const ts = now();
     if (!existing) {
@@ -762,24 +670,12 @@ export default async function feedService(app: any) {
       await query(
         `INSERT INTO posts (post_id, author_id, body, media_urls, mentions, hashtags, like_count, comment_count, share_count, created_at, updated_at, share_of_post_id)
          VALUES ($1, $2, $3, '[]', $4, $5, 0, 0, 0, $6, $7, $8)`,
-        [
-          sharedPostId,
-          request.user.userId,
-          original.body,
-          JSON.stringify(Array.isArray(original.mentions) ? original.mentions : []),
-          JSON.stringify(hashtags),
-          ts,
-          ts,
-          postId,
-        ]
+        [sharedPostId, request.user.userId, original.body, JSON.stringify(Array.isArray(original.mentions) ? original.mentions : []), JSON.stringify(hashtags), ts, ts, postId]
       );
       await writePostTags(sharedPostId, request.user.userId, hashtags.map(normalizeTag), ts);
     }
 
-    await query(
-      `UPDATE posts SET share_count = share_count + 1, updated_at = $2 WHERE post_id = $1`,
-      [postId, ts]
-    );
+    await query(`UPDATE posts SET share_count = share_count + 1, updated_at = $2 WHERE post_id = $1`, [postId, ts]);
 
     const updated = await queryOne(`SELECT share_count FROM posts WHERE post_id = $1`, [postId]);
     const payload = {
@@ -787,7 +683,7 @@ export default async function feedService(app: any) {
       userId: request.user.userId,
       shared: true,
       shareCount: Number(updated?.share_count || 0),
-      created: !existing,
+      created: !existing
     };
     await createNotification({
       userId: original.author_id,
@@ -796,7 +692,7 @@ export default async function feedService(app: any) {
       title: "New share",
       body: "Someone shared your post",
       data: { postId },
-      categoryKey: "notifyPosts",
+      categoryKey: "notifyPosts"
     });
     publishToFeedSubscribers("FEED_SHARE", payload);
     return payload;

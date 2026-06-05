@@ -220,12 +220,12 @@ class FeedService {
 
   Future<Map<String, dynamic>> toggleLike(String postId) async {
     final data = await _client.post('/feed/$postId/like', auth: true);
-    return data;
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
   }
 
   Future<Map<String, dynamic>> sharePost(String postId) async {
     final data = await _client.post('/feed/$postId/share', auth: true);
-    return data;
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
   }
 
   Future<List<FeedComment>> listComments(

@@ -14,6 +14,8 @@ import '../../../../ui-system/skeleton/feed_skeleton.dart';
 import '../../../../services/feed_service.dart';
 import '../../../../services/feed_realtime.dart';
 import '../../../../services/chat_service.dart';
+import '../../../../services/account_service.dart';
+import '../../../../services/user_search_service.dart';
 import '../../../../services/local_time_service.dart';
 import '../../../../services/platform_bridge_service.dart';
 import '../../../../core/storage/secure_store.dart';
@@ -32,6 +34,8 @@ class _FeedPageState extends State<FeedPage> {
   final FeedService _feedService = FeedService();
   final FeedRealtime _realtime = FeedRealtime();
   final ChatService _chatService = ChatService();
+  final AccountService _accountService = AccountService();
+  final UserSearchService _userSearchService = UserSearchService();
   final LocalTimeService _time = const LocalTimeService();
   final PlatformBridgeService _platform = PlatformBridgeService();
   final SecureStore _store = SecureStore();
@@ -43,15 +47,13 @@ class _FeedPageState extends State<FeedPage> {
   final Set<String> _pendingFollows = <String>{};
 
   List<FeedPost> _posts = <FeedPost>[];
-  List<FeedTag> _tags = <FeedTag>[];
+  AccountInfo? _composerAccount;
   bool _loading = true;
   bool _loadingMore = false;
-  bool _loadingTags = false;
   bool _posting = false;
   bool _hasMore = true;
   int _segmentIndex = 0;
   String? _userId;
-  String? _selectedTag;
   bool _feedControlsVisible = true;
   double _lastScrollOffset = 0;
 
@@ -78,8 +80,19 @@ class _FeedPageState extends State<FeedPage> {
 
   Future<void> _bootstrap() async {
     _userId = await _store.getUserId();
-    await Future.wait([_loadFeed(showSkeleton: true), _loadTags()]);
+    unawaited(_loadComposerAccount());
+    await _loadFeed(showSkeleton: true);
     await _realtime.connect(_handleRealtimeEvent);
+  }
+
+  Future<void> _loadComposerAccount() async {
+    try {
+      final account = await _accountService.fetchAccountInfo();
+      if (!mounted) return;
+      setState(() => _composerAccount = account);
+    } catch (_) {
+      // The composer can still work with an initial avatar fallback.
+    }
   }
 
   Future<void> _switchSegment(int value) async {
@@ -111,7 +124,6 @@ class _FeedPageState extends State<FeedPage> {
       final data = await _feedService.listFeed(
         limit: _pageSize,
         mode: _currentFeedMode(),
-        tag: _selectedTag,
       );
       if (!mounted) return;
 
@@ -133,20 +145,14 @@ class _FeedPageState extends State<FeedPage> {
 
   Future<void> _refreshFeed() async {
     try {
-      final results = await Future.wait([
-        _feedService.listFeed(
-          limit: _pageSize,
-          mode: _currentFeedMode(),
-          tag: _selectedTag,
-        ),
-        _feedService.listTags(limit: 16),
-      ]);
+      final posts = await _feedService.listFeed(
+        limit: _pageSize,
+        mode: _currentFeedMode(),
+      );
       if (!mounted) return;
 
       setState(() {
-        final posts = results[0] as List<FeedPost>;
         _posts = posts;
-        _tags = results[1] as List<FeedTag>;
         _hasMore = posts.length >= _pageSize;
       });
     } catch (_) {
@@ -202,7 +208,6 @@ class _FeedPageState extends State<FeedPage> {
         before: before,
         limit: _pageSize,
         mode: _currentFeedMode(),
-        tag: _selectedTag,
       );
 
       if (!mounted) return;
@@ -216,28 +221,6 @@ class _FeedPageState extends State<FeedPage> {
       if (!mounted) return;
       setState(() => _loadingMore = false);
     }
-  }
-
-  Future<void> _loadTags() async {
-    if (_loadingTags) return;
-    setState(() => _loadingTags = true);
-    try {
-      final tags = await _feedService.listTags(limit: 16);
-      if (!mounted) return;
-      setState(() {
-        _tags = tags;
-        _loadingTags = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _loadingTags = false);
-    }
-  }
-
-  Future<void> _selectTag(String? tag) async {
-    final normalized = tag?.trim().replaceFirst('#', '');
-    if (normalized == null || normalized.isEmpty) return;
-    _openHashtagFeed(normalized);
   }
 
   Future<bool> _createPost() async {
@@ -270,14 +253,10 @@ class _FeedPageState extends State<FeedPage> {
       if (!mounted) return false;
 
       setState(() {
-        final selectedTag = _selectedTag;
-        if (selectedTag == null || post.hashtags.contains(selectedTag)) {
-          _posts = [post, ..._posts];
-        }
+        _posts = [post, ..._posts];
         _composerController.clear();
         _posting = false;
       });
-      unawaited(_loadTags());
       return true;
     } catch (_) {
       if (!mounted) return false;
@@ -321,10 +300,6 @@ class _FeedPageState extends State<FeedPage> {
   void _applyPostEvent(Map<String, dynamic> payload) {
     if (_segmentIndex == 1) return;
     final post = FeedPost.fromJson(payload);
-    final selectedTag = _selectedTag;
-    if (selectedTag != null && !post.hashtags.contains(selectedTag)) {
-      return;
-    }
     if (_posts.any((item) => item.id == post.id)) return;
     if (_posts.any(
       (item) => item.author.id == post.author.id && item.followed,
@@ -523,6 +498,9 @@ class _FeedPageState extends State<FeedPage> {
                 top: false,
                 child: _ComposerCard(
                   controller: _composerController,
+                  account: _composerAccount,
+                  feedService: _feedService,
+                  userSearchService: _userSearchService,
                   onPost: () async {
                     final create = _createPost();
                     setSheetState(() {});
@@ -554,6 +532,43 @@ class _FeedPageState extends State<FeedPage> {
         fullscreenDialog: true,
       ),
     );
+  }
+
+  Future<void> _openMentionProfile(String username) async {
+    final handle = username.trim().replaceFirst('@', '').toLowerCase();
+    if (handle.length < 2) return;
+
+    HapticFeedback.selectionClick();
+    try {
+      final results = await _userSearchService.searchUsers(handle, limit: 8);
+      UserSearchResult? user;
+      for (final item in results) {
+        if (item.username.toLowerCase() == handle) {
+          user = item;
+          break;
+        }
+      }
+      if (!mounted || user == null || user.id.isEmpty || user.id == _userId) {
+        return;
+      }
+      Navigator.of(context, rootNavigator: true).push(
+        PravaNavigator.route(
+          PublicProfilePage(
+            userId: user.id,
+            initialIsFollowing: user.isFollowing,
+            initialIsFollowedBy: user.isFollowedBy,
+          ),
+          fullscreenDialog: true,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: 'Unable to open profile',
+        type: PravaToastType.error,
+      );
+    }
   }
 
   void _openHashtagFeed(String tag) {
@@ -597,7 +612,7 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   TextSpan _buildPostSpan(String text, TextStyle base, TextStyle highlight) {
-    final regex = RegExp(r'(@[a-zA-Z0-9_]{2,32}|#[a-zA-Z0-9_]{2,32})');
+    final regex = RegExp(r'(@[a-zA-Z0-9_.]{2,32}|#[a-zA-Z0-9_]{2,32})');
     final spans = <TextSpan>[];
     var start = 0;
 
@@ -615,7 +630,9 @@ class _FeedPageState extends State<FeedPage> {
           recognizer: token.startsWith('#')
               ? (TapGestureRecognizer()
                   ..onTap = () => _openHashtagFeed(token.substring(1)))
-              : null,
+              : (TapGestureRecognizer()
+                  ..onTap = () =>
+                      unawaited(_openMentionProfile(token.substring(1)))),
         ),
       );
       start = match.end;
@@ -701,14 +718,6 @@ class _FeedPageState extends State<FeedPage> {
                   ),
                 ),
               ),
-            ),
-            _TagRail(
-              tags: _tags,
-              selectedTag: null,
-              loading: _loadingTags,
-              onSelect: (tag) {
-                _selectTag(tag);
-              },
             ),
             Expanded(
               child: _loading
@@ -855,6 +864,7 @@ class HashtagFeedPage extends StatefulWidget {
 class _HashtagFeedPageState extends State<HashtagFeedPage> {
   final FeedService _feedService = FeedService();
   final ChatService _chatService = ChatService();
+  final UserSearchService _userSearchService = UserSearchService();
   final LocalTimeService _time = const LocalTimeService();
   final PlatformBridgeService _platform = PlatformBridgeService();
   final SecureStore _store = SecureStore();
@@ -1066,6 +1076,43 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
     );
   }
 
+  Future<void> _openMentionProfile(String username) async {
+    final handle = username.trim().replaceFirst('@', '').toLowerCase();
+    if (handle.length < 2) return;
+
+    HapticFeedback.selectionClick();
+    try {
+      final results = await _userSearchService.searchUsers(handle, limit: 8);
+      UserSearchResult? user;
+      for (final item in results) {
+        if (item.username.toLowerCase() == handle) {
+          user = item;
+          break;
+        }
+      }
+      if (!mounted || user == null || user.id.isEmpty || user.id == _userId) {
+        return;
+      }
+      Navigator.of(context, rootNavigator: true).push(
+        PravaNavigator.route(
+          PublicProfilePage(
+            userId: user.id,
+            initialIsFollowing: user.isFollowing,
+            initialIsFollowedBy: user.isFollowedBy,
+          ),
+          fullscreenDialog: true,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: 'Unable to open profile',
+        type: PravaToastType.error,
+      );
+    }
+  }
+
   void _openHashtagFeed(String tag) {
     final normalized = tag.trim().replaceFirst('#', '');
     if (normalized.isEmpty || normalized == widget.tag) return;
@@ -1079,7 +1126,7 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
   }
 
   TextSpan _buildPostSpan(String text, TextStyle base, TextStyle highlight) {
-    final regex = RegExp(r'(@[a-zA-Z0-9_]{2,32}|#[a-zA-Z0-9_]{2,32})');
+    final regex = RegExp(r'(@[a-zA-Z0-9_.]{2,32}|#[a-zA-Z0-9_]{2,32})');
     final spans = <TextSpan>[];
     var start = 0;
 
@@ -1095,7 +1142,9 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
           recognizer: token.startsWith('#')
               ? (TapGestureRecognizer()
                   ..onTap = () => _openHashtagFeed(token.substring(1)))
-              : null,
+              : (TapGestureRecognizer()
+                  ..onTap = () =>
+                      unawaited(_openMentionProfile(token.substring(1)))),
         ),
       );
       start = match.end;
@@ -1265,159 +1314,267 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
   }
 }
 
-class _TagRail extends StatelessWidget {
-  const _TagRail({
-    required this.tags,
-    required this.selectedTag,
-    required this.loading,
-    required this.onSelect,
-  });
-
-  final List<FeedTag> tags;
-  final String? selectedTag;
-  final bool loading;
-  final ValueChanged<String?> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-
-    if (loading && tags.isEmpty) {
-      return const SizedBox(height: 38);
-    }
-
-    final visibleTags = tags.take(12).toList();
-    if (visibleTags.isEmpty && selectedTag == null) {
-      return const SizedBox.shrink();
-    }
-
-    return SizedBox(
-      height: 42,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        itemCount: visibleTags.length + (selectedTag == null ? 0 : 1),
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          if (selectedTag != null && index == 0) {
-            return _TagChip(
-              label: '#$selectedTag',
-              selected: true,
-              count: null,
-              border: border,
-              secondary: secondary,
-              onTap: () => onSelect(null),
-            );
-          }
-          final tag = visibleTags[index - (selectedTag == null ? 0 : 1)];
-          return _TagChip(
-            label: '#${tag.tag}',
-            selected: tag.tag == selectedTag,
-            count: null,
-            border: border,
-            secondary: secondary,
-            onTap: () => onSelect(tag.tag),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _TagChip extends StatelessWidget {
-  const _TagChip({
-    required this.label,
-    required this.selected,
-    required this.count,
-    required this.border,
-    required this.secondary,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final int? count;
-  final Color border;
-  final Color secondary;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected
-              ? PravaColors.accentPrimary.withValues(alpha: 0.16)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: selected ? PravaColors.accentPrimary : border,
-          ),
-        ),
-        child: Row(
-          children: [
-            Text(
-              label,
-              style: PravaTypography.caption.copyWith(
-                color: selected ? PravaColors.accentPrimary : secondary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            if (count != null) ...[
-              const SizedBox(width: 6),
-              Text(
-                count.toString(),
-                style: PravaTypography.caption.copyWith(color: secondary),
-              ),
-            ],
-            if (selected) ...[
-              const SizedBox(width: 6),
-              const Icon(
-                CupertinoIcons.xmark,
-                size: 12,
-                color: PravaColors.accentPrimary,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ComposerCard extends StatelessWidget {
+class _ComposerCard extends StatefulWidget {
   const _ComposerCard({
     required this.controller,
+    required this.account,
+    required this.feedService,
+    required this.userSearchService,
     required this.onPost,
     required this.isPosting,
     required this.wordCount,
   });
 
   final TextEditingController controller;
+  final AccountInfo? account;
+  final FeedService feedService;
+  final UserSearchService userSearchService;
   final VoidCallback onPost;
   final bool isPosting;
   final int Function(String value) wordCount;
 
+  @override
+  State<_ComposerCard> createState() => _ComposerCardState();
+}
+
+class _ComposerCardState extends State<_ComposerCard> {
+  Timer? _suggestionTimer;
+  _ComposerToken? _activeToken;
+  List<UserSearchResult> _mentionSuggestions = <UserSearchResult>[];
+  List<SmartHashtagResult> _hashtagSuggestions = <SmartHashtagResult>[];
+  bool _suggesting = false;
+  int _suggestionRequest = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_handleTextChanged);
+    _handleTextChanged();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ComposerCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleTextChanged);
+      widget.controller.addListener(_handleTextChanged);
+      _handleTextChanged();
+    }
+  }
+
+  @override
+  void dispose() {
+    _suggestionTimer?.cancel();
+    widget.controller.removeListener(_handleTextChanged);
+    super.dispose();
+  }
+
+  void _handleTextChanged() {
+    final token = _activeComposerToken(widget.controller.value);
+    _suggestionTimer?.cancel();
+
+    if (token == null) {
+      _suggestionRequest++;
+      if (mounted) {
+        setState(() {
+          _activeToken = null;
+          _mentionSuggestions = <UserSearchResult>[];
+          _hashtagSuggestions = <SmartHashtagResult>[];
+          _suggesting = false;
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _activeToken = token;
+      _mentionSuggestions = <UserSearchResult>[];
+      _hashtagSuggestions = <SmartHashtagResult>[];
+      _suggesting = token.symbol == '#' || token.query.length >= 2;
+    });
+
+    if (token.symbol == '@' && token.query.length < 2) {
+      setState(() => _suggesting = false);
+      return;
+    }
+
+    final request = ++_suggestionRequest;
+    _suggestionTimer = Timer(
+      const Duration(milliseconds: 180),
+      () => unawaited(_loadSuggestions(token, request)),
+    );
+  }
+
+  _ComposerToken? _activeComposerToken(TextEditingValue value) {
+    final text = value.text;
+    final cursor = value.selection.baseOffset;
+    if (cursor < 0 || cursor > text.length) return null;
+
+    final beforeCursor = text.substring(0, cursor);
+    final match = RegExp(
+      r'(^|\s)([@#])([a-zA-Z0-9_.]*)$',
+    ).firstMatch(beforeCursor);
+    if (match == null) return null;
+
+    final symbol = match.group(2) ?? '';
+    final query = match.group(3) ?? '';
+    if (symbol.isEmpty) return null;
+    if (symbol == '#' && query.contains('.')) return null;
+
+    final leading = match.group(1)?.length ?? 0;
+    return _ComposerToken(
+      symbol: symbol,
+      query: query,
+      start: match.start + leading,
+      end: cursor,
+    );
+  }
+
+  Future<void> _loadSuggestions(_ComposerToken token, int request) async {
+    try {
+      if (token.symbol == '@') {
+        final users = await widget.userSearchService.searchUsers(
+          token.query,
+          limit: 6,
+        );
+        if (!mounted || request != _suggestionRequest) return;
+        setState(() {
+          _mentionSuggestions = users;
+          _hashtagSuggestions = <SmartHashtagResult>[];
+          _suggesting = false;
+        });
+        return;
+      }
+
+      final tags = token.query.length < 2
+          ? (await widget.feedService.listTags(limit: 6))
+                .map(
+                  (tag) => SmartHashtagResult(
+                    tag: tag.tag,
+                    postCount: tag.postCount,
+                  ),
+                )
+                .toList()
+          : (await widget.userSearchService.smartSearch(
+              '#${token.query}',
+              limit: 6,
+            )).hashtags;
+      if (!mounted || request != _suggestionRequest) return;
+      setState(() {
+        _hashtagSuggestions = tags;
+        _mentionSuggestions = <UserSearchResult>[];
+        _suggesting = false;
+      });
+    } catch (_) {
+      if (!mounted || request != _suggestionRequest) return;
+      setState(() {
+        _mentionSuggestions = <UserSearchResult>[];
+        _hashtagSuggestions = <SmartHashtagResult>[];
+        _suggesting = false;
+      });
+    }
+  }
+
   void _insertToken(String token) {
     HapticFeedback.selectionClick();
-    final text = controller.text;
-    final selection = controller.selection;
+    final text = widget.controller.text;
+    final selection = widget.controller.selection;
     final start = selection.start >= 0 ? selection.start : text.length;
     final end = selection.end >= 0 ? selection.end : text.length;
+    final needsSpaceBefore =
+        start > 0 && !RegExp(r'\s').hasMatch(text[start - 1]);
+    final insertion = '${needsSpaceBefore ? ' ' : ''}$token';
 
-    final updated = text.replaceRange(start, end, token);
-    controller.value = TextEditingValue(
+    final updated = text.replaceRange(start, end, insertion);
+    widget.controller.value = TextEditingValue(
       text: updated,
-      selection: TextSelection.collapsed(offset: start + token.length),
+      selection: TextSelection.collapsed(offset: start + insertion.length),
+    );
+  }
+
+  void _insertSuggestion(String token) {
+    final activeToken = _activeToken;
+    if (activeToken == null) return;
+
+    HapticFeedback.selectionClick();
+    final text = widget.controller.text;
+    final replacement = '$token ';
+    final updated = text.replaceRange(
+      activeToken.start,
+      activeToken.end,
+      replacement,
+    );
+    widget.controller.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(
+        offset: activeToken.start + replacement.length,
+      ),
+    );
+    _suggestionRequest++;
+    setState(() {
+      _activeToken = null;
+      _mentionSuggestions = <UserSearchResult>[];
+      _hashtagSuggestions = <SmartHashtagResult>[];
+      _suggesting = false;
+    });
+  }
+
+  Widget _buildSuggestions(Color primary, Color secondary, Color border) {
+    final token = _activeToken;
+    if (token == null) return const SizedBox.shrink();
+    final showMentions = token.symbol == '@' && _mentionSuggestions.isNotEmpty;
+    final showHashtags = token.symbol == '#' && _hashtagSuggestions.isNotEmpty;
+    if (!_suggesting && !showMentions && !showHashtags) {
+      return const SizedBox.shrink();
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      margin: const EdgeInsets.only(top: 12),
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        color: PravaColors.accentPrimary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border),
+      ),
+      child: _suggesting
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(
+                child: CupertinoActivityIndicator(
+                  color: PravaColors.accentPrimary,
+                ),
+              ),
+            )
+          : ListView.separated(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              itemCount: showMentions
+                  ? _mentionSuggestions.length
+                  : _hashtagSuggestions.length,
+              separatorBuilder: (_, __) =>
+                  Divider(height: 1, color: border.withValues(alpha: 0.55)),
+              itemBuilder: (context, index) {
+                if (showMentions) {
+                  final user = _mentionSuggestions[index];
+                  return _MentionSuggestionTile(
+                    user: user,
+                    primary: primary,
+                    secondary: secondary,
+                    onTap: () => _insertSuggestion('@${user.username}'),
+                  );
+                }
+
+                final tag = _hashtagSuggestions[index];
+                return _HashtagSuggestionTile(
+                  tag: tag,
+                  primary: primary,
+                  secondary: secondary,
+                  onTap: () => _insertSuggestion('#${tag.tag}'),
+                );
+              },
+            ),
     );
   }
 
@@ -1458,20 +1615,11 @@ class _ComposerCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: PravaColors.accentPrimary.withValues(
-                  alpha: 0.16,
-                ),
-                child: const Icon(
-                  CupertinoIcons.person_fill,
-                  color: PravaColors.accentPrimary,
-                ),
-              ),
+              _ComposerAvatar(account: widget.account),
               const SizedBox(width: 12),
               Expanded(
                 child: TextField(
-                  controller: controller,
+                  controller: widget.controller,
                   minLines: 2,
                   maxLines: 5,
                   textInputAction: TextInputAction.newline,
@@ -1486,6 +1634,7 @@ class _ComposerCard extends StatelessWidget {
               ),
             ],
           ),
+          _buildSuggestions(primary, secondary, border),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -1511,10 +1660,10 @@ class _ComposerCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               ValueListenableBuilder<TextEditingValue>(
-                valueListenable: controller,
+                valueListenable: widget.controller,
                 builder: (context, value, child) {
                   final text = value.text.trim();
-                  final count = wordCount(text);
+                  final count = widget.wordCount(text);
                   final tooLong = count > 200 || text.length > 1600;
                   final canPost = text.isNotEmpty && !tooLong;
                   return Row(
@@ -1535,8 +1684,10 @@ class _ComposerCard extends StatelessWidget {
                             ? PravaColors.accentPrimary
                             : PravaColors.accentPrimary.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(18),
-                        onPressed: isPosting || !canPost ? null : onPost,
-                        child: isPosting
+                        onPressed: widget.isPosting || !canPost
+                            ? null
+                            : widget.onPost,
+                        child: widget.isPosting
                             ? const CupertinoActivityIndicator(
                                 color: Colors.white,
                               )
@@ -1554,6 +1705,200 @@ class _ComposerCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ComposerToken {
+  const _ComposerToken({
+    required this.symbol,
+    required this.query,
+    required this.start,
+    required this.end,
+  });
+
+  final String symbol;
+  final String query;
+  final int start;
+  final int end;
+}
+
+class _ComposerAvatar extends StatelessWidget {
+  const _ComposerAvatar({required this.account});
+
+  final AccountInfo? account;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarUrl = account?.avatarUrl.trim() ?? '';
+    final name =
+        (account?.displayName.isNotEmpty == true
+                ? account!.displayName
+                : account?.username ?? '')
+            .trim();
+
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: ClipOval(
+        child: avatarUrl.isNotEmpty
+            ? Image.network(avatarUrl, fit: BoxFit.cover)
+            : Container(
+                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                child: Center(
+                  child: Text(
+                    name.isEmpty ? '@' : name[0].toUpperCase(),
+                    style: PravaTypography.h3.copyWith(
+                      color: PravaColors.accentPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _MentionSuggestionTile extends StatelessWidget {
+  const _MentionSuggestionTile({
+    required this.user,
+    required this.primary,
+    required this.secondary,
+    required this.onTap,
+  });
+
+  final UserSearchResult user;
+  final Color primary;
+  final Color secondary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = user.displayName.isNotEmpty ? user.displayName : user.username;
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 34,
+              height: 34,
+              child: ClipOval(
+                child: user.avatarUrl.trim().isNotEmpty
+                    ? Image.network(user.avatarUrl.trim(), fit: BoxFit.cover)
+                    : Container(
+                        color: PravaColors.accentPrimary.withValues(
+                          alpha: 0.16,
+                        ),
+                        child: Center(
+                          child: Text(
+                            name.isEmpty ? '@' : name[0].toUpperCase(),
+                            style: PravaTypography.caption.copyWith(
+                              color: PravaColors.accentPrimary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PravaTypography.body.copyWith(
+                      color: primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '@${user.username}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PravaTypography.caption.copyWith(color: secondary),
+                  ),
+                ],
+              ),
+            ),
+            if (user.isVerified)
+              const Icon(
+                CupertinoIcons.check_mark_circled_solid,
+                color: PravaColors.accentPrimary,
+                size: 16,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HashtagSuggestionTile extends StatelessWidget {
+  const _HashtagSuggestionTile({
+    required this.tag,
+    required this.primary,
+    required this.secondary,
+    required this.onTap,
+  });
+
+  final SmartHashtagResult tag;
+  final Color primary;
+  final Color secondary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                CupertinoIcons.number,
+                color: PravaColors.accentPrimary,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '#${tag.tag}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: PravaTypography.body.copyWith(
+                  color: primary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Text(
+              tag.postCount.toString(),
+              style: PravaTypography.caption.copyWith(
+                color: secondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1814,22 +2159,26 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = active ? PravaColors.accentPrimary : Colors.grey;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          children: [
-            AnimatedScale(
-              scale: active ? 1.1 : 1.0,
-              duration: const Duration(milliseconds: 180),
-              child: Icon(icon, size: 18, color: color),
+    return CupertinoButton(
+      minimumSize: const Size(40, 40),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      onPressed: onTap,
+      child: Row(
+        children: [
+          AnimatedScale(
+            scale: active ? 1.1 : 1.0,
+            duration: const Duration(milliseconds: 180),
+            child: Icon(icon, size: 20, color: color),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: PravaTypography.caption.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(width: 6),
-            Text(label, style: PravaTypography.caption.copyWith(color: color)),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
