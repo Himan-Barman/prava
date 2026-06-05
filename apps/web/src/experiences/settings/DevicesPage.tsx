@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, Smartphone, Monitor, Tablet, Trash2 } from 'lucide-react';
-import { GlassCard, PravaButton } from '../../ui-system';
+import { Smartphone, Monitor, Tablet, Trash2 } from 'lucide-react';
+import { PravaButton } from '../../ui-system';
 import { sessionService, DeviceSession } from '../../services/session-service';
 import { smartToast } from '../../ui-system/components/SmartToast';
 import { timeAgo } from '../../utils/date-utils';
@@ -65,13 +64,6 @@ export default function DevicesPage() {
         transition={{ duration: 0.4 }}
         className="mb-6"
       >
-        <Link
-          to="/settings"
-          className="inline-flex items-center gap-2 text-body font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary transition-colors mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Settings
-        </Link>
         <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
           Devices
         </h1>
@@ -82,18 +74,18 @@ export default function DevicesPage() {
 
       <div className="space-y-3">
         {loading ? (
-          <GlassCard className="text-center py-10">
+          <div className="text-center py-10">
             <div className="w-8 h-8 border-2 border-prava-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
             <p className="text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
               Loading devices...
             </p>
-          </GlassCard>
+          </div>
         ) : sessions.length === 0 ? (
-          <GlassCard className="text-center py-10">
+          <div className="text-center py-10">
             <p className="text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
               No active sessions found.
             </p>
-          </GlassCard>
+          </div>
         ) : (
           sessions.map((device, i) => {
           const Icon = iconMap[device.platform] || Monitor;
@@ -106,11 +98,9 @@ export default function DevicesPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 + i * 0.05 }}
             >
-              <GlassCard className={isCurrent ? 'border-prava-success/30 bg-prava-success/5' : ''}>
+              <div className="py-3">
                 <div className="flex items-center gap-4">
-                  <div className={`p-2.5 rounded-[12px] ${isCurrent ? 'bg-prava-success/10' : 'bg-prava-accent/10'}`}>
-                    <Icon className={`w-5 h-5 ${isCurrent ? 'text-prava-success' : 'text-prava-accent'}`} />
-                  </div>
+                  <Icon className={`w-5 h-5 ${isCurrent ? 'text-prava-success' : 'text-prava-accent'}`} strokeWidth={3} />
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-medium text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
@@ -135,7 +125,7 @@ export default function DevicesPage() {
                     </button>
                   )}
                 </div>
-              </GlassCard>
+              </div>
             </motion.div>
           );
         })

@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, MessageCircle, Share2, MoreHorizontal, Bookmark } from 'lucide-react';
+import { Heart, MessageCircle, Share2, MoreHorizontal, Eye } from 'lucide-react';
 import { GlassCard } from '../../../ui-system';
 import { FeedPost } from '../../../services/feed-service';
 import { timeAgo } from '../../../utils/date-utils';
@@ -22,23 +23,66 @@ export function Post({ post, onLike, onComment, onShare, delay = 0 }: PostProps)
     onLike?.(post.id);
   };
 
+  const renderBody = () => {
+    const parts = post.body.split(/(@[a-zA-Z0-9_.]{2,32}|#[a-zA-Z0-9_]{2,32})/g);
+    return parts.map((part, index) => {
+      if (part.startsWith('@')) {
+        return (
+          <Link
+            key={`${part}-${index}`}
+            to={`/search?q=${encodeURIComponent(part.slice(1))}`}
+            className="font-semibold text-prava-accent hover:underline"
+          >
+            {part}
+          </Link>
+        );
+      }
+      if (part.startsWith('#')) {
+        return (
+          <Link
+            key={`${part}-${index}`}
+            to={`/feed?tag=${encodeURIComponent(part.slice(1))}`}
+            className="font-semibold text-prava-accent hover:underline"
+          >
+            {part}
+          </Link>
+        );
+      }
+      return <span key={`${index}-${part.slice(0, 8)}`}>{part}</span>;
+    });
+  };
+
   return (
     <GlassCard delay={delay} className="hover:bg-white/[0.95] dark:hover:bg-white/[0.06] transition-colors duration-300">
       <div className="flex items-start gap-4">
         {/* Avatar */}
         <div className="flex-shrink-0">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-prava-accent to-prava-accent-muted flex items-center justify-center text-white font-semibold text-sm">
-            {post.author.displayName.charAt(0)}
-          </div>
+          <Link
+            to={`/profile/${post.author.id}`}
+            className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-prava-accent/15 text-sm font-semibold text-prava-accent"
+          >
+            {post.author.avatarUrl ? (
+              <img
+                src={post.author.avatarUrl}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              post.author.displayName.charAt(0)
+            )}
+          </Link>
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary hover:underline cursor-pointer">
+              <Link
+                to={`/profile/${post.author.id}`}
+                className="font-semibold text-prava-light-text-primary hover:underline dark:text-prava-dark-text-primary"
+              >
                 {post.author.displayName}
-              </span>
+              </Link>
               <span className="text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary text-sm">
                 @{post.author.username}
               </span>
@@ -52,7 +96,7 @@ export function Post({ post, onLike, onComment, onShare, delay = 0 }: PostProps)
           </div>
 
           <p className="text-prava-light-text-primary dark:text-prava-dark-text-primary whitespace-pre-wrap mb-3 leading-relaxed">
-            {post.body}
+            {renderBody()}
           </p>
 
           {/* Actions */}
@@ -114,9 +158,10 @@ export function Post({ post, onLike, onComment, onShare, delay = 0 }: PostProps)
             <div className="flex items-center gap-1">
               <motion.button
                 whileTap={{ scale: 0.8 }}
-                className="flex items-center gap-2 p-2 rounded-full text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary hover:bg-prava-accent/10 hover:text-prava-accent transition-colors"
+                className="flex items-center gap-2 p-2 rounded-full text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary"
               >
-                <Bookmark className="w-4.5 h-4.5" />
+                <Eye className="w-4.5 h-4.5" />
+                <span className="text-xs font-medium">{post.readCount ?? 0}</span>
               </motion.button>
             </div>
           </div>

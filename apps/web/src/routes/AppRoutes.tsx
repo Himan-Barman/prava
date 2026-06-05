@@ -19,6 +19,7 @@ import {
 // Main Pages
 import {
   FeedPage,
+  PostDetailPage,
   ChatsPage,
   ArchivedChatsPage,
   StarredMessagesPage,
@@ -119,6 +120,7 @@ const AppRoutes = () => {
 
       {/* Protected Routes */}
       <Route path="/feed" element={<ProtectedRoute><FeedPage /></ProtectedRoute>} />
+      <Route path="/post/:postId" element={<ProtectedRoute><PostDetailPage /></ProtectedRoute>} />
       <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
       <Route path="/chats/archived" element={<ProtectedRoute><ArchivedChatsPage /></ProtectedRoute>} />
       <Route path="/chats/starred" element={<ProtectedRoute><StarredMessagesPage /></ProtectedRoute>} />

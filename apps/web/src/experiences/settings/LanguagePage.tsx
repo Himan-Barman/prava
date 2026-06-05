@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, Globe, Check } from 'lucide-react';
-import { GlassCard } from '../../ui-system';
+import { Globe, Check } from 'lucide-react';
 import { settingsService } from '../../services/settings-service';
 import { smartToast } from '../../ui-system/components/SmartToast';
 
@@ -52,13 +50,6 @@ export default function LanguagePage() {
         transition={{ duration: 0.4 }}
         className="mb-6"
       >
-        <Link
-          to="/settings"
-          className="inline-flex items-center gap-2 text-body font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary transition-colors mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Settings
-        </Link>
         <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
           Language
         </h1>
@@ -67,11 +58,9 @@ export default function LanguagePage() {
         </p>
       </motion.div>
 
-      <GlassCard>
+      <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="p-2.5 rounded-[12px] bg-prava-accent/10">
-            <Globe className="w-5 h-5 text-prava-accent" />
-          </div>
+          <Globe className="w-5 h-5 text-prava-accent" strokeWidth={3} />
           <h2 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary">
             Select Language
           </h2>
@@ -84,8 +73,8 @@ export default function LanguagePage() {
             <button
               key={lang.code}
               onClick={() => handleSelect(lang.name)}
-              className={`w-full flex items-center justify-between p-4 rounded-[14px] transition-colors ${isSelected
-                  ? 'bg-prava-accent/10 border border-prava-accent/30'
+              className={`w-full flex items-center justify-between py-3 rounded-[14px] transition-colors ${isSelected
+                  ? 'text-prava-accent'
                   : 'hover:bg-prava-light-surface dark:hover:bg-prava-dark-surface'
                 }`}
             >
@@ -98,15 +87,13 @@ export default function LanguagePage() {
                 </p>
               </div>
               {isSelected && (
-                <div className="p-1.5 rounded-full bg-prava-accent">
-                  <Check className="w-4 h-4 text-white" />
-                </div>
+                <Check className="w-5 h-5 text-prava-accent" strokeWidth={3} />
               )}
             </button>
           );
           })}
         </div>
-      </GlassCard>
+      </section>
     </div>
   );
 }

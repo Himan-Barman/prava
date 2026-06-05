@@ -26,20 +26,20 @@ interface NavItem {
 }
 
 const mainNavItems: NavItem[] = [
-  { path: '/feed', label: 'Feed', icon: <LayoutGrid className="w-6 h-6" /> },
-  { path: '/chats', label: 'Chats', icon: <MessageCircle className="w-6 h-6" /> },
-  { path: '/friends', label: 'Friends', icon: <Users className="w-6 h-6" /> },
-  { path: '/profile', label: 'Profile', icon: <User className="w-6 h-6" /> },
+  { path: '/feed', label: 'Feed', icon: <LayoutGrid className="w-6 h-6" strokeWidth={3} /> },
+  { path: '/chats', label: 'Chats', icon: <MessageCircle className="w-6 h-6" strokeWidth={3} /> },
+  { path: '/friends', label: 'Friends', icon: <Users className="w-6 h-6" strokeWidth={3} /> },
+  { path: '/profile', label: 'Profile', icon: <User className="w-6 h-6" strokeWidth={3} /> },
 ];
 
 const secondaryNavItems: NavItem[] = [
-  { path: '/notifications', label: 'Notifications', icon: <Bell className="w-6 h-6" /> },
-  { path: '/search', label: 'Search', icon: <Search className="w-6 h-6" /> },
+  { path: '/notifications', label: 'Notifications', icon: <Bell className="w-6 h-6" strokeWidth={3} /> },
+  { path: '/search', label: 'Search', icon: <Search className="w-6 h-6" strokeWidth={3} /> },
 ];
 
 const settingsNavItems: NavItem[] = [
-  { path: '/settings', label: 'Settings', icon: <Settings className="w-6 h-6" /> },
-  { path: '/support', label: 'Support', icon: <HelpCircle className="w-6 h-6" /> },
+  { path: '/settings', label: 'Settings', icon: <Settings className="w-6 h-6" strokeWidth={3} /> },
+  { path: '/support', label: 'Support', icon: <HelpCircle className="w-6 h-6" strokeWidth={3} /> },
 ];
 
 function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
@@ -81,6 +81,7 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
 export function Sidebar() {
   const { isDark, toggleTheme } = useTheme();
   const { logout } = useAuth();
+  const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = async () => {
@@ -165,9 +166,8 @@ export function Sidebar() {
 
       {/* Mobile Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 tablet:hidden laptop:hidden desktop:hidden z-50 px-4 pb-safe">
-        <div className="flex items-center justify-around py-2 px-2 rounded-t-[24px] bg-white/90 dark:bg-[#1D1D1D]/90 backdrop-blur-xl border-t border-x border-prava-light-border dark:border-prava-dark-border shadow-[0_-4px_30px_rgba(0,0,0,0.06)]">
+        <div className="flex items-center justify-around py-2 px-2 rounded-t-[24px] bg-white/90 dark:bg-[#090909]/92 backdrop-blur-2xl border-t border-x border-prava-light-border/70 dark:border-white/10 shadow-[0_-8px_30px_rgba(0,0,0,0.14)]">
           {mainNavItems.map((item) => {
-            const location = useLocation();
             const isActive = location.pathname === item.path ||
               (item.path !== '/' && location.pathname.startsWith(item.path));
 
@@ -175,14 +175,20 @@ export function Sidebar() {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex flex-col items-center gap-1 p-2 rounded-[14px] transition-colors
+                className={`group flex min-w-14 flex-col items-center gap-1 rounded-[14px] px-1.5 py-1.5 transition-colors
                   ${isActive
                     ? 'text-prava-accent'
                     : 'text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary'
                   }
                 `}
               >
-                {item.icon}
+                <span className={`grid h-9 min-w-14 place-items-center rounded-full transition-all duration-300 ${
+                  isActive
+                    ? 'bg-prava-accent/15 dark:bg-prava-accent/25'
+                    : 'group-hover:bg-black/5 dark:group-hover:bg-white/10'
+                }`}>
+                  {item.icon}
+                </span>
                 <span className="text-[10px] font-bold">{item.label}</span>
               </Link>
             );
@@ -191,9 +197,11 @@ export function Sidebar() {
           {/* More Button */}
           <button
             onClick={() => setMobileOpen(true)}
-            className="flex flex-col items-center gap-1 p-2 rounded-[14px] text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary"
+            className="flex min-w-14 flex-col items-center gap-1 rounded-[14px] px-1.5 py-1.5 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary"
           >
-            <Menu className="w-6 h-6" />
+            <span className="grid h-9 min-w-14 place-items-center rounded-full transition-colors hover:bg-black/5 dark:hover:bg-white/10">
+              <Menu className="w-6 h-6" strokeWidth={3} />
+            </span>
             <span className="text-[10px] font-bold">More</span>
           </button>
         </div>

@@ -1,212 +1,240 @@
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, Link as LinkIcon, Copy } from 'lucide-react';
-import { GlassCard, PravaInput, PravaButton } from '../../ui-system';
-import { accountService } from '../../services/account-service';
+import { useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, XCircle, Loader2, AtSign } from 'lucide-react';
+import { PravaButton, PravaInput } from '../../ui-system';
+import { accountService, type AccountInfo } from '../../services/account-service';
 import { authService } from '../../services/auth-service';
 import { smartToast } from '../../ui-system/components/SmartToast';
+
+const usernamePattern = /^[a-z0-9_.]{3,32}$/;
+
+function formatDate(value?: string | null) {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(parsed);
+}
+
+function apiMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'response' in error) {
+    const response = (error as { response?: { data?: { message?: string }; status?: number } }).response;
+    if (response?.status === 401) return 'Password is incorrect';
+    if (response?.status === 409) return 'Username is not available';
+    if (response?.status === 429) return 'Username can be changed once every 3 months';
+    return response?.data?.message ?? 'Unable to change username';
+  }
+  return 'Unable to change username';
+}
 
 export default function HandleLinksPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [account, setAccount] = useState<AccountInfo | null>(null);
   const [username, setUsername] = useState('');
-  const [originalUsername, setOriginalUsername] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [bio, setBio] = useState('');
-  const [location, setLocation] = useState('');
-  const [website, setWebsite] = useState('');
-  const [checkingUsername, setCheckingUsername] = useState(false);
-  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [password, setPassword] = useState('');
+  const [checkedUsername, setCheckedUsername] = useState('');
+  const [available, setAvailable] = useState<boolean | null>(null);
+
+  const candidate = username.trim().toLowerCase();
+  const currentUsername = account?.username.trim().toLowerCase() ?? '';
+  const changed = candidate.length > 0 && candidate !== currentUsername;
+  const valid = usernamePattern.test(candidate);
+  const canChange = account?.canChangeUsername === true;
+  const canSubmit =
+    !saving &&
+    canChange &&
+    changed &&
+    valid &&
+    available === true &&
+    checkedUsername === candidate &&
+    password.length > 0;
 
   useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        const info = await accountService.fetchAccountInfo();
-        setUsername(info.username || '');
-        setOriginalUsername(info.username || '');
-        setDisplayName(info.displayName || '');
-        setBio(info.bio || '');
-        setLocation(info.location || '');
-        setWebsite(info.website || '');
-      } catch (error) {
-        smartToast.error('Unable to load profile details');
-      } finally {
-        setLoading(false);
-      }
+    let active = true;
+    accountService
+      .fetchAccountInfo()
+      .then((info) => {
+        if (!active) return;
+        setAccount(info);
+        setUsername(info.username ?? '');
+      })
+      .catch(() => smartToast.error('Unable to load username settings'))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
     };
-
-    loadProfile();
   }, []);
 
   useEffect(() => {
-    const trimmed = username.trim();
-    if (!trimmed || trimmed === originalUsername) {
-      setUsernameAvailable(null);
-      setCheckingUsername(false);
+    setAvailable(null);
+    setCheckedUsername('');
+    if (!changed || !valid) return;
+
+    const timer = window.setTimeout(() => {
+      void checkAvailability();
+    }, 450);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidate, changed, valid]);
+
+  const status = useMemo(() => {
+    if (!changed) return { text: 'Current username', tone: 'muted' };
+    if (!valid) {
+      return {
+        text: 'Use 3-32 letters, numbers, dots, or underscores',
+        tone: 'error',
+      };
+    }
+    if (checking) return { text: 'Checking database...', tone: 'muted' };
+    if (checkedUsername !== candidate) {
+      return { text: 'Waiting to check availability', tone: 'muted' };
+    }
+    if (available) return { text: 'Username is available', tone: 'success' };
+    if (available === false) return { text: 'Username is taken', tone: 'error' };
+    return { text: 'Search your preferred username', tone: 'muted' };
+  }, [available, candidate, changed, checkedUsername, checking, valid]);
+
+  const checkAvailability = async () => {
+    if (!changed) return;
+    if (!valid) {
+      setAvailable(false);
+      setCheckedUsername(candidate);
       return;
     }
-
-    if (trimmed.length < 3) {
-      setUsernameAvailable(false);
-      setCheckingUsername(false);
-      return;
+    setChecking(true);
+    try {
+      const result = await authService.isUsernameAvailable(candidate);
+      setAvailable(result);
+      setCheckedUsername(candidate);
+    } catch {
+      setAvailable(false);
+      setCheckedUsername(candidate);
+      smartToast.error('Unable to check username');
+    } finally {
+      setChecking(false);
     }
+  };
 
-    setCheckingUsername(true);
-    const timer = setTimeout(async () => {
-      try {
-        const available = await authService.isUsernameAvailable(trimmed);
-        setUsernameAvailable(available);
-      } catch {
-        setUsernameAvailable(false);
-      } finally {
-        setCheckingUsername(false);
-      }
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [username, originalUsername]);
-
-  const handleSave = async () => {
-    if (saving) return;
-    if (!username.trim()) {
-      smartToast.warning('Username is required');
-      return;
-    }
-    if (usernameAvailable === false) {
-      smartToast.warning('Choose a different username');
+  const changeUsername = async () => {
+    if (!canSubmit) {
+      if (!changed) smartToast.warning('Enter a new username');
+      else if (!valid) smartToast.warning('Use a valid username');
+      else if (available !== true || checkedUsername !== candidate) {
+        smartToast.warning('Check username availability first');
+      } else if (!password) smartToast.warning('Enter your password');
       return;
     }
 
     setSaving(true);
     try {
-      const updated = await accountService.updateHandle({
-        username: username.trim(),
-        displayName: displayName.trim(),
-        bio: bio.trim(),
-        location: location.trim(),
-        website: website.trim(),
+      const updated = await accountService.changeUsername({
+        username: candidate,
+        password,
       });
-      if (updated?.username) {
-        setOriginalUsername(updated.username);
-        setUsername(updated.username);
-      }
-      smartToast.success('Profile updated');
+      setAccount(updated);
+      setUsername(updated.username);
+      setPassword('');
+      setAvailable(null);
+      setCheckedUsername('');
+      smartToast.success('Username changed');
     } catch (error) {
-      smartToast.error('Unable to update profile');
+      smartToast.error(apiMessage(error));
     } finally {
       setSaving(false);
     }
   };
 
-  const usernameHint = checkingUsername
-    ? 'Checking availability...'
-    : usernameAvailable === null
-      ? 'Username'
-      : usernameAvailable
-        ? 'Username is available'
-        : 'Username is taken';
+  const suffixIcon = checking ? (
+    <Loader2 className="h-5 w-5 animate-spin text-prava-accent" />
+  ) : changed && checkedUsername === candidate && available === true ? (
+    <CheckCircle2 className="h-5 w-5 text-prava-success" />
+  ) : changed && checkedUsername === candidate && available === false ? (
+    <XCircle className="h-5 w-5 text-prava-error" />
+  ) : null;
+
+  const statusClass =
+    status.tone === 'success'
+      ? 'text-prava-success'
+      : status.tone === 'error'
+        ? 'text-prava-error'
+        : 'text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary';
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="mb-6"
-      >
-        <Link
-          to="/settings"
-          className="inline-flex items-center gap-2 text-body font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary transition-colors mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Settings
-        </Link>
+    <div className="mx-auto max-w-2xl">
+      <div className="sticky top-0 z-10 -mx-4 mb-4 bg-prava-light-bg/90 px-4 pb-3 pt-1 backdrop-blur-xl dark:bg-prava-dark-bg/90 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pt-0 sm:backdrop-blur-0">
         <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
-          Handle & Links
+          Username
         </h1>
-        <p className="mt-1 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-          Your username and profile links
-        </p>
-      </motion.div>
+      </div>
 
-      <GlassCard className="mb-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2.5 rounded-[12px] bg-prava-accent/10">
-            <LinkIcon className="w-5 h-5 text-prava-accent" />
-          </div>
-          <h2 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary">
-            Your Handle
-          </h2>
+      {loading ? (
+        <div className="py-20 text-center">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-prava-accent" />
         </div>
+      ) : (
+        <div className="space-y-6">
+          <section>
+            <p className="text-caption font-semibold text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+              Current username
+            </p>
+            <p className="mt-1 text-h3 font-extrabold text-prava-light-text-primary dark:text-prava-dark-text-primary">
+              @{account?.username ?? ''}
+            </p>
+          </section>
 
-        <PravaInput
-          label={usernameHint}
-          placeholder="username"
-          prefixIcon={<span className="text-prava-light-text-secondary dark:text-prava-dark-text-secondary">@</span>}
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          disabled={loading}
-        />
+          <section className="space-y-3">
+            <PravaInput
+              placeholder="Search username"
+              value={username}
+              onChange={(event) =>
+                setUsername(event.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ''))
+              }
+              prefixIcon={<AtSign className="h-5 w-5" />}
+              suffixIcon={suffixIcon}
+              maxLength={32}
+              autoComplete="username"
+            />
+            <p className={`text-caption font-semibold ${statusClass}`}>{status.text}</p>
+            <PravaButton
+              label={checking ? 'Checking...' : 'Check availability'}
+              onClick={checkAvailability}
+              disabled={!changed || !valid || checking}
+            />
+          </section>
 
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <PravaInput
-            label="Display Name"
-            placeholder="Your name"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            disabled={loading}
+          <section className="space-y-3">
+            <h2 className="text-body font-bold text-prava-light-text-primary dark:text-prava-dark-text-primary">
+              Password verification
+            </h2>
+            <PravaInput
+              placeholder="Password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+            />
+            <p className="text-caption text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+              {canChange
+                ? 'You can change your username now. After changing it, the next change is available after 3 months.'
+                : account?.nextUsernameChangeAt
+                  ? `You can change your username again after ${formatDate(account.nextUsernameChangeAt)}.`
+                  : 'Username can be changed once every 3 months.'}
+            </p>
+          </section>
+
+          <PravaButton
+            label={saving ? 'Changing...' : 'Change username'}
+            onClick={changeUsername}
+            disabled={!canSubmit}
           />
-          <PravaInput
-            label="Location"
-            placeholder="City, Country"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            disabled={loading}
-          />
         </div>
-
-        <div className="mt-4">
-          <label className="block text-label font-semibold text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary mb-2">
-            Bio
-          </label>
-          <textarea
-            placeholder="Tell people a bit about you..."
-            className="w-full p-4 rounded-[16px] bg-prava-light-surface dark:bg-prava-dark-surface border border-prava-light-border dark:border-prava-dark-border text-body text-prava-light-text-primary dark:text-prava-dark-text-primary placeholder:text-prava-light-text-tertiary dark:placeholder:text-prava-dark-text-tertiary focus:outline-none focus:ring-2 focus:ring-prava-accent/30 resize-none"
-            rows={3}
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-            disabled={loading}
-          />
-        </div>
-
-        <div className="mt-4">
-          <PravaInput
-            label="Website"
-            placeholder="https://your.site"
-            value={website}
-            onChange={(e) => setWebsite(e.target.value)}
-            disabled={loading}
-          />
-        </div>
-
-        <div className="mt-4 p-3 rounded-[12px] bg-prava-light-surface dark:bg-prava-dark-surface">
-          <p className="text-caption text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary mb-1">
-            Your profile link
-          </p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 text-body-sm text-prava-accent">
-              prava.app/@{username.trim() || 'username'}
-            </code>
-            <button className="p-2 rounded-[8px] hover:bg-prava-light-border dark:hover:bg-prava-dark-border transition-colors">
-              <Copy className="w-4 h-4 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" />
-            </button>
-          </div>
-        </div>
-      </GlassCard>
-
-      <PravaButton label={saving ? 'Saving...' : 'Save Changes'} onClick={handleSave} disabled={saving || loading} />
+      )}
     </div>
   );
 }

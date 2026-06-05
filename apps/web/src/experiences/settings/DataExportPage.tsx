@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, Download, FileText, MessageCircle, Users, Lock } from 'lucide-react';
-import { GlassCard, PravaButton } from '../../ui-system';
+import { Download, FileText, MessageCircle, Users, Lock } from 'lucide-react';
+import { PravaButton } from '../../ui-system';
 import { dataExportService, DataExport } from '../../services/data-export-service';
 import { smartToast } from '../../ui-system/components/SmartToast';
 import { timeAgo } from '../../utils/date-utils';
@@ -49,13 +48,6 @@ export default function DataExportPage() {
         transition={{ duration: 0.4 }}
         className="mb-6"
       >
-        <Link
-          to="/settings"
-          className="inline-flex items-center gap-2 text-body font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary transition-colors mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Settings
-        </Link>
         <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
           Data Export
         </h1>
@@ -64,11 +56,9 @@ export default function DataExportPage() {
         </p>
       </motion.div>
 
-      <GlassCard className="mb-6">
+      <section className="mb-8">
         <div className="flex items-center gap-3 mb-4">
-          <div className="p-2.5 rounded-[12px] bg-prava-accent/10">
-            <Download className="w-5 h-5 text-prava-accent" />
-          </div>
+          <Download className="w-5 h-5 text-prava-accent" strokeWidth={3} />
           <h2 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary">
             Export Options
           </h2>
@@ -84,9 +74,9 @@ export default function DataExportPage() {
             { icon: MessageCircle, label: 'Messages', description: 'Chat history (if decryptable)' },
             { icon: Users, label: 'Connections', description: 'Friends and followers' },
           ].map((item) => (
-            <label key={item.label} className="flex items-center gap-4 p-4 rounded-[14px] bg-prava-light-surface dark:bg-prava-dark-surface cursor-pointer hover:bg-prava-light-border/50 dark:hover:bg-prava-dark-border/50 transition-colors">
+            <label key={item.label} className="flex items-center gap-4 py-3 cursor-pointer transition-colors">
               <input type="checkbox" className="w-5 h-5 rounded border-prava-light-border dark:border-prava-dark-border text-prava-accent focus:ring-prava-accent" />
-              <item.icon className="w-5 h-5 text-prava-accent" />
+              <item.icon className="w-5 h-5 text-prava-accent" strokeWidth={3} />
               <div className="flex-1">
                 <p className="font-medium text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
                   {item.label}
@@ -98,10 +88,10 @@ export default function DataExportPage() {
             </label>
           ))}
         </div>
-      </GlassCard>
+      </section>
 
-      <div className="flex items-start gap-3 p-4 rounded-[14px] bg-prava-warning/10 border border-prava-warning/20 mb-6">
-        <Lock className="w-5 h-5 text-prava-warning shrink-0 mt-0.5" />
+      <div className="flex items-start gap-3 mb-6">
+        <Lock className="w-5 h-5 text-prava-warning shrink-0 mt-0.5" strokeWidth={3} />
         <p className="text-body-sm text-prava-light-text-primary dark:text-prava-dark-text-primary">
           End-to-end encrypted messages can only be exported if you have the decryption keys on this device.
         </p>

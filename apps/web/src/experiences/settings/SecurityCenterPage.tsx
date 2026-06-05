@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, Shield, Key, Smartphone } from 'lucide-react';
-import { GlassCard, PravaButton } from '../../ui-system';
+import { Shield, Key, Smartphone } from 'lucide-react';
+import { PravaButton } from '../../ui-system';
 
 export default function SecurityCenterPage() {
   return (
@@ -12,13 +11,6 @@ export default function SecurityCenterPage() {
         transition={{ duration: 0.4 }}
         className="mb-6"
       >
-        <Link
-          to="/settings"
-          className="inline-flex items-center gap-2 text-body font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary transition-colors mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Settings
-        </Link>
         <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
           Security Center
         </h1>
@@ -27,12 +19,9 @@ export default function SecurityCenterPage() {
         </p>
       </motion.div>
 
-      {/* Security Status */}
-      <GlassCard className="mb-6 bg-gradient-to-br from-prava-success/10 to-transparent">
+      <section className="mb-8">
         <div className="flex items-center gap-4">
-          <div className="p-3 rounded-full bg-prava-success/20">
-            <Shield className="w-6 h-6 text-prava-success" />
-          </div>
+          <Shield className="w-6 h-6 text-prava-success" strokeWidth={3} />
           <div>
             <h3 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary">
               Your account is secure
@@ -42,16 +31,13 @@ export default function SecurityCenterPage() {
             </p>
           </div>
         </div>
-      </GlassCard>
+      </section>
 
-      {/* Security Options */}
-      <div className="space-y-4">
-        <GlassCard>
+      <section className="space-y-6">
+        <div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="p-2.5 rounded-[12px] bg-prava-accent/10">
-                <Key className="w-5 h-5 text-prava-accent" />
-              </div>
+              <Key className="w-5 h-5 text-prava-accent" strokeWidth={3} />
               <div>
                 <p className="font-medium text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
                   Change Password
@@ -63,14 +49,12 @@ export default function SecurityCenterPage() {
             </div>
             <PravaButton label="Change" variant="ghost" fullWidth={false} />
           </div>
-        </GlassCard>
+        </div>
 
-        <GlassCard>
+        <div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="p-2.5 rounded-[12px] bg-prava-success/10">
-                <Smartphone className="w-5 h-5 text-prava-success" />
-              </div>
+              <Smartphone className="w-5 h-5 text-prava-success" strokeWidth={3} />
               <div>
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
@@ -87,8 +71,8 @@ export default function SecurityCenterPage() {
             </div>
             <PravaButton label="Manage" variant="ghost" fullWidth={false} />
           </div>
-        </GlassCard>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }

@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, User } from 'lucide-react';
-import { GlassCard, PravaInput, PravaButton } from '../../ui-system';
+import { PravaInput, PravaButton } from '../../ui-system';
 import { accountService } from '../../services/account-service';
 import { smartToast } from '../../ui-system/components/SmartToast';
 
@@ -71,13 +69,6 @@ export default function AccountInfoPage() {
         transition={{ duration: 0.4 }}
         className="mb-6"
       >
-        <Link
-          to="/settings"
-          className="inline-flex items-center gap-2 text-body font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary transition-colors mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Settings
-        </Link>
         <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
           Account Info
         </h1>
@@ -86,16 +77,10 @@ export default function AccountInfoPage() {
         </p>
       </motion.div>
 
-      <GlassCard>
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2.5 rounded-[12px] bg-prava-accent/10">
-            <User className="w-5 h-5 text-prava-accent" />
-          </div>
-          <h2 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary">
-            Personal Information
-          </h2>
-        </div>
-
+      <section className="space-y-5">
+        <h2 className="text-h3 text-prava-light-text-primary dark:text-prava-dark-text-primary">
+          Personal Information
+        </h2>
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <PravaInput
@@ -139,7 +124,7 @@ export default function AccountInfoPage() {
           </div>
           <PravaButton label={saving ? 'Saving...' : 'Save Changes'} onClick={handleSave} disabled={saving || loading} />
         </div>
-      </GlassCard>
+      </section>
     </div>
   );
 }

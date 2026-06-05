@@ -14,6 +14,9 @@ export interface AccountInfo {
   website: string;
   isVerified: boolean;
   emailVerifiedAt?: string | null;
+  usernameChangedAt?: string | null;
+  nextUsernameChangeAt?: string | null;
+  canChangeUsername: boolean;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
@@ -39,6 +42,9 @@ class AccountService {
       website: '',
       isVerified: false,
       emailVerifiedAt: null,
+      usernameChangedAt: null,
+      nextUsernameChangeAt: null,
+      canChangeUsername: true,
       createdAt: null,
       updatedAt: null,
     };
@@ -69,6 +75,7 @@ class AccountService {
 
   async updateHandle(input: {
     username?: string;
+    password?: string;
     displayName?: string;
     bio?: string;
     location?: string;
@@ -82,6 +89,11 @@ class AccountService {
       }
     );
     return data.profile ?? null;
+  }
+
+  async changeUsername(input: { username: string; password: string }) {
+    const updated = await this.updateHandle(input);
+    return updated ?? this.fetchAccountInfo();
   }
 
   async deleteAccount() {

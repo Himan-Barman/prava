@@ -9,6 +9,7 @@ export {
 
 // Main pages
 export { default as FeedPage } from './feed/FeedPage';
+export { default as PostDetailPage } from './feed/PostDetailPage';
 export { default as ChatsPage } from './chats/ChatsPage';
 export { default as ArchivedChatsPage } from './chats/ArchivedChatsPage';
 export { default as StarredMessagesPage } from './chats/StarredMessagesPage';

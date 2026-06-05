@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, HelpCircle, MessageSquare, Bug, Lightbulb, FileText, ExternalLink } from 'lucide-react';
-import { GlassCard, PravaButton, PravaInput } from '../../ui-system';
+import { HelpCircle, MessageSquare, Bug, Lightbulb, FileText, ExternalLink } from 'lucide-react';
+import { PravaButton, PravaInput } from '../../ui-system';
 import { supportService } from '../../services/support-service';
 import { smartToast } from '../../ui-system/components/SmartToast';
 
@@ -66,13 +65,6 @@ export default function SupportPage() {
         transition={{ duration: 0.4 }}
         className="mb-6"
       >
-        <Link
-          to="/settings"
-          className="inline-flex items-center gap-2 text-body font-medium text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-prava-dark-text-primary transition-colors mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Settings
-        </Link>
         <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
           Help & Support
         </h1>
@@ -93,11 +85,15 @@ export default function SupportPage() {
         </h2>
         <div className="grid gap-3">
           {helpTopics.map((topic, i) => (
-            <GlassCard key={topic.label} delay={0.15 + i * 0.05}>
+            <motion.div
+              key={topic.label}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.15 + i * 0.05 }}
+              className="py-3"
+            >
               <div className="flex items-center gap-4">
-                <div className="p-2.5 rounded-[12px] bg-prava-accent/10">
-                  <topic.icon className="w-5 h-5 text-prava-accent" />
-                </div>
+                <topic.icon className="w-5 h-5 text-prava-accent" strokeWidth={3} />
                 <div className="flex-1">
                   <p className="font-medium text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
                     {topic.label}
@@ -106,9 +102,9 @@ export default function SupportPage() {
                     {topic.description}
                   </p>
                 </div>
-                <ExternalLink className="w-4 h-4 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" />
+                <ExternalLink className="w-4 h-4 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" strokeWidth={3} />
               </div>
-            </GlassCard>
+            </motion.div>
           ))}
         </div>
       </motion.div>
@@ -122,11 +118,9 @@ export default function SupportPage() {
         <h2 className="text-label font-semibold text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary uppercase tracking-wider mb-3">
           Contact Us
         </h2>
-        <GlassCard>
+        <section>
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2.5 rounded-[12px] bg-prava-accent/10">
-              <MessageSquare className="w-5 h-5 text-prava-accent" />
-            </div>
+            <MessageSquare className="w-5 h-5 text-prava-accent" strokeWidth={3} />
             <div>
               <h3 className="font-semibold text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
                 Send us a message
@@ -185,7 +179,7 @@ export default function SupportPage() {
 
             <PravaButton label={sending ? 'Sending...' : 'Send Message'} onClick={handleSubmit} disabled={sending} />
           </div>
-        </GlassCard>
+        </section>
       </motion.div>
     </div>
   );

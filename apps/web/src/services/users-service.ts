@@ -4,9 +4,40 @@ export interface UserSearchResult {
   id: string;
   username: string;
   displayName: string;
+  avatarUrl?: string;
   isVerified: boolean;
   isFollowing: boolean;
   isFollowedBy: boolean;
+}
+
+export interface SmartHashtagResult {
+  tag: string;
+  postCount: number;
+  rankScore: number;
+  lastPostAt?: string | null;
+}
+
+export interface SmartPostSearchResult {
+  id: string;
+  body: string;
+  createdAt: string;
+  likeCount: number;
+  commentCount: number;
+  shareCount: number;
+  hashtags: string[];
+  author: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl?: string;
+    isVerified?: boolean;
+  };
+}
+
+export interface SmartSearchResponse {
+  accounts: UserSearchResult[];
+  hashtags: SmartHashtagResult[];
+  posts: SmartPostSearchResult[];
 }
 
 class UsersService {
@@ -26,6 +57,21 @@ class UsersService {
       }
     );
     return data.results ?? [];
+  }
+
+  async smartSearch(query: string, limit = 8): Promise<SmartSearchResponse> {
+    const data = await apiClient.get<Partial<SmartSearchResponse>>('/users/smart-search', {
+      query: {
+        query,
+        limit: limit.toString(),
+      },
+      auth: true,
+    });
+    return {
+      accounts: data.accounts ?? [],
+      hashtags: data.hashtags ?? [],
+      posts: data.posts ?? [],
+    };
   }
 
   async toggleFollow(targetUserId: string) {
