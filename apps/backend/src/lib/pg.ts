@@ -250,6 +250,7 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (post_id, user_id)
     );
+    ALTER TABLE post_likes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     CREATE INDEX IF NOT EXISTS idx_post_likes_user ON post_likes (user_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS post_reads (
@@ -284,6 +285,7 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (comment_id, user_id)
     );
+    ALTER TABLE comment_likes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     CREATE INDEX IF NOT EXISTS idx_comment_likes_user ON comment_likes (user_id, created_at DESC);
 
     -- MESSAGING

@@ -12,6 +12,7 @@ import '../../../ui-system/colors.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
 import '../../../ui-system/typography.dart';
+import 'post_detail_page.dart';
 import '../tabs/profile/public_profile_page.dart';
 
 enum NotificationFilter { all, mentions, follows, posts }
@@ -29,6 +30,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   final ScrollController _controller = ScrollController();
 
   final List<NotificationItem> _items = <NotificationItem>[];
+  final Set<String> _readingIds = <String>{};
 
   StreamSubscription<NotificationItem>? _subscription;
 
@@ -161,7 +163,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> _markRead(NotificationItem item) async {
-    if (!item.isUnread) return;
+    if (!item.isUnread || _readingIds.contains(item.id)) return;
+    _readingIds.add(item.id);
     setState(() {
       final index = _items.indexWhere((it) => it.id == item.id);
       if (index != -1) {
@@ -170,13 +173,36 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
     _center.applyRead();
     try {
-      await _service.markRead(item.id);
+      final unreadCount = await _service.markRead(item.id);
+      if (unreadCount != null) {
+        _center.unreadCount.value = unreadCount;
+      }
     } catch (_) {
       // ignore failure to avoid UI jumpiness
+    } finally {
+      _readingIds.remove(item.id);
     }
   }
 
-  void _openProfile(NotificationItem item) {
+  void _openNotification(NotificationItem item) {
+    final postId = item.data['postId']?.toString().trim() ?? '';
+    if (postId.isNotEmpty &&
+        (item.type == 'mention' ||
+            item.type == 'comment' ||
+            item.type == 'reply' ||
+            item.type == 'like' ||
+            item.type == 'share')) {
+      final commentId = item.data['commentId']?.toString().trim();
+      PravaNavigator.push(
+        context,
+        PostDetailPage(
+          postId: postId,
+          highlightCommentId: commentId?.isEmpty == true ? null : commentId,
+        ),
+      );
+      return;
+    }
+
     final actor = item.actor;
     if (actor == null || actor.id.isEmpty) return;
     PravaNavigator.push(context, PublicProfilePage(userId: actor.id));
@@ -305,7 +331,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                 timeLabel: _formatTime(item.createdAt),
                                 onTap: () {
                                   _markRead(item);
-                                  _openProfile(item);
+                                  _openNotification(item);
                                 },
                               );
                             },
@@ -574,12 +600,21 @@ class _NotificationCard extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 22,
-                    backgroundColor: accent.withValues(alpha: 0.2),
-                    child: Icon(
-                      _iconForType(item.type),
-                      size: 18,
-                      color: accent,
-                    ),
+                    backgroundColor: accent.withValues(alpha: 0.18),
+                    backgroundImage: actor?.avatarUrl.trim().isNotEmpty == true
+                        ? NetworkImage(actor!.avatarUrl.trim())
+                        : null,
+                    child: actor?.avatarUrl.trim().isNotEmpty == true
+                        ? null
+                        : actor == null
+                        ? Icon(_iconForType(item.type), size: 18, color: accent)
+                        : Text(
+                            avatarLabel,
+                            style: PravaTypography.body.copyWith(
+                              color: accent,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                   ),
                   if (actor != null)
                     Positioned(
@@ -591,13 +626,10 @@ class _NotificationCard extends StatelessWidget {
                         child: CircleAvatar(
                           radius: 8,
                           backgroundColor: accent.withValues(alpha: 0.2),
-                          child: Text(
-                            avatarLabel,
-                            style: PravaTypography.caption.copyWith(
-                              color: accent,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 9,
-                            ),
+                          child: Icon(
+                            _iconForType(item.type),
+                            size: 10,
+                            color: accent,
                           ),
                         ),
                       ),

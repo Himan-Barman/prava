@@ -49,7 +49,7 @@ export default async function notificationService(app) {
     let actors: any[] = [];
     if (actorIds.length > 0) {
       actors = await queryMany(
-        `SELECT user_id, username, display_name, is_verified FROM users WHERE user_id = ANY($1)`,
+        `SELECT user_id, username, display_name, avatar_url, is_verified FROM users WHERE user_id = ANY($1)`,
         [actorIds]
       );
     }
@@ -78,6 +78,7 @@ export default async function notificationService(app) {
               id: actor.user_id,
               username: actor.username,
               displayName: actor.display_name || actor.username,
+              avatarUrl: actor.avatar_url || "",
               isVerified: actor.is_verified === true,
             }
             : null,
@@ -101,12 +102,24 @@ export default async function notificationService(app) {
     const notificationId = String(request.params.notificationId || "").trim();
     ensure(notificationId.length >= 3, 400, "Invalid notification id");
 
+    const readAt = now();
     await query(
-      `UPDATE notifications SET read_at = $1 WHERE notification_id = $2 AND user_id = $3`,
-      [now(), notificationId, request.user.userId]
+      `UPDATE notifications
+       SET read_at = COALESCE(read_at, $1)
+       WHERE notification_id = $2 AND user_id = $3`,
+      [readAt, notificationId, request.user.userId]
     );
 
-    return { success: true };
+    const unreadResult = await queryOne(
+      `SELECT COUNT(*)::int AS count FROM notifications WHERE user_id = $1 AND read_at IS NULL`,
+      [request.user.userId]
+    );
+
+    return {
+      success: true,
+      readAt: toIso(readAt),
+      unreadCount: unreadResult?.count || 0,
+    };
   });
 
   app.post("/read-all", { preHandler: requireAuth }, async (request) => {

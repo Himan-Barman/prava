@@ -36,10 +36,6 @@ function normalizeBody(value: unknown, maxWords: number, maxChars: number, label
   return body;
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "23505";
-}
-
 function normalizeTag(value: unknown): string {
   return String(value || "")
     .trim()
@@ -258,7 +254,7 @@ async function createNotification({ userId, actorUserId, type, title, body, data
     );
 
     const actor = await queryOne(
-      `SELECT user_id, username, display_name, is_verified
+      `SELECT user_id, username, display_name, avatar_url, is_verified
        FROM users
        WHERE user_id = $1`,
       [actorUserId]
@@ -276,6 +272,7 @@ async function createNotification({ userId, actorUserId, type, title, body, data
             id: actor.user_id,
             username: actor.username,
             displayName: actor.display_name || actor.username,
+            avatarUrl: actor.avatar_url || "",
             isVerified: actor.is_verified === true
           }
         : null
@@ -460,6 +457,19 @@ export default async function feedService(app: any) {
     return post;
   });
 
+  app.get("/:postId", { preHandler: requireAuth }, async (request: any) => {
+    const postId = String(request.params.postId || "").trim();
+    ensure(postId.length >= 8, 400, "Invalid post");
+
+    const post = await queryOne(`SELECT * FROM posts WHERE post_id = $1`, [postId]);
+    if (!post) {
+      throw new HttpError(404, "Post not found");
+    }
+
+    const hydrated = await hydrateFeedPosts([post], request.user.userId);
+    return hydrated[0] || null;
+  });
+
   app.post("/:postId/like", { preHandler: requireAuth }, async (request: any) => {
     const postId = String(request.params.postId || "").trim();
     ensure(postId.length >= 8, 400, "Invalid post");
@@ -469,44 +479,39 @@ export default async function feedService(app: any) {
       throw new HttpError(404, "Post not found");
     }
 
-    const existing = await queryOne(`SELECT post_id FROM post_likes WHERE post_id = $1 AND user_id = $2`, [postId, request.user.userId]);
-
     const ts = now();
     let liked = false;
     await withTransaction(async (client) => {
-      if (existing) {
-        const deleted = await client.query(`DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`, [postId, request.user.userId]);
-        const deletedCount = Math.max(1, deleted.rowCount || 0);
-        await client.query(
-          `UPDATE posts
-           SET like_count = GREATEST(like_count - $2, 0), updated_at = $3
-           WHERE post_id = $1`,
-          [postId, deletedCount, ts]
-        );
-        liked = false;
-        return;
-      }
+      const current = await client.query(
+        `SELECT COUNT(*)::int AS count
+         FROM post_likes
+         WHERE post_id = $1 AND user_id = $2`,
+        [postId, request.user.userId]
+      );
+      const currentCount = Number(current.rows[0]?.count || 0);
 
-      let insertedCount = 0;
-      try {
-        const inserted = await client.query(
+      if (currentCount > 0) {
+        await client.query(`DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`, [postId, request.user.userId]);
+        liked = false;
+      } else {
+        await client.query(
           `INSERT INTO post_likes (post_id, user_id, created_at)
-           SELECT $1, $2, $3
-           WHERE NOT EXISTS (
-             SELECT 1 FROM post_likes WHERE post_id = $1 AND user_id = $2
-           )
-           RETURNING post_id`,
+           VALUES ($1, $2, $3)
+           ON CONFLICT DO NOTHING`,
           [postId, request.user.userId, ts]
         );
-        insertedCount = inserted.rowCount || 0;
-      } catch (error) {
-        if (!isUniqueViolation(error)) throw error;
+        liked = true;
       }
 
-      if (insertedCount > 0) {
-        await client.query(`UPDATE posts SET like_count = like_count + 1, updated_at = $2 WHERE post_id = $1`, [postId, ts]);
-      }
-      liked = true;
+      await client.query(
+        `UPDATE posts
+         SET like_count = (
+           SELECT COUNT(*)::int FROM post_likes WHERE post_id = $1
+         ),
+         updated_at = $2
+         WHERE post_id = $1`,
+        [postId, ts]
+      );
     });
 
     const updated = await queryOne(`SELECT like_count FROM posts WHERE post_id = $1`, [postId]);
@@ -636,39 +641,38 @@ export default async function feedService(app: any) {
       throw new HttpError(404, "Comment not found");
     }
 
-    const existing = await queryOne(`SELECT comment_id FROM comment_likes WHERE comment_id = $1 AND user_id = $2`, [commentId, request.user.userId]);
-
     const ts = now();
     let liked = false;
     await withTransaction(async (client) => {
-      if (existing) {
-        const deleted = await client.query(`DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2`, [commentId, request.user.userId]);
-        const deletedCount = Math.max(1, deleted.rowCount || 0);
-        await client.query(`UPDATE comments SET like_count = GREATEST(like_count - $2, 0) WHERE comment_id = $1`, [commentId, deletedCount]);
-        liked = false;
-        return;
-      }
+      const current = await client.query(
+        `SELECT COUNT(*)::int AS count
+         FROM comment_likes
+         WHERE comment_id = $1 AND user_id = $2`,
+        [commentId, request.user.userId]
+      );
+      const currentCount = Number(current.rows[0]?.count || 0);
 
-      let insertedCount = 0;
-      try {
-        const inserted = await client.query(
+      if (currentCount > 0) {
+        await client.query(`DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2`, [commentId, request.user.userId]);
+        liked = false;
+      } else {
+        await client.query(
           `INSERT INTO comment_likes (comment_id, user_id, created_at)
-           SELECT $1, $2, $3
-           WHERE NOT EXISTS (
-             SELECT 1 FROM comment_likes WHERE comment_id = $1 AND user_id = $2
-           )
-           RETURNING comment_id`,
+           VALUES ($1, $2, $3)
+           ON CONFLICT DO NOTHING`,
           [commentId, request.user.userId, ts]
         );
-        insertedCount = inserted.rowCount || 0;
-      } catch (error) {
-        if (!isUniqueViolation(error)) throw error;
+        liked = true;
       }
 
-      if (insertedCount > 0) {
-        await client.query(`UPDATE comments SET like_count = like_count + 1 WHERE comment_id = $1`, [commentId]);
-      }
-      liked = true;
+      await client.query(
+        `UPDATE comments
+         SET like_count = (
+           SELECT COUNT(*)::int FROM comment_likes WHERE comment_id = $1
+         )
+         WHERE comment_id = $1`,
+        [commentId]
+      );
     });
 
     const updated = await queryOne(`SELECT like_count FROM comments WHERE comment_id = $1`, [commentId]);

@@ -19,6 +19,7 @@ import '../../../../ui-system/feedback/toast_type.dart';
 import '../../../../ui-system/skeleton/profile_skeleton.dart';
 import '../../../../ui-system/typography.dart';
 import '../../../../navigation/prava_navigator.dart';
+import '../../pages/post_detail_page.dart';
 import 'profile_content_pages.dart';
 import 'public_profile_page.dart';
 
@@ -206,6 +207,12 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  void _openPostDetail(ProfileFeedPost post) {
+    if (post.id.trim().isEmpty) return;
+    HapticFeedback.selectionClick();
+    PravaNavigator.push(context, PostDetailPage(postId: post.id));
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const ProfileSkeleton();
@@ -372,6 +379,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 border: border,
                 emptyTitle: 'No mention posts yet',
                 emptySubtitle: 'Posts that mention you will show here.',
+                onPostTap: _openPostDetail,
               ),
             )
           else
@@ -384,6 +392,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 emptyTitle: 'No posts yet',
                 emptySubtitle:
                     'Text and emoji posts from your feed will show here.',
+                onPostTap: _openPostDetail,
               ),
             ),
         ],
@@ -640,6 +649,7 @@ class _ProfilePostsList extends StatelessWidget {
     required this.border,
     required this.emptyTitle,
     required this.emptySubtitle,
+    required this.onPostTap,
   });
 
   final List<ProfileFeedPost> posts;
@@ -648,6 +658,7 @@ class _ProfilePostsList extends StatelessWidget {
   final Color border;
   final String emptyTitle;
   final String emptySubtitle;
+  final ValueChanged<ProfileFeedPost> onPostTap;
 
   @override
   Widget build(BuildContext context) {
@@ -686,6 +697,7 @@ class _ProfilePostsList extends StatelessWidget {
                 primary: primary,
                 secondary: secondary,
                 border: border,
+                onTap: () => onPostTap(post),
               ),
             )
             .toList(),
@@ -700,38 +712,79 @@ class _ProfilePostRow extends StatelessWidget {
     required this.primary,
     required this.secondary,
     required this.border,
+    required this.onTap,
   });
 
   final ProfileFeedPost post;
   final Color primary;
   final Color secondary;
   final Color border;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final body = post.body.trim().isEmpty ? 'Text post' : post.body.trim();
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: border)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            body,
-            style: PravaTypography.bodyLarge.copyWith(
-              color: primary,
-              fontWeight: FontWeight.w500,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: PravaColors.accentPrimary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: border),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                CupertinoIcons.at,
+                color: PravaColors.accentPrimary,
+                size: 19,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${post.likeCount} likes - ${post.commentCount} comments',
-            style: PravaTypography.bodySmall.copyWith(color: secondary),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    body,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: PravaTypography.body.copyWith(
+                      color: primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    '${post.likeCount} likes - ${post.commentCount} comments',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PravaTypography.caption.copyWith(color: secondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Icon(
+              CupertinoIcons.chevron_right,
+              size: 16,
+              color: PravaColors.accentPrimary,
+            ),
+          ],
+        ),
       ),
     );
   }

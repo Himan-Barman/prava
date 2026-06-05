@@ -218,6 +218,13 @@ class FeedService {
     return FeedPost.fromJson(data);
   }
 
+  Future<FeedPost> fetchPost(String postId) async {
+    final data = await _client.get('/feed/$postId', auth: true);
+    return FeedPost.fromJson(
+      data is Map<String, dynamic> ? data : <String, dynamic>{},
+    );
+  }
+
   Future<Map<String, dynamic>> toggleLike(String postId) async {
     final data = await _client.post('/feed/$postId/like', auth: true);
     return data is Map<String, dynamic> ? data : <String, dynamic>{};

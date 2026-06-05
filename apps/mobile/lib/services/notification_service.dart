@@ -6,12 +6,14 @@ class NotificationActor {
     required this.id,
     required this.username,
     required this.displayName,
+    required this.avatarUrl,
     required this.isVerified,
   });
 
   final String id;
   final String username;
   final String displayName;
+  final String avatarUrl;
   final bool isVerified;
 
   factory NotificationActor.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class NotificationActor {
       id: json['id']?.toString() ?? '',
       username: username,
       displayName: json['displayName']?.toString() ?? username,
+      avatarUrl: json['avatarUrl']?.toString() ?? '',
       isVerified: json['isVerified'] == true,
     );
   }
@@ -48,9 +51,7 @@ class NotificationItem {
 
   bool get isUnread => readAt == null;
 
-  NotificationItem copyWith({
-    DateTime? readAt,
-  }) {
+  NotificationItem copyWith({DateTime? readAt}) {
     return NotificationItem(
       id: id,
       type: type,
@@ -72,14 +73,10 @@ class NotificationItem {
       createdAt: _parseDate(json['createdAt']) ?? DateTime.now(),
       readAt: _parseDate(json['readAt']),
       data: json['data'] is Map<String, dynamic>
-          ? Map<String, dynamic>.from(
-              json['data'] as Map<String, dynamic>,
-            )
+          ? Map<String, dynamic>.from(json['data'] as Map<String, dynamic>)
           : const <String, dynamic>{},
       actor: json['actor'] is Map<String, dynamic>
-          ? NotificationActor.fromJson(
-              json['actor'] as Map<String, dynamic>,
-            )
+          ? NotificationActor.fromJson(json['actor'] as Map<String, dynamic>)
           : null,
     );
   }
@@ -109,7 +106,7 @@ class NotificationPage {
 
 class NotificationService {
   NotificationService({SecureStore? store})
-      : _client = ApiClient(store ?? SecureStore());
+    : _client = ApiClient(store ?? SecureStore());
 
   final ApiClient _client;
 
@@ -117,28 +114,20 @@ class NotificationService {
     int limit = 20,
     String? cursor,
   }) async {
-    final query = <String, String>{
-      'limit': limit.toString(),
-    };
+    final query = <String, String>{'limit': limit.toString()};
     if (cursor != null && cursor.isNotEmpty) {
       query['cursor'] = cursor;
     }
 
-    final data = await _client.get(
-      '/notifications',
-      auth: true,
-      query: query,
-    );
+    final data = await _client.get('/notifications', auth: true, query: query);
 
-    final payload = data is Map<String, dynamic>
-        ? data
-        : <String, dynamic>{};
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
     final rawItems = payload['items'];
     final items = rawItems is List
         ? rawItems
-            .whereType<Map<String, dynamic>>()
-            .map(NotificationItem.fromJson)
-            .toList()
+              .whereType<Map<String, dynamic>>()
+              .map(NotificationItem.fromJson)
+              .toList()
         : <NotificationItem>[];
 
     final nextCursor = payload['nextCursor']?.toString();
@@ -155,10 +144,7 @@ class NotificationService {
   }
 
   Future<int> fetchUnreadCount() async {
-    final data = await _client.get(
-      '/notifications/unread-count',
-      auth: true,
-    );
+    final data = await _client.get('/notifications/unread-count', auth: true);
     if (data is Map<String, dynamic>) {
       final count = data['count'];
       if (count is int) return count;
@@ -166,17 +152,20 @@ class NotificationService {
     return 0;
   }
 
-  Future<void> markRead(String notificationId) async {
-    await _client.post(
+  Future<int?> markRead(String notificationId) async {
+    final data = await _client.post(
       '/notifications/$notificationId/read',
       auth: true,
     );
+    if (data is Map<String, dynamic>) {
+      final unreadCount = data['unreadCount'];
+      if (unreadCount is num) return unreadCount.toInt();
+      return int.tryParse(unreadCount?.toString() ?? '');
+    }
+    return null;
   }
 
   Future<void> markAllRead() async {
-    await _client.post(
-      '/notifications/read-all',
-      auth: true,
-    );
+    await _client.post('/notifications/read-all', auth: true);
   }
 }
