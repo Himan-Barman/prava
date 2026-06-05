@@ -10,22 +10,38 @@ class PravaNavigator {
       pageBuilder: (_, __, ___) => page,
       fullscreenDialog: fullscreenDialog,
       settings: settings,
-      transitionDuration: const Duration(milliseconds: 260),
-      reverseTransitionDuration: const Duration(milliseconds: 220),
-      transitionsBuilder: (_, animation, __, child) {
+      transitionDuration: Duration(milliseconds: fullscreenDialog ? 340 : 300),
+      reverseTransitionDuration: Duration(
+        milliseconds: fullscreenDialog ? 260 : 240,
+      ),
+      transitionsBuilder: (_, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(
           parent: animation,
           curve: Curves.easeOutCubic,
           reverseCurve: Curves.easeInCubic,
         );
+        final secondary = CurvedAnimation(
+          parent: secondaryAnimation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        final begin = fullscreenDialog
+            ? const Offset(0, 0.08)
+            : const Offset(1, 0);
+        final slide = Tween<Offset>(
+          begin: begin,
+          end: Offset.zero,
+        ).animate(curved);
+        final outgoingSlide = Tween<Offset>(
+          begin: Offset.zero,
+          end: fullscreenDialog ? Offset.zero : const Offset(-0.18, 0),
+        ).animate(secondary);
+
         return FadeTransition(
-          opacity: curved,
+          opacity: Tween<double>(begin: 0.96, end: 1).animate(curved),
           child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.04, 0),
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
+            position: outgoingSlide,
+            child: SlideTransition(position: slide, child: child),
           ),
         );
       },
@@ -39,11 +55,7 @@ class PravaNavigator {
     RouteSettings? settings,
   }) {
     return Navigator.of(context).push<T>(
-      route<T>(
-        page,
-        fullscreenDialog: fullscreenDialog,
-        settings: settings,
-      ),
+      route<T>(page, fullscreenDialog: fullscreenDialog, settings: settings),
     );
   }
 
@@ -55,11 +67,7 @@ class PravaNavigator {
     TO? result,
   }) {
     return Navigator.of(context).pushReplacement<T, TO>(
-      route<T>(
-        page,
-        fullscreenDialog: fullscreenDialog,
-        settings: settings,
-      ),
+      route<T>(page, fullscreenDialog: fullscreenDialog, settings: settings),
       result: result,
     );
   }
@@ -72,11 +80,7 @@ class PravaNavigator {
     RouteSettings? settings,
   }) {
     return Navigator.of(context).pushAndRemoveUntil<T>(
-      route<T>(
-        page,
-        fullscreenDialog: fullscreenDialog,
-        settings: settings,
-      ),
+      route<T>(page, fullscreenDialog: fullscreenDialog, settings: settings),
       predicate,
     );
   }

@@ -25,11 +25,9 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
   int _index = 0;
-  bool _isAnimatingToIndex = false;
   bool _feedChromeVisible = true;
-  int? _targetIndex;
+  int _previousIndex = 0;
 
-  late final PageController _pageController;
   late final List<Widget> _pages;
   late final E2eeKeyRefreshScheduler _keyRefreshScheduler =
       E2eeKeyRefreshScheduler();
@@ -45,7 +43,6 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: _index);
     _pages = _buildPages();
     _keyRefreshScheduler.start();
     unawaited(_requestStartupPermissions());
@@ -54,7 +51,6 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
   @override
   void dispose() {
     _keyRefreshScheduler.stop();
-    _pageController.dispose();
     super.dispose();
   }
 
@@ -63,30 +59,16 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
   // ------------------------------------------------
   void _onTabChange(int index) {
     if (index == _index) {
+      HapticFeedback.selectionClick();
       _keys[index].currentState?.popUntil((route) => route.isFirst);
     } else {
       HapticFeedback.selectionClick();
 
       setState(() {
+        _previousIndex = _index;
         _index = index;
         _feedChromeVisible = true;
-        _isAnimatingToIndex = true;
-        _targetIndex = index;
       });
-
-      final target = index;
-      _pageController
-          .animateToPage(
-            index,
-            duration: const Duration(milliseconds: 320),
-            curve: Curves.easeOutCubic, // WhatsApp-like
-          )
-          .whenComplete(() {
-            if (!mounted) return;
-            if (_targetIndex == target) {
-              setState(() => _isAnimatingToIndex = false);
-            }
-          });
     }
   }
 
@@ -161,10 +143,14 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final chromeVisible = _index != 0 || _feedChromeVisible;
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
         final canPop = await _keys[_index].currentState?.maybePop() ?? false;
-        return !canPop;
+        if (!canPop) {
+          SystemNavigator.pop();
+        }
       },
       child: Scaffold(
         body: SafeArea(
@@ -180,56 +166,11 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                 ),
               ),
 
-              /// Swipeable + animated content
               Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: 4,
-
-                  // WhatsApp-style resistance
-                  physics: const PageScrollPhysics().applyTo(
-                    const BouncingScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics(),
-                    ),
-                  ),
-
-                  onPageChanged: (i) {
-                    if (_isAnimatingToIndex) {
-                      if (i == _targetIndex) {
-                        setState(() {
-                          _isAnimatingToIndex = false;
-                          _index = i;
-                        });
-                      }
-                      return;
-                    }
-
-                    HapticFeedback.selectionClick();
-                    setState(() => _index = i);
-                  },
-
-                  itemBuilder: (context, i) {
-                    return AnimatedBuilder(
-                      animation: _pageController,
-                      builder: (context, child) {
-                        double value = 1.0;
-
-                        if (_pageController.position.haveDimensions) {
-                          value = (_pageController.page! - i).abs();
-                          value = (1 - (value * 0.15)).clamp(0.9, 1.0);
-                        }
-
-                        return Opacity(
-                          opacity: value,
-                          child: Transform.translate(
-                            offset: Offset((1 - value) * 30, 0),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: _pages[i],
-                    );
-                  },
+                child: _PremiumTabStage(
+                  index: _index,
+                  previousIndex: _previousIndex,
+                  children: _pages,
                 ),
               ),
             ],
@@ -241,6 +182,57 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
           visible: chromeVisible,
           child: HomeBottomBar(index: _index, onChanged: _onTabChange),
         ),
+      ),
+    );
+  }
+}
+
+class _PremiumTabStage extends StatelessWidget {
+  const _PremiumTabStage({
+    required this.index,
+    required this.previousIndex,
+    required this.children,
+  });
+
+  final int index;
+  final int previousIndex;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final direction = index >= previousIndex ? 1.0 : -1.0;
+
+    return ClipRect(
+      child: Stack(
+        fit: StackFit.expand,
+        children: List.generate(children.length, (i) {
+          final active = i == index;
+          final outgoing = i == previousIndex && previousIndex != index;
+          final participating = active || outgoing;
+          final slide = active ? Offset.zero : Offset(-0.035 * direction, 0);
+          final scale = active ? 1.0 : 0.985;
+
+          return IgnorePointer(
+            ignoring: !active,
+            child: AnimatedOpacity(
+              opacity: participating && active ? 1 : 0,
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              child: AnimatedSlide(
+                offset: slide,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                child: AnimatedScale(
+                  scale: scale,
+                  alignment: Alignment.center,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  child: TickerMode(enabled: active, child: children[i]),
+                ),
+              ),
+            ),
+          );
+        }),
       ),
     );
   }

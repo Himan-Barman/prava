@@ -57,6 +57,8 @@ export default function LoginPage() {
     setUser({
       id: 'dev-user-id',
       email: 'dev@example.com',
+      username: 'dev',
+      displayName: 'Dev User',
       isVerified: true,
     });
     // Store a dummy token to persist session if auth service checks it

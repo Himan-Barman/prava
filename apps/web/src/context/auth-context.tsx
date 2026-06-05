@@ -1,10 +1,13 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import { authService, AuthSession } from '../services/auth-service';
+import { profileService } from '../services/profile-service';
 import { webSocketService } from '../services/websocket-service';
 
 interface User {
   id: string;
   email: string;
+  username: string;
+  displayName: string;
   isVerified: boolean;
 }
 
@@ -31,8 +34,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (authService.isLoggedIn()) {
           const userId = authService.getUserId();
           if (userId) {
-            // In a real app, you'd fetch user data here
-            setUser({ id: userId, email: '', isVerified: true });
+            try {
+              const profile = await profileService.fetchMyProfile(0);
+              setUser({
+                id: userId,
+                email: '',
+                username: profile.user?.username || '',
+                displayName: profile.user?.displayName || '',
+                isVerified: profile.user?.isVerified ?? true,
+              });
+            } catch {
+              setUser({ id: userId, email: '', username: '', displayName: '', isVerified: true });
+            }
           }
         }
       } catch (error) {
@@ -62,6 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser({
       id: session.userId,
       email: session.email,
+      username: session.username || '',
+      displayName: session.displayName || '',
       isVerified: session.isVerified,
     });
     return session;
@@ -72,6 +87,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser({
       id: session.userId,
       email: session.email,
+      username: session.username || username || '',
+      displayName: session.displayName || username || '',
       isVerified: session.isVerified,
     });
     return session;

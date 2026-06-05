@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../ui-system/colors.dart';
 import '../../../ui-system/typography.dart';
@@ -43,27 +42,45 @@ class HomeBottomBar extends StatelessWidget {
     final inactive = isDark
         ? PravaColors.darkTextTertiary
         : PravaColors.lightTextTertiary;
+    final shell = isDark
+        ? Colors.black.withValues(alpha: 0.34)
+        : Colors.white.withValues(alpha: 0.86);
+    final border = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
 
     return SafeArea(
       top: false,
-      minimum: const EdgeInsets.fromLTRB(16, 2, 16, 6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        child: Row(
-          children: List.generate(_items.length, (i) {
-            final item = _items[i];
-            return _NavItem(
-              item: item,
-              active: index == i,
-              activeColor: PravaColors.accentPrimary,
-              inactiveColor: inactive,
-              isDark: isDark,
-              onTap: () {
-                HapticFeedback.selectionClick();
-                onChanged(i);
-              },
-            );
-          }),
+      minimum: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+      child: RepaintBoundary(
+        child: Container(
+          height: 58,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: BoxDecoration(
+            color: shell,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            children: List.generate(_items.length, (i) {
+              final item = _items[i];
+              return _NavItem(
+                item: item,
+                active: index == i,
+                activeColor: PravaColors.accentPrimary,
+                inactiveColor: inactive,
+                isDark: isDark,
+                onTap: () => onChanged(i),
+              );
+            }),
+          ),
         ),
       ),
     );
@@ -110,14 +127,15 @@ class _NavItem extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(vertical: 4),
+          height: 50,
+          padding: const EdgeInsets.symmetric(vertical: 2),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOutCubic,
-                width: active ? 48 : 38,
+                width: 48,
                 height: 30,
                 decoration: BoxDecoration(
                   color: active
@@ -126,17 +144,17 @@ class _NavItem extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: AnimatedScale(
-                  scale: active ? 1.06 : 1,
+                  scale: active ? 1.04 : 1,
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeOutCubic,
                   child: Icon(
                     active ? item.activeIcon : item.icon,
-                    size: active ? 26 : 24,
+                    size: 25,
                     color: iconColor,
                   ),
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 1),
               AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOutCubic,

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../navigation/prava_navigator.dart';
-
 class TabNavigator extends StatelessWidget {
   final GlobalKey<NavigatorState> navigatorKey;
   final Widget child;
@@ -17,7 +15,12 @@ class TabNavigator extends StatelessWidget {
     return Navigator(
       key: navigatorKey,
       onGenerateRoute: (settings) {
-        return PravaNavigator.route(child);
+        return PageRouteBuilder<void>(
+          settings: settings,
+          pageBuilder: (_, __, ___) => child,
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
+        );
       },
     );
   }

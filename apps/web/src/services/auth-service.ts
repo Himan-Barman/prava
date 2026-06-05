@@ -10,6 +10,8 @@ import { getOrCreateDeviceId, getDeviceName, getPlatform } from '../adapters/dev
 export interface AuthSession {
   userId: string;
   email: string;
+  username: string;
+  displayName: string;
   accessToken: string;
   refreshToken: string;
   isVerified: boolean;
@@ -23,6 +25,7 @@ interface AuthResponse {
     email: string;
     isVerified: boolean;
     username?: string;
+    displayName?: string;
   };
 }
 
@@ -154,6 +157,8 @@ class AuthService {
     return {
       userId: data.user?.id || '',
       email: data.user?.email || '',
+      username: data.user?.username || '',
+      displayName: data.user?.displayName || data.user?.username || '',
       accessToken: data.accessToken || '',
       refreshToken: data.refreshToken || '',
       isVerified: data.user?.isVerified === true,
