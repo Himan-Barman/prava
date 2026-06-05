@@ -90,8 +90,7 @@ class ApiClient {
       final refreshed = await _tryRefresh();
       if (refreshed) {
         final retryHeaders = await _headers(auth: true);
-        final retryResponse =
-            await _client.get(uri, headers: retryHeaders);
+        final retryResponse = await _client.get(uri, headers: retryHeaders);
         return _decodeResponse(retryResponse);
       }
       await _handleForceLogout();
@@ -110,6 +109,9 @@ class ApiClient {
     final headers = await _headers(auth: auth);
     final uri = _buildUri(path);
     final encodedBody = body == null ? null : jsonEncode(body);
+    if (encodedBody == null) {
+      headers.remove('Content-Type');
+    }
 
     final response = await _send(method, uri, headers, encodedBody);
 
@@ -118,8 +120,15 @@ class ApiClient {
       final refreshed = await _tryRefresh();
       if (refreshed) {
         final retryHeaders = await _headers(auth: true);
-        final retryResponse =
-            await _send(method, uri, retryHeaders, encodedBody);
+        if (encodedBody == null) {
+          retryHeaders.remove('Content-Type');
+        }
+        final retryResponse = await _send(
+          method,
+          uri,
+          retryHeaders,
+          encodedBody,
+        );
         return _decodeResponse(retryResponse);
       }
       await _handleForceLogout();
@@ -168,10 +177,7 @@ class ApiClient {
       final response = await _client.post(
         _buildUri('/auth/refresh'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'refreshToken': refreshToken,
-          'deviceId': deviceId,
-        }),
+        body: jsonEncode({'refreshToken': refreshToken, 'deviceId': deviceId}),
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
