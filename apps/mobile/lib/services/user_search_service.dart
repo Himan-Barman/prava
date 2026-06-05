@@ -6,6 +6,7 @@ class UserSearchResult {
     required this.id,
     required this.username,
     required this.displayName,
+    required this.avatarUrl,
     required this.isVerified,
     required this.isFollowing,
     required this.isFollowedBy,
@@ -14,6 +15,7 @@ class UserSearchResult {
   final String id;
   final String username;
   final String displayName;
+  final String avatarUrl;
   final bool isVerified;
   final bool isFollowing;
   final bool isFollowedBy;
@@ -29,6 +31,7 @@ class UserSearchResult {
       id: id,
       username: username,
       displayName: displayName,
+      avatarUrl: avatarUrl,
       isVerified: isVerified,
       isFollowing: isFollowing ?? this.isFollowing,
       isFollowedBy: isFollowedBy ?? this.isFollowedBy,
@@ -41,6 +44,7 @@ class UserSearchResult {
       id: json['id']?.toString() ?? '',
       username: username,
       displayName: json['displayName']?.toString() ?? username,
+      avatarUrl: json['avatarUrl']?.toString() ?? '',
       isVerified: json['isVerified'] == true,
       isFollowing: json['isFollowing'] == true,
       isFollowedBy: json['isFollowedBy'] == true,
@@ -219,5 +223,17 @@ class UserSearchService {
       return data['following'] == true;
     }
     return false;
+  }
+
+  Future<bool> setFollow(String userId, bool follow) async {
+    final data = await _client.put(
+      '/users/$userId/follow',
+      auth: true,
+      body: {'follow': follow},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['following'] == true;
+    }
+    return follow;
   }
 }

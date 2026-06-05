@@ -7,12 +7,15 @@ import 'package:flutter/services.dart';
 
 import '../../../core/storage/secure_store.dart';
 import '../../../navigation/prava_navigator.dart';
+import '../../../services/chat_service.dart';
 import '../../../services/user_search_service.dart';
 import '../../../ui-system/background.dart';
 import '../../../ui-system/colors.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
 import '../../../ui-system/typography.dart';
+import '../tabs/chats/chat_thread_page.dart';
+import '../tabs/chats/chats_page.dart';
 import '../tabs/feed/feed_page.dart';
 import '../tabs/profile/public_profile_page.dart';
 
@@ -26,6 +29,7 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _controller = TextEditingController();
   final UserSearchService _searchService = UserSearchService();
+  final ChatService _chatService = ChatService();
   final SecureStore _store = SecureStore();
   final Set<String> _pendingActions = <String>{};
 
@@ -145,13 +149,21 @@ class _SearchPageState extends State<SearchPage> {
     await _saveHistory();
   }
 
-  Future<void> _toggleFollow(UserSearchResult user) async {
+  Future<void> _handleAccountAction(UserSearchResult user) async {
+    if (user.isFriend) {
+      await _openChat(user);
+      return;
+    }
+    await _setFollow(user);
+  }
+
+  Future<void> _setFollow(UserSearchResult user) async {
     if (_isPending(user.id)) return;
     HapticFeedback.selectionClick();
     setState(() => _pendingActions.add(user.id));
 
     try {
-      final following = await _searchService.toggleFollow(user.id);
+      final following = await _searchService.setFollow(user.id, true);
       if (!mounted) return;
       setState(() {
         _pendingActions.remove(user.id);
@@ -173,6 +185,56 @@ class _SearchPageState extends State<SearchPage> {
         message: 'Unable to update follow status',
         type: PravaToastType.error,
       );
+    }
+  }
+
+  Future<void> _openChat(UserSearchResult user) async {
+    if (_isPending(user.id)) return;
+    HapticFeedback.selectionClick();
+    setState(() => _pendingActions.add(user.id));
+    try {
+      final conversationId = await _chatService.createDm(otherUserId: user.id);
+      if (!mounted) return;
+      if (conversationId == null || conversationId.isEmpty) {
+        throw Exception('Conversation not created');
+      }
+      final name = user.displayName.isNotEmpty
+          ? user.displayName
+          : user.username;
+      await Navigator.of(context, rootNavigator: true).push(
+        PravaNavigator.route(
+          ChatThreadPage(
+            chat: ChatPreview(
+              id: conversationId,
+              name: name,
+              lastMessage: 'No messages yet',
+              time: 'New',
+              unreadCount: 0,
+              isGroup: false,
+              isOnline: false,
+              isMuted: false,
+              isPinned: false,
+              isFavorite: false,
+              isStarred: false,
+              isTyping: false,
+              peerUserId: user.id,
+              avatarUrl: user.avatarUrl,
+              lastMessageFromMe: false,
+              delivery: MessageDeliveryState.read,
+            ),
+          ),
+          fullscreenDialog: true,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: 'Unable to open chat',
+        type: PravaToastType.error,
+      );
+    } finally {
+      if (mounted) setState(() => _pendingActions.remove(user.id));
     }
   }
 
@@ -230,20 +292,33 @@ class _SearchPageState extends State<SearchPage> {
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-                    child: Row(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: _SearchField(
-                            controller: _controller,
-                            border: border,
-                            isDark: isDark,
+                        Text(
+                          'Search',
+                          style: PravaTypography.h2.copyWith(
+                            color: primary,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                        if (_loading) ...[
-                          const SizedBox(width: 10),
-                          const CupertinoActivityIndicator(radius: 9),
-                        ],
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _SearchField(
+                                controller: _controller,
+                                border: border,
+                                isDark: isDark,
+                              ),
+                            ),
+                            if (_loading) ...[
+                              const SizedBox(width: 10),
+                              const CupertinoActivityIndicator(radius: 9),
+                            ],
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -263,7 +338,7 @@ class _SearchPageState extends State<SearchPage> {
                               isDark: isDark,
                               isPending: _isPending,
                               onAccountTap: _openProfile,
-                              onAccountAction: _toggleFollow,
+                              onAccountAction: _handleAccountAction,
                               onHashtagTap: _openHashtag,
                               onAuthorTap: _openAuthor,
                             )
@@ -510,22 +585,23 @@ class _SearchResultsView extends StatelessWidget {
           border: border,
         ),
         if (result.accounts.isNotEmpty)
-          _HorizontalSection(
+          _AccountSection(
             title: 'Accounts',
-            height: 132,
             primary: primary,
-            children: result.accounts.map((account) {
-              return _AccountCard(
-                user: account,
-                pending: isPending(account.id),
-                primary: primary,
-                secondary: secondary,
-                border: border,
-                surface: surface,
-                onTap: () => onAccountTap(account),
-                onAction: () => onAccountAction(account),
-              );
-            }).toList(),
+            children: result.accounts
+                .map(
+                  (account) => _AccountResultRow(
+                    user: account,
+                    pending: isPending(account.id),
+                    primary: primary,
+                    secondary: secondary,
+                    border: border,
+                    surface: surface,
+                    onTap: () => onAccountTap(account),
+                    onAction: () => onAccountAction(account),
+                  ),
+                )
+                .toList(),
           ),
         if (result.hashtags.isNotEmpty)
           _HorizontalSection(
@@ -666,8 +742,41 @@ class _HorizontalSection extends StatelessWidget {
   }
 }
 
-class _AccountCard extends StatelessWidget {
-  const _AccountCard({
+class _AccountSection extends StatelessWidget {
+  const _AccountSection({
+    required this.title,
+    required this.primary,
+    required this.children,
+  });
+
+  final String title;
+  final Color primary;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: PravaTypography.h3.copyWith(
+              color: primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+class _AccountResultRow extends StatelessWidget {
+  const _AccountResultRow({
     required this.user,
     required this.pending,
     required this.primary,
@@ -687,96 +796,166 @@ class _AccountCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onAction;
 
+  String get _actionLabel {
+    if (user.isFriend) return 'Message';
+    if (user.isFollowedByOnly) return 'Accept request';
+    if (user.isRequested) return 'Requested';
+    return 'Add friend';
+  }
+
+  bool get _actionEnabled => !pending && !user.isRequested;
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        width: 172,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: 19,
-              backgroundColor: PravaColors.accentPrimary.withValues(
-                alpha: 0.14,
-              ),
-              child: Text(
-                user.username.isNotEmpty ? user.username[0].toUpperCase() : '@',
-                style: PravaTypography.body.copyWith(
-                  color: PravaColors.accentPrimary,
-                  fontWeight: FontWeight.w800,
+    final displayName = user.displayName.isNotEmpty
+        ? user.displayName
+        : user.username;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: border),
+          ),
+          child: Row(
+            children: [
+              _AccountAvatar(user: user),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PravaTypography.bodyLarge.copyWith(
+                              color: primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        if (user.isVerified) ...[
+                          const SizedBox(width: 5),
+                          const Icon(
+                            CupertinoIcons.check_mark_circled_solid,
+                            color: PravaColors.accentPrimary,
+                            size: 15,
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '@${user.username}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PravaTypography.bodySmall.copyWith(
+                        color: secondary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              user.displayName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: PravaTypography.body.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w800,
+              const SizedBox(width: 8),
+              _AccountActionButton(
+                label: _actionLabel,
+                pending: pending,
+                enabled: _actionEnabled,
+                onTap: onAction,
               ),
-            ),
-            Text(
-              '@${user.username}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: PravaTypography.caption.copyWith(color: secondary),
-            ),
-            const Spacer(),
-            _FollowMiniButton(
-              following: user.isFollowing,
-              pending: pending,
-              onTap: onAction,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _FollowMiniButton extends StatelessWidget {
-  const _FollowMiniButton({
-    required this.following,
+class _AccountAvatar extends StatelessWidget {
+  const _AccountAvatar({required this.user});
+
+  final UserSearchResult user;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial =
+        (user.displayName.isNotEmpty ? user.displayName : user.username).trim();
+
+    return SizedBox(
+      width: 52,
+      height: 52,
+      child: ClipOval(
+        child: user.avatarUrl.trim().isNotEmpty
+            ? Image.network(user.avatarUrl, fit: BoxFit.cover)
+            : Container(
+                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                child: Center(
+                  child: Text(
+                    initial.isEmpty ? '?' : initial[0].toUpperCase(),
+                    style: PravaTypography.h3.copyWith(
+                      color: PravaColors.accentPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _AccountActionButton extends StatelessWidget {
+  const _AccountActionButton({
+    required this.label,
     required this.pending,
+    required this.enabled,
     required this.onTap,
   });
 
-  final bool following;
+  final String label;
   final bool pending;
+  final bool enabled;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final disabled = !enabled;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: pending ? null : onTap,
-      child: Container(
-        height: 30,
+      onTap: disabled ? null : onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        height: 34,
+        constraints: const BoxConstraints(minWidth: 86, maxWidth: 126),
         alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color: following ? Colors.transparent : PravaColors.accentPrimary,
+          color: disabled
+              ? PravaColors.accentPrimary.withValues(alpha: 0.14)
+              : PravaColors.accentPrimary,
           borderRadius: BorderRadius.circular(999),
-          border: following
+          border: disabled
               ? Border.all(color: PravaColors.accentPrimary)
               : null,
         ),
         child: pending
             ? const CupertinoActivityIndicator(radius: 8)
             : Text(
-                following ? 'Following' : 'Follow',
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: PravaTypography.caption.copyWith(
-                  color: following ? PravaColors.accentPrimary : Colors.white,
+                  color: disabled ? PravaColors.accentPrimary : Colors.white,
                   fontWeight: FontWeight.w800,
                 ),
               ),

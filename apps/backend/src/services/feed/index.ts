@@ -218,6 +218,85 @@ async function writePostTags(postId: string, authorId: string, tags: string[], c
   });
 }
 
+async function shouldCreateNotification(userId: string, categoryKey: string) {
+  const row = await queryOne(
+    `SELECT settings FROM user_settings WHERE user_id = $1`,
+    [userId]
+  );
+  const settings = row?.settings || {};
+  return settings.pushNotifications !== false && settings[categoryKey] !== false;
+}
+
+async function createNotification({
+  userId,
+  actorUserId,
+  type,
+  title,
+  body,
+  data,
+  categoryKey,
+}: {
+  userId: string;
+  actorUserId: string;
+  type: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown>;
+  categoryKey: string;
+}) {
+  if (!userId || userId === actorUserId) return;
+  if (!(await shouldCreateNotification(userId, categoryKey))) return;
+  await query(
+    `INSERT INTO notifications (
+       notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)`,
+    [
+      generateId(),
+      userId,
+      actorUserId,
+      type,
+      title,
+      body,
+      JSON.stringify(data),
+      now(),
+    ]
+  );
+}
+
+async function notifyMentionedUsers({
+  usernames,
+  actorUserId,
+  postId,
+  commentId,
+}: {
+  usernames: string[];
+  actorUserId: string;
+  postId: string;
+  commentId?: string;
+}) {
+  const unique = [...new Set(usernames.map((item) => item.toLowerCase()))];
+  if (unique.length === 0) return;
+  const users = await queryMany(
+    `SELECT user_id FROM users
+     WHERE username_lower = ANY($1::text[]) AND deleted_at IS NULL`,
+    [unique]
+  );
+  for (const user of users) {
+    await createNotification({
+      userId: user.user_id,
+      actorUserId,
+      type: "mention",
+      title: "New mention",
+      body: commentId
+        ? "Someone mentioned you in a comment"
+        : "Someone mentioned you in a post",
+      data: { postId, commentId: commentId || null },
+      categoryKey: "notifyMentions",
+    });
+  }
+}
+
 async function findTaggedPosts(tag: string, currentUserId: string, before: Date | null, limit: number) {
   const params: unknown[] = [currentUserId, tag];
   let beforeSql = "";
@@ -379,6 +458,11 @@ export default async function feedService(app: any) {
     );
 
     publishToFeedSubscribers("FEED_POST", post, request.user.userId);
+    await notifyMentionedUsers({
+      usernames: mentions,
+      actorUserId: request.user.userId,
+      postId,
+    });
     return post;
   });
 
@@ -386,7 +470,10 @@ export default async function feedService(app: any) {
     const postId = String(request.params.postId || "").trim();
     ensure(postId.length >= 8, 400, "Invalid post");
 
-    const post = await queryOne(`SELECT post_id, like_count FROM posts WHERE post_id = $1`, [postId]);
+    const post = await queryOne(
+      `SELECT post_id, author_id, like_count FROM posts WHERE post_id = $1`,
+      [postId]
+    );
     if (!post) {
       throw new HttpError(404, "Post not found");
     }
@@ -436,6 +523,17 @@ export default async function feedService(app: any) {
       liked,
       likeCount: Math.max(0, Number(updated?.like_count || 0)),
     };
+    if (liked) {
+      await createNotification({
+        userId: post.author_id,
+        actorUserId: request.user.userId,
+        type: "like",
+        title: "New like",
+        body: "Someone liked your post",
+        data: { postId },
+        categoryKey: "notifyPosts",
+      });
+    }
     publishToFeedSubscribers("FEED_LIKE", payload);
     return payload;
   });
@@ -462,9 +560,13 @@ export default async function feedService(app: any) {
     ensure(postId.length >= 8, 400, "Invalid post");
 
     const body = normalizeBody(request.body?.body, MAX_COMMENT_WORDS, MAX_COMMENT_CHARS, "Comment");
+    const mentions = extractMatches(body, "@");
     const parentCommentId = String(request.body?.parentCommentId || "").trim() || null;
 
-    const post = await queryOne(`SELECT post_id FROM posts WHERE post_id = $1`, [postId]);
+    const post = await queryOne(
+      `SELECT post_id, author_id FROM posts WHERE post_id = $1`,
+      [postId]
+    );
     if (!post) {
       throw new HttpError(404, "Post not found");
     }
@@ -523,6 +625,23 @@ export default async function feedService(app: any) {
         false
       ),
     };
+    await createNotification({
+      userId: post.author_id,
+      actorUserId: request.user.userId,
+      type: parentCommentId ? "reply" : "comment",
+      title: parentCommentId ? "New reply" : "New comment",
+      body: parentCommentId
+        ? "Someone replied on your post"
+        : "Someone commented on your post",
+      data: { postId, commentId, parentCommentId },
+      categoryKey: "notifyPosts",
+    });
+    await notifyMentionedUsers({
+      usernames: mentions,
+      actorUserId: request.user.userId,
+      postId,
+      commentId,
+    });
     publishToFeedSubscribers("FEED_COMMENT", {
       postId,
       commentCount: payload.commentCount,
@@ -642,6 +761,15 @@ export default async function feedService(app: any) {
       shareCount: Number(updated?.share_count || 0),
       created: !existing,
     };
+    await createNotification({
+      userId: original.author_id,
+      actorUserId: request.user.userId,
+      type: "share",
+      title: "New share",
+      body: "Someone shared your post",
+      data: { postId },
+      categoryKey: "notifyPosts",
+    });
     publishToFeedSubscribers("FEED_SHARE", payload);
     return payload;
   });

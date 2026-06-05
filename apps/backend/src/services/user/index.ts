@@ -43,6 +43,10 @@ const DEFAULT_SETTINGS = {
   emailNotifications: false,
   inAppSounds: true,
   inAppHaptics: true,
+  notifyPosts: true,
+  notifyChats: true,
+  notifyMentions: true,
+  notifyFollows: true,
   dataSaver: false,
   autoDownload: true,
   autoPlayVideos: true,
@@ -170,6 +174,15 @@ function mergeSettings(value: any = {}) {
     ...(value || {}),
     profileVisibility,
   };
+}
+
+async function shouldCreateNotification(userId: string, categoryKey: string) {
+  const row = await queryOne(
+    `SELECT settings FROM user_settings WHERE user_id = $1`,
+    [userId]
+  );
+  const settings = mergeSettings(row?.settings || {});
+  return settings.pushNotifications !== false && settings[categoryKey] !== false;
 }
 
 type ProfileRelationship = {
@@ -907,7 +920,7 @@ export default async function userService(app: any) {
     const limit = parseLimit(request.query?.limit, 20, 1, 25);
     const prefix = `${escapeLike(search)}%`;
     const rows = await queryMany(
-      `SELECT user_id, username, display_name, is_verified
+      `SELECT user_id, username, display_name, avatar_url, is_verified
        FROM users
        WHERE user_id <> $1
          AND deleted_at IS NULL
@@ -945,6 +958,7 @@ export default async function userService(app: any) {
         id: row.user_id,
         username: row.username,
         displayName: row.display_name || row.username,
+        avatarUrl: row.avatar_url || "",
         isVerified: row.is_verified === true,
         isFollowing: followingSet.has(row.user_id),
         isFollowedBy: followedBySet.has(row.user_id),
@@ -974,7 +988,7 @@ export default async function userService(app: any) {
 
     const accountRows = canSearchHandles
       ? await queryMany(
-          `SELECT user_id, username, display_name, is_verified
+          `SELECT user_id, username, display_name, avatar_url, is_verified
            FROM users
            WHERE user_id <> $1
              AND deleted_at IS NULL
@@ -1051,6 +1065,7 @@ export default async function userService(app: any) {
         id: row.user_id,
         username: row.username,
         displayName: row.display_name || row.username,
+        avatarUrl: row.avatar_url || "",
         isVerified: row.is_verified === true,
         isFollowing: followingSet.has(row.user_id),
         isFollowedBy: followedBySet.has(row.user_id),
@@ -1470,6 +1485,7 @@ export default async function userService(app: any) {
     }
 
     const ts = now();
+    const notifyTarget = await shouldCreateNotification(targetUserId, "notifyFollows");
     await withTransaction(async (client) => {
       await client.query(
         `INSERT INTO follows (follower_id, following_id, created_at)
@@ -1478,19 +1494,21 @@ export default async function userService(app: any) {
         [request.user.userId, targetUserId, ts]
       );
 
-      await client.query(
-        `INSERT INTO notifications (
-           notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
-         )
-         VALUES ($1, $2, $3, 'follow', 'New follower', 'Someone started following you', $4, $5, NULL)`,
-        [
-          generateId(),
-          targetUserId,
-          request.user.userId,
-          JSON.stringify({ followerId: request.user.userId }),
-          ts,
-        ]
-      );
+      if (notifyTarget) {
+        await client.query(
+          `INSERT INTO notifications (
+             notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
+           )
+           VALUES ($1, $2, $3, 'follow', 'New follower', 'Someone started following you', $4, $5, NULL)`,
+          [
+            generateId(),
+            targetUserId,
+            request.user.userId,
+            JSON.stringify({ followerId: request.user.userId }),
+            ts,
+          ]
+        );
+      }
     });
 
     return { following: true };
@@ -1505,12 +1523,28 @@ export default async function userService(app: any) {
     await ensureNotBlocked(request.user.userId, targetUserId);
 
     if (follow) {
+      const ts = now();
       const result = await query(
         `INSERT INTO follows (follower_id, following_id, created_at)
          VALUES ($1, $2, $3)
          ON CONFLICT (follower_id, following_id) DO NOTHING`,
-        [request.user.userId, targetUserId, now()]
+        [request.user.userId, targetUserId, ts]
       );
+      if ((result.rowCount || 0) > 0 && await shouldCreateNotification(targetUserId, "notifyFollows")) {
+        await query(
+          `INSERT INTO notifications (
+             notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
+           )
+           VALUES ($1, $2, $3, 'follow', 'New follower', 'Someone started following you', $4, $5, NULL)`,
+          [
+            generateId(),
+            targetUserId,
+            request.user.userId,
+            JSON.stringify({ followerId: request.user.userId }),
+            ts,
+          ]
+        );
+      }
       return {
         following: true,
         changed: (result.rowCount || 0) > 0,

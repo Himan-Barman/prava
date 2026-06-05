@@ -37,6 +37,61 @@ function userDisplayName(row: any): string {
   return row?.display_name || row?.username || "Conversation";
 }
 
+async function shouldCreateNotification(userId: string, categoryKey: string) {
+  const row = await queryOne(
+    `SELECT settings FROM user_settings WHERE user_id = $1`,
+    [userId]
+  );
+  const settings = row?.settings || {};
+  return settings.pushNotifications !== false && settings[categoryKey] !== false;
+}
+
+async function createChatNotifications({
+  conversationId,
+  conversation,
+  memberIds,
+  actorUserId,
+  body,
+}: {
+  conversationId: string;
+  conversation: any;
+  memberIds: string[];
+  actorUserId: string;
+  body: string;
+}) {
+  const recipients = memberIds.filter((id) => id !== actorUserId);
+  if (recipients.length === 0) return;
+
+  const actor = await queryOne(
+    `SELECT username, display_name FROM users WHERE user_id = $1`,
+    [actorUserId]
+  );
+  const actorName = userDisplayName(actor);
+  const title = conversation.type === "group"
+    ? conversation.title || "New group message"
+    : actorName;
+  const preview = body.length > 90 ? `${body.slice(0, 87)}...` : body;
+
+  for (const userId of recipients) {
+    if (!(await shouldCreateNotification(userId, "notifyChats"))) continue;
+    await query(
+      `INSERT INTO notifications (
+         notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
+       )
+       VALUES ($1, $2, $3, 'chat', $4, $5, $6, $7, NULL)`,
+      [
+        generateId(),
+        userId,
+        actorUserId,
+        title,
+        preview,
+        JSON.stringify({ conversationId }),
+        now(),
+      ]
+    );
+  }
+}
+
 async function loadActiveUsers(ids: string[]): Promise<any[]> {
   if (ids.length === 0) {
     return [];
@@ -1051,6 +1106,13 @@ export default async function chatService(app: any) {
     });
 
     publishToConversation(memberIds, "MESSAGE_PUSH", toRealtimeMessagePayload(message));
+    await createChatNotifications({
+      conversationId,
+      conversation,
+      memberIds,
+      actorUserId: request.user.userId,
+      body,
+    });
 
     if (tempId) {
       publishToUsers([request.user.userId], "MESSAGE_ACK", {

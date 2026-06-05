@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 
 import '../../../navigation/prava_navigator.dart';
 import '../../../services/notification_center.dart';
-import '../../../services/notification_permission_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/settings_service.dart';
 import '../../../ui-system/background.dart';
@@ -27,8 +26,6 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   final NotificationService _service = NotificationService();
-  final NotificationPermissionService _permissionService =
-      NotificationPermissionService();
   final SettingsService _settingsService = SettingsService();
   final NotificationCenter _center = NotificationCenter.instance;
   final ScrollController _controller = ScrollController();
@@ -40,13 +37,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
   bool _loading = true;
   bool _loadingMore = false;
   bool _markingAll = false;
-  bool _permissionLoading = false;
   bool _settingsSaving = false;
   String? _cursor;
   NotificationFilter _filter = NotificationFilter.all;
   SettingsState _settings = SettingsState.defaults();
-  NotificationPermissionSnapshot _nativePermission =
-      NotificationPermissionSnapshot.unavailable;
 
   @override
   void initState() {
@@ -115,10 +109,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> _loadNotificationControls() async {
-    if (mounted) {
-      setState(() => _permissionLoading = true);
-    }
-
     final localSettings = await _settingsService.loadLocal();
     if (mounted) {
       setState(() => _settings = localSettings);
@@ -132,30 +122,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
       // Local settings keep the controls responsive when remote settings fail.
     }
 
-    final permission = await _permissionService.getStatus();
     if (!mounted) return;
-    setState(() {
-      _settings = settings;
-      _nativePermission = permission;
-      _permissionLoading = false;
-    });
-  }
-
-  Future<void> _requestNotificationPermission() async {
-    if (_permissionLoading) return;
-    HapticFeedback.selectionClick();
-    setState(() => _permissionLoading = true);
-    final permission = await _permissionService.requestPermission();
-    if (!mounted) return;
-    setState(() {
-      _nativePermission = permission;
-      _permissionLoading = false;
-    });
-    if (permission.canDeliver && !_settings.pushNotifications) {
-      await _updateNotificationSettings(
-        _settings.copyWith(pushNotifications: true),
-      );
-    }
+    setState(() => _settings = settings);
   }
 
   Future<void> _updateNotificationSettings(SettingsState next) async {
@@ -351,20 +319,31 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     valueListenable: _center.unreadCount,
                     builder: (_, count, __) {
                       return _NotificationControlPanel(
-                        permission: _nativePermission,
                         settings: _settings,
                         unreadCount: count,
-                        loading: _permissionLoading,
                         saving: _settingsSaving,
                         primary: primary,
                         secondary: secondary,
                         border: border,
                         surface: surface,
                         isDark: isDark,
-                        onRequestPermission: _requestNotificationPermission,
                         onPushChanged: (value) => _updateNotificationSettings(
                           _settings.copyWith(pushNotifications: value),
                         ),
+                        onPostsChanged: (value) => _updateNotificationSettings(
+                          _settings.copyWith(notifyPosts: value),
+                        ),
+                        onChatsChanged: (value) => _updateNotificationSettings(
+                          _settings.copyWith(notifyChats: value),
+                        ),
+                        onMentionsChanged: (value) =>
+                            _updateNotificationSettings(
+                              _settings.copyWith(notifyMentions: value),
+                            ),
+                        onFollowsChanged: (value) =>
+                            _updateNotificationSettings(
+                              _settings.copyWith(notifyFollows: value),
+                            ),
                         onEmailChanged: (value) => _updateNotificationSettings(
                           _settings.copyWith(emailNotifications: value),
                         ),
@@ -485,58 +464,43 @@ class _MarkAllReadButton extends StatelessWidget {
 
 class _NotificationControlPanel extends StatelessWidget {
   const _NotificationControlPanel({
-    required this.permission,
     required this.settings,
     required this.unreadCount,
-    required this.loading,
     required this.saving,
     required this.primary,
     required this.secondary,
     required this.border,
     required this.surface,
     required this.isDark,
-    required this.onRequestPermission,
     required this.onPushChanged,
+    required this.onPostsChanged,
+    required this.onChatsChanged,
+    required this.onMentionsChanged,
+    required this.onFollowsChanged,
     required this.onEmailChanged,
     required this.onSoundChanged,
     required this.onHapticsChanged,
   });
 
-  final NotificationPermissionSnapshot permission;
   final SettingsState settings;
   final int unreadCount;
-  final bool loading;
   final bool saving;
   final Color primary;
   final Color secondary;
   final Color border;
   final Color surface;
   final bool isDark;
-  final VoidCallback onRequestPermission;
   final ValueChanged<bool> onPushChanged;
+  final ValueChanged<bool> onPostsChanged;
+  final ValueChanged<bool> onChatsChanged;
+  final ValueChanged<bool> onMentionsChanged;
+  final ValueChanged<bool> onFollowsChanged;
   final ValueChanged<bool> onEmailChanged;
   final ValueChanged<bool> onSoundChanged;
   final ValueChanged<bool> onHapticsChanged;
 
-  Color get _permissionColor {
-    if (permission.canDeliver) return PravaColors.success;
-    if (permission.permission == NativeNotificationPermission.denied) {
-      return PravaColors.error;
-    }
-    return PravaColors.warning;
-  }
-
-  String get _actionLabel {
-    if (permission.canDeliver) return 'Refresh';
-    if (permission.permission == NativeNotificationPermission.denied) {
-      return 'Retry';
-    }
-    return 'Allow';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final accent = _permissionColor;
     final inactive = isDark
         ? Colors.white.withValues(alpha: 0.08)
         : Colors.black.withValues(alpha: 0.04);
@@ -553,14 +517,18 @@ class _NotificationControlPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.notifications_active_rounded, color: accent, size: 31),
+              const Icon(
+                Icons.tune_rounded,
+                color: PravaColors.accentPrimary,
+                size: 27,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Notification system',
+                      'Control panel',
                       style: PravaTypography.body.copyWith(
                         color: primary,
                         fontWeight: FontWeight.w800,
@@ -568,39 +536,18 @@ class _NotificationControlPanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      permission.detail,
-                      maxLines: 2,
+                      'Choose what Prava alerts you about.',
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: PravaTypography.caption.copyWith(color: secondary),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              _StatusPill(label: permission.label, color: accent),
+              _NotificationCountPill(count: unreadCount, color: secondary),
             ],
           ),
           const SizedBox(height: 12),
-          _PermissionRow(
-            loading: loading,
-            actionLabel: _actionLabel,
-            alert: permission.alert,
-            badge: permission.badge,
-            sound: permission.sound,
-            primary: primary,
-            secondary: secondary,
-            border: border,
-            fill: inactive,
-            onTap: onRequestPermission,
-          ),
-          const SizedBox(height: 10),
-          _NotificationSummaryLine(
-            realtime: settings.inAppSounds || settings.inAppHaptics,
-            unreadCount: unreadCount,
-            primary: primary,
-            secondary: secondary,
-          ),
-          const SizedBox(height: 10),
           LayoutBuilder(
             builder: (context, constraints) {
               final tileWidth = (constraints.maxWidth - 8) / 2;
@@ -613,7 +560,7 @@ class _NotificationControlPanel extends StatelessWidget {
                     child: _DeliveryToggle(
                       icon: Icons.notifications_rounded,
                       title: 'Push',
-                      subtitle: permission.canDeliver ? 'Device' : 'Blocked',
+                      subtitle: 'Device',
                       value: settings.pushNotifications,
                       enabled: !saving,
                       primary: primary,
@@ -621,6 +568,66 @@ class _NotificationControlPanel extends StatelessWidget {
                       border: border,
                       fill: inactive,
                       onChanged: onPushChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: tileWidth,
+                    child: _DeliveryToggle(
+                      icon: Icons.dynamic_feed_rounded,
+                      title: 'Posts',
+                      subtitle: 'Likes, comments',
+                      value: settings.notifyPosts,
+                      enabled: !saving,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                      fill: inactive,
+                      onChanged: onPostsChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: tileWidth,
+                    child: _DeliveryToggle(
+                      icon: Icons.chat_bubble_rounded,
+                      title: 'Chats',
+                      subtitle: 'DMs, groups',
+                      value: settings.notifyChats,
+                      enabled: !saving,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                      fill: inactive,
+                      onChanged: onChatsChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: tileWidth,
+                    child: _DeliveryToggle(
+                      icon: Icons.alternate_email_rounded,
+                      title: 'Mentions',
+                      subtitle: 'Tags',
+                      value: settings.notifyMentions,
+                      enabled: !saving,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                      fill: inactive,
+                      onChanged: onMentionsChanged,
+                    ),
+                  ),
+                  SizedBox(
+                    width: tileWidth,
+                    child: _DeliveryToggle(
+                      icon: Icons.person_add_alt_1_rounded,
+                      title: 'Follows',
+                      subtitle: 'Requests',
+                      value: settings.notifyFollows,
+                      enabled: !saving,
+                      primary: primary,
+                      secondary: secondary,
+                      border: border,
+                      fill: inactive,
+                      onChanged: onFollowsChanged,
                     ),
                   ),
                   SizedBox(
@@ -678,10 +685,10 @@ class _NotificationControlPanel extends StatelessWidget {
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label, required this.color});
+class _NotificationCountPill extends StatelessWidget {
+  const _NotificationCountPill({required this.count, required this.color});
 
-  final String label;
+  final int count;
   final Color color;
 
   @override
@@ -693,143 +700,12 @@ class _StatusPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        label,
+        '$count unread',
         style: PravaTypography.caption.copyWith(
           color: color,
           fontWeight: FontWeight.w800,
         ),
       ),
-    );
-  }
-}
-
-class _PermissionRow extends StatelessWidget {
-  const _PermissionRow({
-    required this.loading,
-    required this.actionLabel,
-    required this.alert,
-    required this.badge,
-    required this.sound,
-    required this.primary,
-    required this.secondary,
-    required this.border,
-    required this.fill,
-    required this.onTap,
-  });
-
-  final bool loading;
-  final String actionLabel;
-  final bool alert;
-  final bool badge;
-  final bool sound;
-  final Color primary;
-  final Color secondary;
-  final Color border;
-  final Color fill;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabledCount = [alert, badge, sound].where((item) => item).length;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 9, 8, 9),
-      decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.shield_rounded,
-            color: PravaColors.accentPrimary,
-            size: 24,
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              'System permission - $enabledCount/3',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: PravaTypography.caption.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: loading ? null : onTap,
-            child: Container(
-              height: 30,
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: PravaColors.accentPrimary,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: loading
-                  ? const CupertinoActivityIndicator(
-                      radius: 8,
-                      color: Colors.white,
-                    )
-                  : Text(
-                      actionLabel,
-                      style: PravaTypography.caption.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NotificationSummaryLine extends StatelessWidget {
-  const _NotificationSummaryLine({
-    required this.realtime,
-    required this.unreadCount,
-    required this.primary,
-    required this.secondary,
-  });
-
-  final bool realtime;
-  final int unreadCount;
-  final Color primary;
-  final Color secondary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Icon(
-          Icons.bolt_rounded,
-          color: PravaColors.accentPrimary,
-          size: 21,
-        ),
-        const SizedBox(width: 6),
-        Text(
-          realtime ? 'Realtime active' : 'Realtime silent',
-          style: PravaTypography.caption.copyWith(
-            color: primary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(width: 14),
-        Icon(Icons.mark_email_unread_rounded, color: secondary, size: 19),
-        const SizedBox(width: 6),
-        Text(
-          '$unreadCount unread',
-          style: PravaTypography.caption.copyWith(
-            color: secondary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
     );
   }
 }

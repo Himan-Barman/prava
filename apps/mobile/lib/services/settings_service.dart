@@ -19,6 +19,10 @@ class SettingsState {
     required this.emailNotifications,
     required this.inAppSounds,
     required this.inAppHaptics,
+    required this.notifyPosts,
+    required this.notifyChats,
+    required this.notifyMentions,
+    required this.notifyFollows,
     required this.dataSaver,
     required this.autoDownload,
     required this.autoPlayVideos,
@@ -42,6 +46,10 @@ class SettingsState {
   final bool emailNotifications;
   final bool inAppSounds;
   final bool inAppHaptics;
+  final bool notifyPosts;
+  final bool notifyChats;
+  final bool notifyMentions;
+  final bool notifyFollows;
   final bool dataSaver;
   final bool autoDownload;
   final bool autoPlayVideos;
@@ -66,6 +74,10 @@ class SettingsState {
       emailNotifications: false,
       inAppSounds: true,
       inAppHaptics: true,
+      notifyPosts: true,
+      notifyChats: true,
+      notifyMentions: true,
+      notifyFollows: true,
       dataSaver: false,
       autoDownload: true,
       autoPlayVideos: true,
@@ -79,46 +91,80 @@ class SettingsState {
   factory SettingsState.fromJson(Map<String, dynamic> json) {
     final defaults = SettingsState.defaults();
     return SettingsState(
-      privateAccount:
-          json['privateAccount'] is bool ? json['privateAccount'] : defaults.privateAccount,
-      activityStatus:
-          json['activityStatus'] is bool ? json['activityStatus'] : defaults.activityStatus,
-      readReceipts:
-          json['readReceipts'] is bool ? json['readReceipts'] : defaults.readReceipts,
-      messagePreview:
-          json['messagePreview'] is bool ? json['messagePreview'] : defaults.messagePreview,
-      sensitiveContent:
-          json['sensitiveContent'] is bool ? json['sensitiveContent'] : defaults.sensitiveContent,
-      locationSharing:
-          json['locationSharing'] is bool ? json['locationSharing'] : defaults.locationSharing,
-      twoFactor: json['twoFactor'] is bool ? json['twoFactor'] : defaults.twoFactor,
-      loginAlerts: json['loginAlerts'] is bool ? json['loginAlerts'] : defaults.loginAlerts,
+      privateAccount: json['privateAccount'] is bool
+          ? json['privateAccount']
+          : defaults.privateAccount,
+      activityStatus: json['activityStatus'] is bool
+          ? json['activityStatus']
+          : defaults.activityStatus,
+      readReceipts: json['readReceipts'] is bool
+          ? json['readReceipts']
+          : defaults.readReceipts,
+      messagePreview: json['messagePreview'] is bool
+          ? json['messagePreview']
+          : defaults.messagePreview,
+      sensitiveContent: json['sensitiveContent'] is bool
+          ? json['sensitiveContent']
+          : defaults.sensitiveContent,
+      locationSharing: json['locationSharing'] is bool
+          ? json['locationSharing']
+          : defaults.locationSharing,
+      twoFactor: json['twoFactor'] is bool
+          ? json['twoFactor']
+          : defaults.twoFactor,
+      loginAlerts: json['loginAlerts'] is bool
+          ? json['loginAlerts']
+          : defaults.loginAlerts,
       appLock: json['appLock'] is bool ? json['appLock'] : defaults.appLock,
-      biometrics: json['biometrics'] is bool ? json['biometrics'] : defaults.biometrics,
+      biometrics: json['biometrics'] is bool
+          ? json['biometrics']
+          : defaults.biometrics,
       pushNotifications: json['pushNotifications'] is bool
           ? json['pushNotifications']
           : defaults.pushNotifications,
       emailNotifications: json['emailNotifications'] is bool
           ? json['emailNotifications']
           : defaults.emailNotifications,
-      inAppSounds:
-          json['inAppSounds'] is bool ? json['inAppSounds'] : defaults.inAppSounds,
-      inAppHaptics:
-          json['inAppHaptics'] is bool ? json['inAppHaptics'] : defaults.inAppHaptics,
-      dataSaver: json['dataSaver'] is bool ? json['dataSaver'] : defaults.dataSaver,
-      autoDownload:
-          json['autoDownload'] is bool ? json['autoDownload'] : defaults.autoDownload,
-      autoPlayVideos:
-          json['autoPlayVideos'] is bool ? json['autoPlayVideos'] : defaults.autoPlayVideos,
-      reduceMotion:
-          json['reduceMotion'] is bool ? json['reduceMotion'] : defaults.reduceMotion,
+      inAppSounds: json['inAppSounds'] is bool
+          ? json['inAppSounds']
+          : defaults.inAppSounds,
+      inAppHaptics: json['inAppHaptics'] is bool
+          ? json['inAppHaptics']
+          : defaults.inAppHaptics,
+      notifyPosts: json['notifyPosts'] is bool
+          ? json['notifyPosts']
+          : defaults.notifyPosts,
+      notifyChats: json['notifyChats'] is bool
+          ? json['notifyChats']
+          : defaults.notifyChats,
+      notifyMentions: json['notifyMentions'] is bool
+          ? json['notifyMentions']
+          : defaults.notifyMentions,
+      notifyFollows: json['notifyFollows'] is bool
+          ? json['notifyFollows']
+          : defaults.notifyFollows,
+      dataSaver: json['dataSaver'] is bool
+          ? json['dataSaver']
+          : defaults.dataSaver,
+      autoDownload: json['autoDownload'] is bool
+          ? json['autoDownload']
+          : defaults.autoDownload,
+      autoPlayVideos: json['autoPlayVideos'] is bool
+          ? json['autoPlayVideos']
+          : defaults.autoPlayVideos,
+      reduceMotion: json['reduceMotion'] is bool
+          ? json['reduceMotion']
+          : defaults.reduceMotion,
       themeIndex: json['themeIndex'] is int
           ? json['themeIndex'] as int
-          : int.tryParse(json['themeIndex']?.toString() ?? '') ?? defaults.themeIndex,
+          : int.tryParse(json['themeIndex']?.toString() ?? '') ??
+                defaults.themeIndex,
       textScale: json['textScale'] is num
           ? (json['textScale'] as num).toDouble()
-          : double.tryParse(json['textScale']?.toString() ?? '') ?? defaults.textScale,
-      languageLabel: json['languageLabel']?.toString() ?? defaults.languageLabel,
+          : double.tryParse(json['textScale']?.toString() ?? '') ??
+                defaults.textScale,
+      languageLabel:
+          json['languageLabel']?.toString() ?? defaults.languageLabel,
     );
   }
 
@@ -137,6 +183,10 @@ class SettingsState {
     bool? emailNotifications,
     bool? inAppSounds,
     bool? inAppHaptics,
+    bool? notifyPosts,
+    bool? notifyChats,
+    bool? notifyMentions,
+    bool? notifyFollows,
     bool? dataSaver,
     bool? autoDownload,
     bool? autoPlayVideos,
@@ -160,6 +210,10 @@ class SettingsState {
       emailNotifications: emailNotifications ?? this.emailNotifications,
       inAppSounds: inAppSounds ?? this.inAppSounds,
       inAppHaptics: inAppHaptics ?? this.inAppHaptics,
+      notifyPosts: notifyPosts ?? this.notifyPosts,
+      notifyChats: notifyChats ?? this.notifyChats,
+      notifyMentions: notifyMentions ?? this.notifyMentions,
+      notifyFollows: notifyFollows ?? this.notifyFollows,
       dataSaver: dataSaver ?? this.dataSaver,
       autoDownload: autoDownload ?? this.autoDownload,
       autoPlayVideos: autoPlayVideos ?? this.autoPlayVideos,
@@ -186,6 +240,10 @@ class SettingsState {
       'emailNotifications': emailNotifications,
       'inAppSounds': inAppSounds,
       'inAppHaptics': inAppHaptics,
+      'notifyPosts': notifyPosts,
+      'notifyChats': notifyChats,
+      'notifyMentions': notifyMentions,
+      'notifyFollows': notifyFollows,
       'dataSaver': dataSaver,
       'autoDownload': autoDownload,
       'autoPlayVideos': autoPlayVideos,
@@ -199,8 +257,8 @@ class SettingsState {
 
 class SettingsService {
   SettingsService({SecureStore? store})
-      : _store = store ?? SecureStore(),
-        _client = ApiClient(store ?? SecureStore());
+    : _store = store ?? SecureStore(),
+      _client = ApiClient(store ?? SecureStore());
 
   final SecureStore _store;
   final ApiClient _client;

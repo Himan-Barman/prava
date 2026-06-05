@@ -12,7 +12,9 @@ import 'tabs/chats/chats_page.dart';
 import 'tabs/friends/friends_page.dart';
 import 'tabs/profile/profile_page.dart';
 import '../../services/e2ee_scheduler.dart';
+import '../../services/notification_permission_service.dart';
 import '../../services/platform_bridge_service.dart';
+import '../../services/settings_service.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -32,6 +34,9 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
   late final E2eeKeyRefreshScheduler _keyRefreshScheduler =
       E2eeKeyRefreshScheduler();
   late final PlatformBridgeService _platformBridge = PlatformBridgeService();
+  late final NotificationPermissionService _notificationPermissions =
+      NotificationPermissionService();
+  late final SettingsService _settingsService = SettingsService();
   final ChatsPageController _chatsController = ChatsPageController();
   final ProfilePageController _profileController = ProfilePageController();
 
@@ -43,7 +48,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
     _pageController = PageController(initialPage: _index);
     _pages = _buildPages();
     _keyRefreshScheduler.start();
-    unawaited(_platformBridge.requestLocationTimeAccess());
+    unawaited(_requestStartupPermissions());
   }
 
   @override
@@ -54,7 +59,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
   }
 
   // ------------------------------------------------
-  // Bottom bar → animated page switch
+  // Bottom bar animated page switch
   // ------------------------------------------------
   void _onTabChange(int index) {
     if (index == _index) {
@@ -89,6 +94,23 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
     if (!mounted) return;
     if (_feedChromeVisible == visible) return;
     setState(() => _feedChromeVisible = visible);
+  }
+
+  Future<void> _requestStartupPermissions() async {
+    await _platformBridge.requestLocationTimeAccess();
+    final permission = await _notificationPermissions.requestPermission();
+    if (!permission.canDeliver) return;
+
+    try {
+      final settings = await _settingsService.loadLocal();
+      if (!settings.pushNotifications) {
+        final next = settings.copyWith(pushNotifications: true);
+        await _settingsService.saveLocal(next);
+        await _settingsService.saveRemote(next);
+      }
+    } catch (_) {
+      // Permission prompts should never block the home shell.
+    }
   }
 
   void _handleChatMenu(ChatTopMenuAction action) {
@@ -148,7 +170,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
         body: SafeArea(
           child: Column(
             children: [
-              /// 🔝 Fixed top bar
+              /// Fixed top bar
               _ShellChromeVisibility(
                 visible: chromeVisible,
                 child: HomeTopBar(
@@ -158,13 +180,13 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                 ),
               ),
 
-              /// 📄 Swipeable + animated content
+              /// Swipeable + animated content
               Expanded(
                 child: PageView.builder(
                   controller: _pageController,
                   itemCount: 4,
 
-                  // ✅ WhatsApp-style resistance
+                  // WhatsApp-style resistance
                   physics: const PageScrollPhysics().applyTo(
                     const BouncingScrollPhysics(
                       parent: AlwaysScrollableScrollPhysics(),
@@ -214,7 +236,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
           ),
         ),
 
-        /// ⬇️ Bottom bar
+        /// Bottom bar
         bottomNavigationBar: _ShellChromeVisibility(
           visible: chromeVisible,
           child: HomeBottomBar(index: _index, onChanged: _onTabChange),
