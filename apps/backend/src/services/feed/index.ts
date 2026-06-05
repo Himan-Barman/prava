@@ -36,6 +36,10 @@ function normalizeBody(value: unknown, maxWords: number, maxChars: number, label
   return body;
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "23505";
+}
+
 function normalizeTag(value: unknown): string {
   return String(value || "")
     .trim()
@@ -471,24 +475,35 @@ export default async function feedService(app: any) {
     let liked = false;
     await withTransaction(async (client) => {
       if (existing) {
-        await client.query(`DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`, [postId, request.user.userId]);
+        const deleted = await client.query(`DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`, [postId, request.user.userId]);
+        const deletedCount = Math.max(1, deleted.rowCount || 0);
         await client.query(
           `UPDATE posts
-           SET like_count = GREATEST(like_count - 1, 0), updated_at = $2
+           SET like_count = GREATEST(like_count - $2, 0), updated_at = $3
            WHERE post_id = $1`,
-          [postId, ts]
+          [postId, deletedCount, ts]
         );
         liked = false;
         return;
       }
 
-      const inserted = await client.query(
-        `INSERT INTO post_likes (post_id, user_id, created_at)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (post_id, user_id) DO NOTHING`,
-        [postId, request.user.userId, ts]
-      );
-      if ((inserted.rowCount || 0) > 0) {
+      let insertedCount = 0;
+      try {
+        const inserted = await client.query(
+          `INSERT INTO post_likes (post_id, user_id, created_at)
+           SELECT $1, $2, $3
+           WHERE NOT EXISTS (
+             SELECT 1 FROM post_likes WHERE post_id = $1 AND user_id = $2
+           )
+           RETURNING post_id`,
+          [postId, request.user.userId, ts]
+        );
+        insertedCount = inserted.rowCount || 0;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+
+      if (insertedCount > 0) {
         await client.query(`UPDATE posts SET like_count = like_count + 1, updated_at = $2 WHERE post_id = $1`, [postId, ts]);
       }
       liked = true;
@@ -627,19 +642,30 @@ export default async function feedService(app: any) {
     let liked = false;
     await withTransaction(async (client) => {
       if (existing) {
-        await client.query(`DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2`, [commentId, request.user.userId]);
-        await client.query(`UPDATE comments SET like_count = GREATEST(like_count - 1, 0) WHERE comment_id = $1`, [commentId]);
+        const deleted = await client.query(`DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2`, [commentId, request.user.userId]);
+        const deletedCount = Math.max(1, deleted.rowCount || 0);
+        await client.query(`UPDATE comments SET like_count = GREATEST(like_count - $2, 0) WHERE comment_id = $1`, [commentId, deletedCount]);
         liked = false;
         return;
       }
 
-      const inserted = await client.query(
-        `INSERT INTO comment_likes (comment_id, user_id, created_at)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (comment_id, user_id) DO NOTHING`,
-        [commentId, request.user.userId, ts]
-      );
-      if ((inserted.rowCount || 0) > 0) {
+      let insertedCount = 0;
+      try {
+        const inserted = await client.query(
+          `INSERT INTO comment_likes (comment_id, user_id, created_at)
+           SELECT $1, $2, $3
+           WHERE NOT EXISTS (
+             SELECT 1 FROM comment_likes WHERE comment_id = $1 AND user_id = $2
+           )
+           RETURNING comment_id`,
+          [commentId, request.user.userId, ts]
+        );
+        insertedCount = inserted.rowCount || 0;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+      }
+
+      if (insertedCount > 0) {
         await client.query(`UPDATE comments SET like_count = like_count + 1 WHERE comment_id = $1`, [commentId]);
       }
       liked = true;
