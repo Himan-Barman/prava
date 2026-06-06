@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogIn, UserPlus } from 'lucide-react';
-import { PravaInput, PravaPasswordInput } from '../../ui-system';
+import { LogIn } from 'lucide-react';
 import { useAuth } from '../../context/auth-context';
 import { authService } from '../../services/auth-service';
 import { ApiException } from '../../adapters/api-client';
@@ -14,6 +13,7 @@ export default function LoginPage() {
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const canSubmit = identifier.trim().length > 0 && password.length > 0 && !loading;
@@ -53,59 +53,62 @@ export default function LoginPage() {
 
   return (
     <AuthFrame
-      title="Sign In"
-      subtitle="Use your Prava username or email to continue."
-      sideTitle="Manage your private network"
-      actionLabel="Sign Up"
+      title="Welcome back"
+      subtitle="Sign in with your Prava username or email to continue."
+      actionLabel="Create Account"
       actionTo="/signup"
-      actionIcon={<UserPlus className="h-4 w-4" strokeWidth={3} />}
-      footer={
-        <>
-          <span>2026 Prava</span>
-          <Link to="/forgot-password" className="font-semibold text-prava-accent">
-            Forgot password?
-          </Link>
-        </>
-      }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <PravaInput
-          placeholder="Email or Username"
-          type="text"
-          value={identifier}
-          onChange={(event) => setIdentifier(event.target.value)}
-          autoComplete="username"
-          className="rounded-full border-prava-light-border bg-prava-light-bg py-3 dark:bg-prava-dark-bg"
-        />
-
-        <PravaPasswordInput
-          placeholder="Password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          autoComplete="current-password"
-          className="rounded-full border-prava-light-border bg-prava-light-bg py-3 dark:bg-prava-dark-bg"
-        />
-
-        <div className="flex justify-start">
-          <Link
-            to="/forgot-password"
-            className="text-caption font-semibold text-prava-error transition-colors hover:text-prava-accent"
-          >
-            Forgot password?
-          </Link>
+      <form onSubmit={handleSubmit} className="auth-form">
+        <div className="auth-field">
+          <label className="auth-label">Email or Username</label>
+          <input
+            type="text"
+            placeholder="Enter your email or username"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            autoComplete="username"
+            className="auth-input"
+          />
         </div>
 
-        <div className="pt-3">
-          <AuthSubmitButton label="Sign In" loading={loading} disabled={!canSubmit} />
+        <div className="auth-field">
+          <div className="auth-label-row">
+            <label className="auth-label">Password</label>
+            <Link to="/forgot-password" className="auth-link-sm">Forgot password?</Link>
+          </div>
+          <div className="auth-input-wrap">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              className="auth-input auth-input--has-suffix"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="auth-input-toggle"
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </div>
+
+        <AuthSubmitButton label="Sign In" loading={loading} disabled={!canSubmit} />
       </form>
 
-      <div className="mt-6 flex justify-center lg:hidden">
-        <Link to="/signup" className="inline-flex items-center gap-2 text-body-sm font-semibold text-prava-accent">
-          <LogIn className="h-4 w-4" strokeWidth={3} />
-          Create new account
-        </Link>
+      <div className="auth-divider">
+        <span>or</span>
       </div>
+
+      <p className="auth-alt-text">
+        Don't have an account?{' '}
+        <Link to="/signup" className="auth-alt-link">
+          <LogIn size={14} />
+          Create account
+        </Link>
+      </p>
     </AuthFrame>
   );
 }

@@ -68,7 +68,6 @@ export default function EmailOtpPage() {
   const handleResend = async () => {
     if (resending || secondsLeft > 0) return;
     setResending(true);
-
     try {
       await authService.requestEmailOtp(email, flow === 'signup' ? username : undefined);
       smartToast.success('Verification code sent');
@@ -101,51 +100,53 @@ export default function EmailOtpPage() {
   return (
     <AuthFrame
       title="Verify Email"
-      subtitle={`Enter the 6-digit code sent to ${email}.`}
-      sideTitle="Verify your secure identity"
+      subtitle={`Enter the 6-digit code we sent to ${email}`}
       actionLabel="Change Email"
       actionTo={flow === 'signup' ? '/signup' : '/login'}
     >
       {flow === 'signup' && <AuthStepProgress current={2} />}
 
-      <div className="space-y-5">
-        <OtpInput
-          value={otpValues}
-          onChange={setOtpValues}
-          onComplete={handleVerify}
-          disabled={loading}
-        />
+      <div className="auth-form">
+        {/* OTP Input */}
+        <div className="auth-otp-wrap">
+          <OtpInput
+            value={otpValues}
+            onChange={setOtpValues}
+            onComplete={handleVerify}
+            disabled={loading}
+          />
+        </div>
 
-        <div className="flex items-center justify-between">
-          <span className="text-caption text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+        {/* Timer + resend */}
+        <div className="auth-otp-actions">
+          <span className="auth-otp-timer">
             {secondsLeft > 0 ? `Resend in ${secondsLeft}s` : "Didn't get a code?"}
           </span>
           <button
             type="button"
             onClick={handleResend}
             disabled={secondsLeft > 0 || resending}
-            className="inline-flex items-center gap-1.5 text-caption font-bold text-prava-accent disabled:opacity-40"
+            className="auth-otp-resend"
           >
-            {resending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" strokeWidth={3} />}
+            {resending
+              ? <Loader2 size={13} className="animate-spin" />
+              : <RefreshCw size={13} />}
             Resend
           </button>
         </div>
 
         <AuthSubmitButton label="Verify" loading={loading} disabled={!isComplete} />
 
-        <button
-          type="button"
-          onClick={handlePaste}
-          className="mx-auto flex items-center gap-2 rounded-full px-4 py-2 text-body-sm font-semibold text-prava-light-text-secondary transition-colors hover:bg-prava-light-surface dark:text-prava-dark-text-secondary dark:hover:bg-white/[0.08]"
-        >
-          <Clipboard className="h-4 w-4" strokeWidth={3} />
+        {/* Paste button */}
+        <button type="button" onClick={handlePaste} className="auth-paste-btn">
+          <Clipboard size={14} />
           Paste code
         </button>
       </div>
 
-      <p className="mt-6 text-center text-body-sm text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+      <p className="auth-alt-text">
         Wrong email?{' '}
-        <Link to={flow === 'signup' ? '/signup' : '/login'} className="font-bold text-prava-accent">
+        <Link to={flow === 'signup' ? '/signup' : '/login'} className="auth-alt-link">
           Start again
         </Link>
       </p>

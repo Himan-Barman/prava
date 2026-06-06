@@ -1,7 +1,6 @@
 import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle, XCircle } from 'lucide-react';
-import { PravaInput } from '../../ui-system';
 import { authService } from '../../services/auth-service';
 import { ApiException } from '../../adapters/api-client';
 import { smartToast } from '../../ui-system/components/SmartToast';
@@ -80,82 +79,88 @@ export default function SetDetailsPage() {
     }
   };
 
+  const nameStatusIcon = (value: string, valid: boolean) => {
+    if (!value) return null;
+    return valid
+      ? <CheckCircle className="auth-status-icon auth-status-icon--success" />
+      : <XCircle className="auth-status-icon auth-status-icon--error" />;
+  };
+
   return (
     <AuthFrame
       title={step === 0 ? 'Complete Profile' : 'Add Phone Number'}
-      subtitle={step === 0 ? 'Tell us your name before we secure your contact details.' : 'India is selected by default. You can change it anytime.'}
-      sideTitle="Finish your Prava identity"
+      subtitle={step === 0
+        ? 'Tell us your name before we secure your contact details.'
+        : 'India is selected by default. You can change it anytime.'}
     >
       <AuthStepProgress current={4} />
 
       {step === 0 ? (
-        <form onSubmit={handleIdentitySubmit} className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <PravaInput
-              label="First name"
-              placeholder="First name"
-              value={firstName}
-              onChange={handleNameChange(setFirstName)}
-              autoComplete="given-name"
-              suffixIcon={
-                trimmedFirstName ? (
-                  firstNameValid
-                    ? <CheckCircle className="h-4 w-4 text-prava-success" />
-                    : <XCircle className="h-4 w-4 text-prava-error" />
-                ) : null
-              }
-              className="rounded-full bg-prava-light-bg py-3 dark:bg-prava-dark-bg"
-            />
-            <PravaInput
-              label="Last name"
-              placeholder="Last name"
-              value={lastName}
-              onChange={handleNameChange(setLastName)}
-              autoComplete="family-name"
-              suffixIcon={
-                trimmedLastName ? (
-                  lastNameValid
-                    ? <CheckCircle className="h-4 w-4 text-prava-success" />
-                    : <XCircle className="h-4 w-4 text-prava-error" />
-                ) : null
-              }
-              className="rounded-full bg-prava-light-bg py-3 dark:bg-prava-dark-bg"
-            />
+        <form onSubmit={handleIdentitySubmit} className="auth-form">
+          <div className="auth-field-row">
+            <div className="auth-field">
+              <label className="auth-label">First name</label>
+              <div className="auth-input-wrap">
+                <input
+                  placeholder="First name"
+                  value={firstName}
+                  onChange={handleNameChange(setFirstName)}
+                  autoComplete="given-name"
+                  className="auth-input auth-input--has-suffix"
+                />
+                <span className="auth-input-suffix">{nameStatusIcon(trimmedFirstName, firstNameValid)}</span>
+              </div>
+            </div>
+            <div className="auth-field">
+              <label className="auth-label">Last name</label>
+              <div className="auth-input-wrap">
+                <input
+                  placeholder="Last name"
+                  value={lastName}
+                  onChange={handleNameChange(setLastName)}
+                  autoComplete="family-name"
+                  className="auth-input auth-input--has-suffix"
+                />
+                <span className="auth-input-suffix">{nameStatusIcon(trimmedLastName, lastNameValid)}</span>
+              </div>
+            </div>
           </div>
-          <div className="pt-3">
-            <AuthSubmitButton label="Continue" disabled={!identityValid} />
-          </div>
+
+          <AuthSubmitButton label="Continue" disabled={!identityValid} />
         </form>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="auth-form">
           <CountrySelect value={selectedCountry} onChange={setSelectedCountry} />
 
-          <PravaInput
-            label="Phone number"
-            placeholder="Phone number"
-            value={phoneNumber}
-            onChange={(event) => setPhoneNumber(normalizePhone(event.target.value))}
-            inputMode="numeric"
-            autoComplete="tel"
-            suffixIcon={
-              phoneDigits ? (
-                phoneValid
-                  ? <CheckCircle className="h-4 w-4 text-prava-success" />
-                  : <XCircle className="h-4 w-4 text-prava-error" />
-              ) : null
-            }
-            className="rounded-full bg-prava-light-bg py-3 dark:bg-prava-dark-bg"
-          />
+          <div className="auth-field">
+            <label className="auth-label">Phone number</label>
+            <div className="auth-input-wrap">
+              <input
+                placeholder="Phone number"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(normalizePhone(e.target.value))}
+                inputMode="numeric"
+                autoComplete="tel"
+                className="auth-input auth-input--has-suffix"
+              />
+              <span className="auth-input-suffix">
+                {phoneDigits
+                  ? phoneValid
+                    ? <CheckCircle className="auth-status-icon auth-status-icon--success" />
+                    : <XCircle className="auth-status-icon auth-status-icon--error" />
+                  : null}
+              </span>
+            </div>
+            <p className="auth-field-hint">
+              {phonePreview || 'Enter your mobile number without the country code.'}
+            </p>
+          </div>
 
-          <p className="text-caption text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-            {phonePreview || 'Enter your mobile number without the country code.'}
-          </p>
-
-          <div className="flex gap-3 pt-3">
+          <div className="auth-actions-row">
             <button
               type="button"
               onClick={() => setStep(0)}
-              className="h-[48px] rounded-full bg-prava-light-surface px-5 text-body-sm font-bold text-prava-light-text-secondary transition-colors hover:bg-prava-light-border dark:bg-white/[0.08] dark:text-prava-dark-text-secondary"
+              className="auth-btn-back"
             >
               Back
             </button>

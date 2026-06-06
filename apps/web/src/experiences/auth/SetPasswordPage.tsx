@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CheckCircle } from 'lucide-react';
-import { PravaPasswordInput } from '../../ui-system';
 import { useAuth } from '../../context/auth-context';
 import { ApiException } from '../../adapters/api-client';
 import { smartToast } from '../../ui-system/components/SmartToast';
@@ -19,9 +18,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 function shouldAutoLoginAfterRegisterError(error: unknown): boolean {
-  if (error instanceof ApiException && typeof error.statusCode === 'number' && error.statusCode >= 500) {
-    return true;
-  }
+  if (error instanceof ApiException && typeof error.statusCode === 'number' && error.statusCode >= 500) return true;
   return /account created|email already exists|please sign in/i.test(getErrorMessage(error));
 }
 
@@ -35,9 +32,7 @@ async function loginWithRetry(
       await loginFn(email, password);
       return true;
     } catch {
-      if (index < 2) {
-        await new Promise((resolve) => window.setTimeout(resolve, 400));
-      }
+      if (index < 2) await new Promise((resolve) => window.setTimeout(resolve, 400));
     }
   }
   return false;
@@ -53,19 +48,26 @@ function getPasswordScore(password: string) {
   return Math.min(1, Math.max(0, score));
 }
 
+function strengthLabel(score: number) {
+  if (score < 0.4) return 'Weak';
+  if (score < 0.7) return 'Fair';
+  return 'Strong';
+}
+
 function strengthColor(score: number) {
-  if (score < 0.4) return 'bg-prava-error';
-  if (score < 0.7) return 'bg-prava-warning';
-  return 'bg-prava-success';
+  if (score < 0.4) return '#E5533D';
+  if (score < 0.7) return '#F4C430';
+  return '#3CCB7F';
 }
 
 function RuleItem({ label, satisfied }: { label: string; satisfied: boolean }) {
   return (
-    <div className="flex items-center gap-2">
-      <CheckCircle className={`h-4 w-4 ${satisfied ? 'text-prava-success' : 'text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary'}`} />
-      <span className={`text-caption ${satisfied ? 'text-prava-success' : 'text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary'}`}>
-        {label}
-      </span>
+    <div className="auth-rule-item">
+      <CheckCircle
+        size={14}
+        style={{ color: satisfied ? '#3CCB7F' : '#3a3a3a' }}
+      />
+      <span style={{ color: satisfied ? '#b3b3b3' : '#5a5a5a' }}>{label}</span>
     </div>
   );
 }
@@ -79,6 +81,8 @@ export default function SetPasswordPage() {
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const email = (state?.email || searchParams.get('email') || '').trim();
@@ -128,51 +132,88 @@ export default function SetPasswordPage() {
     <AuthFrame
       title="Set Password"
       subtitle="Create a strong password to protect your private workspace."
-      sideTitle="Lock your account securely"
     >
       <AuthStepProgress current={3} />
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <PravaPasswordInput
-          label="Password"
-          placeholder="Password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          autoComplete="new-password"
-          className="rounded-full bg-prava-light-bg py-3 dark:bg-prava-dark-bg"
-        />
-
-        <div className="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/12">
-          <div
-            className={`h-full transition-all duration-200 ${strengthColor(passwordScore)}`}
-            style={{ width: `${Math.max(6, passwordScore * 100)}%` }}
-          />
+      <form onSubmit={handleSubmit} className="auth-form">
+        {/* Password field */}
+        <div className="auth-field">
+          <label className="auth-label">Password</label>
+          <div className="auth-input-wrap">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Create a strong password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              className="auth-input auth-input--has-suffix"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="auth-input-toggle"
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+        {/* Strength bar */}
+        {password.length > 0 && (
+          <div className="auth-strength">
+            <div className="auth-strength-track">
+              <div
+                className="auth-strength-fill"
+                style={{
+                  width: `${Math.max(6, passwordScore * 100)}%`,
+                  background: strengthColor(passwordScore),
+                }}
+              />
+            </div>
+            <span className="auth-strength-label" style={{ color: strengthColor(passwordScore) }}>
+              {strengthLabel(passwordScore)}
+            </span>
+          </div>
+        )}
+
+        {/* Password rules */}
+        <div className="auth-rules">
           <RuleItem label="12+ characters" satisfied={hasLength} />
           <RuleItem label="Uppercase letter" satisfied={hasUpper} />
           <RuleItem label="Lowercase letter" satisfied={hasLower} />
           <RuleItem label="Number" satisfied={hasNumber} />
-          <RuleItem label="Symbol" satisfied={hasSymbol} />
+          <RuleItem label="Symbol (!@#$…)" satisfied={hasSymbol} />
         </div>
 
-        <PravaPasswordInput
-          label="Confirm password"
-          placeholder="Confirm password"
-          value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          autoComplete="new-password"
-          error={confirmPassword && !matches ? 'Passwords must match' : undefined}
-          className="rounded-full bg-prava-light-bg py-3 dark:bg-prava-dark-bg"
-        />
-
-        <div className="pt-3">
-          <AuthSubmitButton label="Set password" loading={loading} disabled={!canSubmit} />
+        {/* Confirm password */}
+        <div className="auth-field">
+          <label className="auth-label">Confirm password</label>
+          <div className="auth-input-wrap">
+            <input
+              type={showConfirm ? 'text' : 'password'}
+              placeholder="Re-enter your password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              className="auth-input auth-input--has-suffix"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirm(!showConfirm)}
+              className="auth-input-toggle"
+            >
+              {showConfirm ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {confirmPassword && !matches && (
+            <p className="auth-field-error">Passwords must match</p>
+          )}
         </div>
+
+        <AuthSubmitButton label="Set password" loading={loading} disabled={!canSubmit} />
       </form>
 
-      <p className="mt-5 text-caption text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+      <p className="auth-hint">
         Passwords are protected with Argon2id hashing.
       </p>
     </AuthFrame>
