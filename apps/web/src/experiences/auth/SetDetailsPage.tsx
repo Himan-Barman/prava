@@ -1,64 +1,65 @@
 import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { User, CheckCircle, XCircle } from 'lucide-react';
-import {
-  PravaBackground,
-  GlassCard,
-  PravaButton,
-  PravaInput,
-} from '../../ui-system';
+import { CheckCircle, XCircle } from 'lucide-react';
+import { PravaInput } from '../../ui-system';
 import { authService } from '../../services/auth-service';
 import { ApiException } from '../../adapters/api-client';
 import { smartToast } from '../../ui-system/components/SmartToast';
+import { AuthFrame, AuthStepProgress, AuthSubmitButton, CountrySelect, defaultCountry } from './AuthFrame';
+import { CountryDialInfo } from './countries';
 
-function isNameValid(value: string): boolean {
+function isNameValid(value: string) {
   if (!value || value.length > 64) return false;
   return /^[A-Za-z][A-Za-z '\-]*$/.test(value);
 }
 
-function normalizeCountryCode(raw: string): string {
-  return raw.replace(/\D/g, '').slice(0, 4);
-}
-
-function normalizePhone(raw: string): string {
+function normalizePhone(raw: string) {
   return raw.replace(/\D/g, '').slice(0, 14);
 }
 
 export default function SetDetailsPage() {
   const navigate = useNavigate();
 
+  const [step, setStep] = useState(0);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [countryCode, setCountryCode] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState<CountryDialInfo>(defaultCountry);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
 
   const trimmedFirstName = firstName.trim();
   const trimmedLastName = lastName.trim();
-  const countryDigits = normalizeCountryCode(countryCode);
   const phoneDigits = normalizePhone(phoneNumber);
-
   const firstNameValid = isNameValid(trimmedFirstName);
   const lastNameValid = isNameValid(trimmedLastName);
-  const countryValid = countryDigits.length > 0;
-  const phoneLengthValid = /^\d{4,14}$/.test(phoneDigits);
-  const phoneValid = phoneLengthValid && (countryDigits.length + phoneDigits.length <= 15);
-  const canSubmit =
-    firstNameValid &&
-    lastNameValid &&
-    countryValid &&
-    phoneValid &&
-    !loading;
+  const identityValid = firstNameValid && lastNameValid;
+  const phoneValid = /^\d{4,14}$/.test(phoneDigits) && selectedCountry.dialCode.length + phoneDigits.length <= 15;
+  const canSubmit = identityValid && phoneValid && !loading;
 
   const phonePreview = useMemo(() => {
-    if (!countryValid || !phoneValid) return '';
-    return `+${countryDigits} ${phoneDigits}`;
-  }, [countryDigits, countryValid, phoneDigits, phoneValid]);
+    if (!phoneValid) return '';
+    return `+${selectedCountry.dialCode} ${phoneDigits}`;
+  }, [phoneDigits, phoneValid, selectedCountry.dialCode]);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!canSubmit) return;
+  const handleNameChange = (setter: (value: string) => void) => (event: ChangeEvent<HTMLInputElement>) => {
+    setter(event.target.value.slice(0, 64));
+  };
+
+  const handleIdentitySubmit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!identityValid) {
+      smartToast.warning('Enter a valid first and last name');
+      return;
+    }
+    setStep(1);
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!canSubmit) {
+      smartToast.warning('Enter a valid phone number');
+      return;
+    }
 
     setLoading(true);
 
@@ -66,138 +67,102 @@ export default function SetDetailsPage() {
       await authService.updateUserDetails({
         firstName: trimmedFirstName,
         lastName: trimmedLastName,
-        phoneCountryCode: `+${countryDigits}`,
+        phoneCountryCode: `+${selectedCountry.dialCode}`,
         phoneNumber: phoneDigits,
       });
-
       smartToast.success('Profile details saved');
       navigate('/feed', { replace: true });
     } catch (err) {
-      const message = err instanceof ApiException
-        ? err.message
-        : 'Unable to save details';
+      const message = err instanceof ApiException ? err.message : 'Unable to save details';
       smartToast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleNameChange = (setter: (value: string) => void) => (e: ChangeEvent<HTMLInputElement>) => {
-    setter(e.target.value.slice(0, 64));
-  };
-
   return (
-    <div className="min-h-screen min-h-dvh flex flex-col">
-      <PravaBackground />
+    <AuthFrame
+      title={step === 0 ? 'Complete Profile' : 'Add Phone Number'}
+      subtitle={step === 0 ? 'Tell us your name before we secure your contact details.' : 'India is selected by default. You can change it anytime.'}
+      sideTitle="Finish your Prava identity"
+    >
+      <AuthStepProgress current={4} />
 
-      <main className="flex-1 flex items-center justify-center px-5 py-8 sm:px-6 sm:py-12">
-        <div className="w-full max-w-[440px]">
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.52, ease: [0.4, 0, 0.2, 1] }}
-            className="mb-6"
-          >
-            <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary tracking-[-0.6px]">
-              Complete your profile
-            </h1>
-            <p className="mt-2 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-              Add trusted details to protect your account.
-            </p>
-          </motion.div>
+      {step === 0 ? (
+        <form onSubmit={handleIdentitySubmit} className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <PravaInput
+              label="First name"
+              placeholder="First name"
+              value={firstName}
+              onChange={handleNameChange(setFirstName)}
+              autoComplete="given-name"
+              suffixIcon={
+                trimmedFirstName ? (
+                  firstNameValid
+                    ? <CheckCircle className="h-4 w-4 text-prava-success" />
+                    : <XCircle className="h-4 w-4 text-prava-error" />
+                ) : null
+              }
+              className="rounded-full bg-prava-light-bg py-3 dark:bg-prava-dark-bg"
+            />
+            <PravaInput
+              label="Last name"
+              placeholder="Last name"
+              value={lastName}
+              onChange={handleNameChange(setLastName)}
+              autoComplete="family-name"
+              suffixIcon={
+                trimmedLastName ? (
+                  lastNameValid
+                    ? <CheckCircle className="h-4 w-4 text-prava-success" />
+                    : <XCircle className="h-4 w-4 text-prava-error" />
+                ) : null
+              }
+              className="rounded-full bg-prava-light-bg py-3 dark:bg-prava-dark-bg"
+            />
+          </div>
+          <div className="pt-3">
+            <AuthSubmitButton label="Continue" disabled={!identityValid} />
+          </div>
+        </form>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <CountrySelect value={selectedCountry} onChange={setSelectedCountry} />
 
-          <GlassCard delay={0.12} className="mb-4">
-            <div className="flex items-center gap-2 mb-4">
-              <User className="w-[18px] h-[18px] text-prava-accent" />
-              <span className="text-body font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                Identity details
-              </span>
-            </div>
+          <PravaInput
+            label="Phone number"
+            placeholder="Phone number"
+            value={phoneNumber}
+            onChange={(event) => setPhoneNumber(normalizePhone(event.target.value))}
+            inputMode="numeric"
+            autoComplete="tel"
+            suffixIcon={
+              phoneDigits ? (
+                phoneValid
+                  ? <CheckCircle className="h-4 w-4 text-prava-success" />
+                  : <XCircle className="h-4 w-4 text-prava-error" />
+              ) : null
+            }
+            className="rounded-full bg-prava-light-bg py-3 dark:bg-prava-dark-bg"
+          />
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <PravaInput
-                  label="First name"
-                  placeholder="First name"
-                  value={firstName}
-                  onChange={handleNameChange(setFirstName)}
-                  autoComplete="given-name"
-                  suffixIcon={
-                    trimmedFirstName ? (
-                      firstNameValid
-                        ? <CheckCircle className="w-[18px] h-[18px] text-prava-success" />
-                        : <XCircle className="w-[18px] h-[18px] text-prava-error" />
-                    ) : null
-                  }
-                />
-
-                <PravaInput
-                  label="Last name"
-                  placeholder="Last name"
-                  value={lastName}
-                  onChange={handleNameChange(setLastName)}
-                  autoComplete="family-name"
-                  suffixIcon={
-                    trimmedLastName ? (
-                      lastNameValid
-                        ? <CheckCircle className="w-[18px] h-[18px] text-prava-success" />
-                        : <XCircle className="w-[18px] h-[18px] text-prava-error" />
-                    ) : null
-                  }
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-[170px_1fr] gap-3">
-                <PravaInput
-                  label="Country code"
-                  placeholder="+1"
-                  value={countryCode}
-                  onChange={(e) => setCountryCode(normalizeCountryCode(e.target.value))}
-                  inputMode="numeric"
-                  prefixIcon={<span className="text-body font-semibold">+</span>}
-                />
-
-                <PravaInput
-                  label="Phone number"
-                  placeholder="Phone number"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(normalizePhone(e.target.value))}
-                  inputMode="numeric"
-                  autoComplete="tel"
-                  suffixIcon={
-                    phoneDigits ? (
-                      phoneValid
-                        ? <CheckCircle className="w-[18px] h-[18px] text-prava-success" />
-                        : <XCircle className="w-[18px] h-[18px] text-prava-error" />
-                    ) : null
-                  }
-                />
-              </div>
-
-              {phonePreview ? (
-                <p className="text-caption text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-                  Saved as {phonePreview}
-                </p>
-              ) : (
-                <p className="text-caption text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-                  Enter your full number with country code.
-                </p>
-              )}
-
-              <PravaButton
-                type="submit"
-                label="Continue"
-                loading={loading}
-                disabled={!canSubmit}
-              />
-            </form>
-          </GlassCard>
-
-          <p className="text-caption text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-            Your phone stays private and is used for account recovery.
+          <p className="text-caption text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+            {phonePreview || 'Enter your mobile number without the country code.'}
           </p>
-        </div>
-      </main>
-    </div>
+
+          <div className="flex gap-3 pt-3">
+            <button
+              type="button"
+              onClick={() => setStep(0)}
+              className="h-[48px] rounded-full bg-prava-light-surface px-5 text-body-sm font-bold text-prava-light-text-secondary transition-colors hover:bg-prava-light-border dark:bg-white/[0.08] dark:text-prava-dark-text-secondary"
+            >
+              Back
+            </button>
+            <AuthSubmitButton label="Finish" loading={loading} disabled={!canSubmit} />
+          </div>
+        </form>
+      )}
+    </AuthFrame>
   );
 }

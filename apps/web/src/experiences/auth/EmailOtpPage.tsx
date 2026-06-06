@@ -1,16 +1,11 @@
-import { useState, useEffect } from 'react';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Mail, RefreshCw, Clipboard, Loader2 } from 'lucide-react';
-import {
-  PravaBackground,
-  GlassCard,
-  OtpInput,
-  PravaButton
-} from '../../ui-system';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Clipboard, Loader2, RefreshCw } from 'lucide-react';
+import { OtpInput } from '../../ui-system';
 import { authService } from '../../services/auth-service';
 import { ApiException } from '../../adapters/api-client';
-import toast from 'react-hot-toast';
+import { smartToast } from '../../ui-system/components/SmartToast';
+import { AuthFrame, AuthStepProgress, AuthSubmitButton } from './AuthFrame';
 
 interface LocationState {
   email: string;
@@ -33,52 +28,37 @@ export default function EmailOtpPage() {
   const username = state?.username || searchParams.get('username') || undefined;
   const flowParam = state?.flow || searchParams.get('flow');
   const flow: 'signup' | 'verify' = flowParam === 'verify' ? 'verify' : 'signup';
-
-  // Redirect if no email
-  useEffect(() => {
-    if (!email) {
-      navigate('/login');
-    }
-  }, [email, navigate]);
-
-  // Countdown timer
-  useEffect(() => {
-    if (secondsLeft <= 0) return;
-
-    const timer = setInterval(() => {
-      setSecondsLeft((prev) => prev - 1);
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [secondsLeft]);
-
   const otp = otpValues.join('');
   const isComplete = otp.length === 6 && !otpValues.includes('');
 
-  const handleVerify = async (code?: string) => {
-    const codeToVerify = code || otp;
-    if (codeToVerify.length !== 6 || loading) return;
+  useEffect(() => {
+    if (!email) navigate('/login');
+  }, [email, navigate]);
 
+  useEffect(() => {
+    if (secondsLeft <= 0) return undefined;
+    const timer = window.setInterval(() => setSecondsLeft((prev) => prev - 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [secondsLeft]);
+
+  const handleVerify = async (code = otp) => {
+    if (code.length !== 6 || loading) return;
     setLoading(true);
 
     try {
-      await authService.verifyEmailOtp(email, codeToVerify);
-      toast.success('Email verified');
+      await authService.verifyEmailOtp(email, code);
+      smartToast.success('Email verified');
 
       if (flow === 'signup') {
         const params = new URLSearchParams({ email });
-        if (username) {
-          params.set('username', username);
-        }
+        if (username) params.set('username', username);
         navigate(`/set-password?${params.toString()}`, { state: { email, username } });
       } else {
         navigate('/feed');
       }
     } catch (err) {
-      const message = err instanceof ApiException
-        ? err.message
-        : 'Invalid or expired code';
-      toast.error(message);
+      const message = err instanceof ApiException ? err.message : 'Invalid or expired code';
+      smartToast.error(message);
       setOtpValues(Array(6).fill(''));
     } finally {
       setLoading(false);
@@ -87,21 +67,15 @@ export default function EmailOtpPage() {
 
   const handleResend = async () => {
     if (resending || secondsLeft > 0) return;
-
     setResending(true);
 
     try {
-      await authService.requestEmailOtp(
-        email,
-        flow === 'signup' ? username : undefined
-      );
-      toast.success('Verification code sent');
+      await authService.requestEmailOtp(email, flow === 'signup' ? username : undefined);
+      smartToast.success('Verification code sent');
       setSecondsLeft(60);
     } catch (err) {
-      const message = err instanceof ApiException
-        ? err.message
-        : 'Unable to resend code';
-      toast.error(message);
+      const message = err instanceof ApiException ? err.message : 'Unable to resend code';
+      smartToast.error(message);
     } finally {
       setResending(false);
     }
@@ -111,131 +85,70 @@ export default function EmailOtpPage() {
     try {
       const text = await navigator.clipboard.readText();
       const digits = text.replace(/\D/g, '').slice(0, 6);
-
       if (digits.length < 6) {
-        toast.error('Clipboard does not contain a valid code');
+        smartToast.warning('Clipboard does not contain a valid code');
         return;
       }
-
-      const newValues = digits.split('');
-      setOtpValues(newValues);
+      setOtpValues(digits.split(''));
       handleVerify(digits);
     } catch {
-      toast.error('Unable to access clipboard');
+      smartToast.error('Unable to access clipboard');
     }
-  };
-
-  const handleComplete = (code: string) => {
-    handleVerify(code);
   };
 
   if (!email) return null;
 
   return (
-    <div className="min-h-screen min-h-dvh flex flex-col">
-      <PravaBackground />
+    <AuthFrame
+      title="Verify Email"
+      subtitle={`Enter the 6-digit code sent to ${email}.`}
+      sideTitle="Verify your secure identity"
+      actionLabel="Change Email"
+      actionTo={flow === 'signup' ? '/signup' : '/login'}
+    >
+      {flow === 'signup' && <AuthStepProgress current={2} />}
 
-      <main className="flex-1 flex items-center justify-center px-5 py-8 sm:px-6 sm:py-12">
-        <div className="w-full max-w-[440px]">
-          {/* Header */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.52, ease: [0.4, 0, 0.2, 1] }}
-            className="mb-6"
+      <div className="space-y-5">
+        <OtpInput
+          value={otpValues}
+          onChange={setOtpValues}
+          onComplete={handleVerify}
+          disabled={loading}
+        />
+
+        <div className="flex items-center justify-between">
+          <span className="text-caption text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
+            {secondsLeft > 0 ? `Resend in ${secondsLeft}s` : "Didn't get a code?"}
+          </span>
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={secondsLeft > 0 || resending}
+            className="inline-flex items-center gap-1.5 text-caption font-bold text-prava-accent disabled:opacity-40"
           >
-            <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary tracking-[-0.6px]">
-              Verify your email
-            </h1>
-            <p className="mt-2 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-              Enter the 6-digit code sent to {email}.
-            </p>
-          </motion.div>
-
-          {/* OTP Card */}
-          <GlassCard delay={0.12} className="mb-5">
-            {/* Card Header */}
-            <div className="flex items-center gap-2 mb-4">
-              <Mail className="w-[18px] h-[18px] text-prava-accent" />
-              <span className="text-body font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                Email verification
-              </span>
-            </div>
-
-            {/* OTP Input */}
-            <OtpInput
-              value={otpValues}
-              onChange={setOtpValues}
-              onComplete={handleComplete}
-              disabled={loading}
-            />
-
-            {/* Resend Row */}
-            <div className="flex items-center justify-between mt-4">
-              <span className="text-caption text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-                {secondsLeft > 0 ? `Resend in ${secondsLeft}s` : "Didn't get a code?"}
-              </span>
-
-              <button
-                type="button"
-                onClick={handleResend}
-                disabled={secondsLeft > 0 || resending}
-                className={`flex items-center gap-1.5 text-caption font-semibold transition-opacity ${secondsLeft > 0 ? 'opacity-40 cursor-not-allowed' : 'opacity-100 cursor-pointer'
-                  }`}
-              >
-                {resending ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-prava-accent" />
-                ) : (
-                  <RefreshCw className="w-3.5 h-3.5 text-prava-accent" />
-                )}
-                <span className="text-prava-accent">Resend</span>
-              </button>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3 mt-5">
-              <div className="flex-1">
-                <PravaButton
-                  label={loading ? 'Verifying' : 'Verify'}
-                  loading={loading}
-                  disabled={!isComplete}
-                  onClick={() => handleVerify()}
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={handlePaste}
-                className="flex items-center gap-1.5 px-4 py-3 rounded-[14px] 
-                  bg-white/[0.06] dark:bg-white/[0.06] 
-                  border border-black/[0.08] dark:border-white/[0.12]
-                  hover:bg-white/[0.1] dark:hover:bg-white/[0.1]
-                  transition-colors"
-              >
-                <Clipboard className="w-4 h-4 text-prava-light-text-secondary dark:text-prava-dark-text-secondary" />
-                <span className="text-caption font-semibold text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-                  Paste
-                </span>
-              </button>
-            </div>
-          </GlassCard>
-
-          {/* Change Email Link */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="text-center"
-          >
-            <Link
-              to={flow === 'signup' ? '/signup' : '/login'}
-              className="text-body font-semibold text-prava-accent hover:text-prava-accent-muted transition-colors"
-            >
-              Change email
-            </Link>
-          </motion.div>
+            {resending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" strokeWidth={3} />}
+            Resend
+          </button>
         </div>
-      </main>
-    </div>
+
+        <AuthSubmitButton label="Verify" loading={loading} disabled={!isComplete} />
+
+        <button
+          type="button"
+          onClick={handlePaste}
+          className="mx-auto flex items-center gap-2 rounded-full px-4 py-2 text-body-sm font-semibold text-prava-light-text-secondary transition-colors hover:bg-prava-light-surface dark:text-prava-dark-text-secondary dark:hover:bg-white/[0.08]"
+        >
+          <Clipboard className="h-4 w-4" strokeWidth={3} />
+          Paste code
+        </button>
+      </div>
+
+      <p className="mt-6 text-center text-body-sm text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+        Wrong email?{' '}
+        <Link to={flow === 'signup' ? '/signup' : '/login'} className="font-bold text-prava-accent">
+          Start again
+        </Link>
+      </p>
+    </AuthFrame>
   );
 }
