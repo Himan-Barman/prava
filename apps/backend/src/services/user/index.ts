@@ -1582,6 +1582,71 @@ export default async function userService(app: any) {
     return { blocked: false };
   });
 
+  app.get("/me/mutes", { preHandler: requireAuth }, async (request: any) => {
+    const limit = parseLimit(request.query?.limit, 30, 1, 100);
+    const rows = await queryMany(
+      `SELECT muted_id, created_at
+       FROM user_mutes
+       WHERE muter_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [request.user.userId, limit]
+    );
+
+    if (rows.length === 0) {
+      return { items: [] };
+    }
+
+    const mutedIds = rows.map((row) => row.muted_id).filter(Boolean);
+    const users = await loadUsersByIds(mutedIds);
+    const userMap = new Map<string, any>(users.map((user) => [String(user.user_id), user]));
+
+    return {
+      items: rows
+        .map((row) => {
+          const user = userMap.get(row.muted_id);
+          if (!user) return null;
+          return {
+            id: user.user_id,
+            username: user.username,
+            displayName: user.display_name || user.username,
+            avatarUrl: user.avatar_url || "",
+            isVerified: user.is_verified === true,
+            mutedAt: toIso(row.created_at),
+          };
+        })
+        .filter(Boolean),
+    };
+  });
+
+  app.post("/:targetUserId/mute", { preHandler: requireAuth }, async (request: any) => {
+    const targetUserId = String(request.params.targetUserId || "").trim();
+    ensure(targetUserId.length >= 8, 400, "Invalid user");
+    ensure(targetUserId !== request.user.userId, 400, "Cannot mute self");
+    await ensureUserExists(targetUserId);
+
+    await query(
+      `INSERT INTO user_mutes (muter_id, muted_id, created_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (muter_id, muted_id) DO NOTHING`,
+      [request.user.userId, targetUserId, now()]
+    );
+
+    return { muted: true };
+  });
+
+  app.delete("/:targetUserId/mute", { preHandler: requireAuth }, async (request: any) => {
+    const targetUserId = String(request.params.targetUserId || "").trim();
+    ensure(targetUserId.length >= 8, 400, "Invalid user");
+
+    const result = await query(
+      `DELETE FROM user_mutes WHERE muter_id = $1 AND muted_id = $2`,
+      [request.user.userId, targetUserId]
+    );
+
+    return { muted: false, changed: (result.rowCount || 0) > 0 };
+  });
+
   app.get("/me/muted-words", { preHandler: requireAuth }, async (request: any) => {
     const limit = parseLimit(request.query?.limit, 50, 1, 200);
     const rows = await queryMany(

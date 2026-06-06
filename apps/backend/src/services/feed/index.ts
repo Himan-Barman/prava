@@ -2,6 +2,15 @@ import { query, queryMany, queryOne, withTransaction } from "../../lib/pg.js";
 import { requireAuth } from "../../lib/auth.js";
 import { HttpError, ensure, generateId, now, toIso } from "../../lib/security.js";
 import { publishToFeedSubscribers, publishToUsers } from "../realtime/hub.js";
+import {
+  buildFeedPage,
+  ingestFeedEvents,
+  markPostHidden,
+  markPostNotInterested,
+  recordFeedEvent,
+  runFeedAggregationJobs,
+  startFeedAggregationScheduler,
+} from "./recommendation.js";
 
 const MAX_POST_WORDS = 200;
 const MAX_POST_CHARS = 1600;
@@ -76,6 +85,8 @@ function mapFeedPost(post: any, author: any, liked: boolean, followed: boolean) 
     shareCount: Number(post.share_count || 0),
     readCount: Number(post.read_count || 0),
     rankScore: Number(post.rank_score || 0),
+    recommendationReason: post.recommendation_reason || null,
+    recommendationReasons: Array.isArray(post.recommendation_reasons) ? post.recommendation_reasons : [],
     liked,
     followed,
     mentions: Array.isArray(post.mentions) ? post.mentions : [],
@@ -111,13 +122,37 @@ function mapFeedComment(comment: any, author: any, liked: boolean) {
 
 async function recordPostReads(postIds: string[], userId: string) {
   if (postIds.length === 0) return;
+  const params: unknown[] = [];
+  const values = postIds
+    .map((postId) => {
+      const start = params.length + 1;
+      params.push(postId, userId);
+      return `($${start}, $${start + 1}, NOW(), NOW())`;
+    })
+    .join(", ");
+
   await query(
     `INSERT INTO post_reads (post_id, user_id, first_read_at, last_read_at)
-     SELECT UNNEST($1::text[]), $2, NOW(), NOW()
+     VALUES ${values}
      ON CONFLICT (post_id, user_id)
      DO UPDATE SET last_read_at = EXCLUDED.last_read_at`,
-    [postIds, userId]
+    params
   );
+}
+
+function parseDateCursor(raw: unknown): Date | null {
+  const value = String(raw || "").trim();
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+async function hydrateFeedPage(page: Awaited<ReturnType<typeof buildFeedPage>>, currentUserId: string) {
+  return {
+    items: await hydrateFeedPosts(page.items, currentUserId),
+    nextCursor: page.nextCursor,
+    metrics: page.metrics,
+  };
 }
 
 async function hydrateFeedPosts(posts: any[], currentUserId: string) {
@@ -331,63 +366,63 @@ async function findTaggedPosts(tag: string, currentUserId: string, before: Date 
 }
 
 export default async function feedService(app: any) {
+  startFeedAggregationScheduler(app);
+
   app.get("/", { preHandler: requireAuth }, async (request: any) => {
     const q = request.query || {};
     const limit = parseLimit(q.limit, 20, 1, 50);
     const mode = String(q.mode || "for-you");
     const tag = normalizeTag(q.tag);
 
-    let before: Date | null = null;
-    const beforeRaw = String(q.before || "").trim();
-    if (beforeRaw) {
-      const parsed = new Date(beforeRaw);
-      if (!Number.isNaN(parsed.getTime())) before = parsed;
-    }
+    const before = parseDateCursor(q.before);
 
     if (tag) {
       const tagged = await findTaggedPosts(tag, request.user.userId, before, limit);
       return hydrateFeedPosts(tagged, request.user.userId);
     }
 
-    const params: unknown[] = [request.user.userId];
-    let beforeSql = "";
-    if (before) {
-      params.push(before);
-      beforeSql = `AND p.created_at < $${params.length}`;
-    }
-    params.push(limit);
+    const page = await buildFeedPage({
+      viewerId: request.user.userId,
+      mode: mode === "following" ? "following" : "for-you",
+      limit,
+      before,
+      sessionId: String(q.sessionId || "").trim(),
+    });
 
-    const followingFilter = mode === "following" ? "AND (p.author_id = $1 OR f.following_id IS NOT NULL)" : "";
-    const orderBy = mode === "following" ? "p.created_at DESC" : "rank_score DESC, p.created_at DESC";
+    request.log?.info?.(page.metrics, "feed served");
+    return hydrateFeedPosts(page.items, request.user.userId);
+  });
 
-    const posts = await queryMany(
-      `SELECT p.*,
-              (
-                CASE
-                  WHEN p.author_id = $1 THEN 6
-                  WHEN f.following_id IS NOT NULL THEN 22
-                  ELSE 0
-                END
-                + LEAST(p.like_count * 3 + p.comment_count * 4 + p.share_count * 5, 120)
-                + COALESCE((
-                    SELECT LEAST(SUM(ts.post_count), 80)
-                    FROM post_tags pt
-                    JOIN tag_stats ts ON ts.tag = pt.tag
-                    WHERE pt.post_id = p.post_id
-                  ), 0)
-              ) AS rank_score
-       FROM posts p
-       LEFT JOIN follows f
-         ON f.follower_id = $1 AND f.following_id = p.author_id
-       WHERE p.body <> ''
-         ${beforeSql}
-         ${followingFilter}
-       ORDER BY ${orderBy}
-       LIMIT $${params.length}`,
-      params
-    );
+  app.get("/for-you", { preHandler: requireAuth }, async (request: any) => {
+    const q = request.query || {};
+    const limit = parseLimit(q.limit, 20, 1, 50);
+    const page = await buildFeedPage({
+      viewerId: request.user.userId,
+      mode: "for-you",
+      limit,
+      cursor: String(q.cursor || "").trim(),
+      before: parseDateCursor(q.before),
+      sessionId: String(q.sessionId || "").trim(),
+    });
 
-    return hydrateFeedPosts(posts, request.user.userId);
+    request.log?.info?.(page.metrics, "for-you feed served");
+    return hydrateFeedPage(page, request.user.userId);
+  });
+
+  app.get("/following", { preHandler: requireAuth }, async (request: any) => {
+    const q = request.query || {};
+    const limit = parseLimit(q.limit, 20, 1, 50);
+    const page = await buildFeedPage({
+      viewerId: request.user.userId,
+      mode: "following",
+      limit,
+      cursor: String(q.cursor || "").trim(),
+      before: parseDateCursor(q.before),
+      sessionId: String(q.sessionId || "").trim(),
+    });
+
+    request.log?.info?.(page.metrics, "following feed served");
+    return hydrateFeedPage(page, request.user.userId);
   });
 
   app.get("/tags", { preHandler: requireAuth }, async (request: any) => {
@@ -409,6 +444,21 @@ export default async function feedService(app: any) {
       rankScore: Number(row.rank_score || 0),
       lastPostAt: toIso(row.last_post_at)
     }));
+  });
+
+  app.post("/events", { preHandler: requireAuth }, async (request: any) => {
+    const body = request.body || {};
+    const events = Array.isArray(body.events) ? body.events : [body];
+    return ingestFeedEvents(request.user.userId, events);
+  });
+
+  app.post("/aggregate", { preHandler: requireAuth }, async (request: any) => {
+    if (process.env.NODE_ENV === "production") {
+      throw new HttpError(404, "Route not found");
+    }
+    await runFeedAggregationJobs();
+    request.log?.info?.("feed aggregation triggered manually");
+    return { success: true };
   });
 
   app.post("/", { preHandler: requireAuth }, async (request: any) => {
@@ -449,12 +499,33 @@ export default async function feedService(app: any) {
     );
 
     publishToFeedSubscribers("FEED_POST", post, request.user.userId);
+    await recordFeedEvent(request.user.userId, { type: "post_open", postId });
     await notifyMentionedUsers({
       usernames: mentions,
       actorUserId: request.user.userId,
       postId
     });
     return post;
+  });
+
+  app.post("/:postId/not-interested", { preHandler: requireAuth }, async (request: any) => {
+    const postId = String(request.params.postId || "").trim();
+    ensure(postId.length >= 8, 400, "Invalid post");
+    const post = await queryOne(`SELECT post_id FROM posts WHERE post_id = $1`, [postId]);
+    if (!post) {
+      throw new HttpError(404, "Post not found");
+    }
+    return markPostNotInterested(request.user.userId, postId, String(request.body?.reason || "not_interested"));
+  });
+
+  app.post("/:postId/hide", { preHandler: requireAuth }, async (request: any) => {
+    const postId = String(request.params.postId || "").trim();
+    ensure(postId.length >= 8, 400, "Invalid post");
+    const post = await queryOne(`SELECT post_id FROM posts WHERE post_id = $1`, [postId]);
+    if (!post) {
+      throw new HttpError(404, "Post not found");
+    }
+    return markPostHidden(request.user.userId, postId, String(request.body?.reason || "hidden"));
   });
 
   app.get("/:postId", { preHandler: requireAuth }, async (request: any) => {
@@ -522,6 +593,7 @@ export default async function feedService(app: any) {
       likeCount: Math.max(0, Number(updated?.like_count || 0))
     };
     if (liked) {
+      await recordFeedEvent(request.user.userId, { type: "like", postId });
       await createNotification({
         userId: post.author_id,
         actorUserId: request.user.userId,
@@ -531,6 +603,8 @@ export default async function feedService(app: any) {
         data: { postId },
         categoryKey: "notifyPosts"
       });
+    } else {
+      await recordFeedEvent(request.user.userId, { type: "unlike", postId });
     }
     publishToFeedSubscribers("FEED_LIKE", payload);
     return payload;
@@ -608,6 +682,7 @@ export default async function feedService(app: any) {
         false
       )
     };
+    await recordFeedEvent(request.user.userId, { type: parentCommentId ? "reply" : "comment", postId, commentId });
     await createNotification({
       userId: post.author_id,
       actorUserId: request.user.userId,
@@ -676,6 +751,7 @@ export default async function feedService(app: any) {
     });
 
     const updated = await queryOne(`SELECT like_count FROM comments WHERE comment_id = $1`, [commentId]);
+    await recordFeedEvent(request.user.userId, { type: liked ? "like" : "unlike", postId, commentId });
 
     return {
       postId,
@@ -719,6 +795,7 @@ export default async function feedService(app: any) {
       shareCount: Number(updated?.share_count || 0),
       created: !existing
     };
+    await recordFeedEvent(request.user.userId, { type: "share", postId });
     await createNotification({
       userId: original.author_id,
       actorUserId: request.user.userId,

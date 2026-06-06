@@ -45,6 +45,9 @@ class _FeedPageState extends State<FeedPage> {
 
   final Set<String> _pendingLikes = <String>{};
   final Set<String> _pendingFollows = <String>{};
+  final Set<String> _recordedImpressions = <String>{};
+  final String _feedSessionId =
+      'mobile-feed-${DateTime.now().microsecondsSinceEpoch}';
 
   List<FeedPost> _posts = <FeedPost>[];
   AccountInfo? _composerAccount;
@@ -112,6 +115,7 @@ class _FeedPageState extends State<FeedPage> {
         _segmentIndex = value;
         _posts = [];
         _hasMore = true;
+        _recordedImpressions.clear();
       });
     }
 
@@ -131,6 +135,7 @@ class _FeedPageState extends State<FeedPage> {
       final data = await _feedService.listFeed(
         limit: _pageSize,
         mode: _currentFeedMode(),
+        sessionId: _feedSessionId,
       );
       if (!mounted) return;
 
@@ -139,6 +144,7 @@ class _FeedPageState extends State<FeedPage> {
         _hasMore = data.length >= _pageSize;
         _loading = false;
       });
+      _recordPostImpressions(data);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -155,6 +161,7 @@ class _FeedPageState extends State<FeedPage> {
       final posts = await _feedService.listFeed(
         limit: _pageSize,
         mode: _currentFeedMode(),
+        sessionId: _feedSessionId,
       );
       if (!mounted) return;
 
@@ -162,6 +169,7 @@ class _FeedPageState extends State<FeedPage> {
         _posts = posts;
         _hasMore = posts.length >= _pageSize;
       });
+      _recordPostImpressions(posts);
     } catch (_) {
       if (!mounted) return;
       PravaToast.show(
@@ -204,6 +212,38 @@ class _FeedPageState extends State<FeedPage> {
     widget.onChromeVisibilityChanged?.call(visible);
   }
 
+  void _recordPostImpressions(List<FeedPost> posts) {
+    final fresh = <FeedPost>[];
+    for (final post in posts) {
+      if (post.id.isEmpty || _recordedImpressions.contains(post.id)) continue;
+      _recordedImpressions.add(post.id);
+      fresh.add(post);
+    }
+    if (fresh.isEmpty) return;
+
+    unawaited(() async {
+      try {
+        await _feedService.recordEvents(
+          fresh
+              .map(
+                (post) => <String, dynamic>{
+                  'type': 'impression',
+                  'postId': post.id,
+                  'source': _currentFeedMode(),
+                  'sessionId': _feedSessionId,
+                  'metadata': <String, dynamic>{
+                    'reason': post.recommendationReason,
+                  },
+                },
+              )
+              .toList(),
+        );
+      } catch (_) {
+        // Feed rendering should not fail because analytics ingestion is unavailable.
+      }
+    }());
+  }
+
   Future<void> _loadMore() async {
     if (_posts.isEmpty || _loadingMore) return;
 
@@ -215,6 +255,7 @@ class _FeedPageState extends State<FeedPage> {
         before: before,
         limit: _pageSize,
         mode: _currentFeedMode(),
+        sessionId: _feedSessionId,
       );
 
       if (!mounted) return;
@@ -224,6 +265,7 @@ class _FeedPageState extends State<FeedPage> {
         _hasMore = data.length >= _pageSize;
         _loadingMore = false;
       });
+      _recordPostImpressions(data);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingMore = false);

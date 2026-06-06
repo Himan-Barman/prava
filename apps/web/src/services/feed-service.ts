@@ -16,6 +16,8 @@ export interface FeedPost {
   shareCount: number;
   readCount?: number;
   rankScore?: number;
+  recommendationReason?: string | null;
+  recommendationReasons?: string[];
   liked: boolean;
   followed: boolean;
   mentions: string[];
@@ -43,14 +45,39 @@ export interface FeedTag {
   lastPostAt?: string | null;
 }
 
+export interface FeedPageResponse {
+  items: FeedPost[];
+  nextCursor: string | null;
+  metrics?: {
+    mode: 'for-you' | 'following';
+    candidateCount: number;
+    filteredCount: number;
+    fallbackUsed: string | null;
+    sourceCounts: Record<string, number>;
+    durationMs: number;
+  };
+}
+
+export interface FeedEventPayload {
+  type: string;
+  postId?: string;
+  commentId?: string | null;
+  dwellMs?: number;
+  source?: string;
+  sessionId?: string;
+  clientEventId?: string;
+  metadata?: Record<string, unknown>;
+}
+
 class FeedService {
-  async listFeed(params: { limit?: number; before?: string; mode?: 'following' | 'for-you'; tag?: string } = {}) {
+  async listFeed(params: { limit?: number; before?: string; mode?: 'following' | 'for-you'; tag?: string; sessionId?: string } = {}) {
     return apiClient.get<FeedPost[]>('/feed', {
       query: {
         ...(params.limit && { limit: params.limit.toString() }),
         ...(params.before && { before: params.before }),
         ...(params.mode && { mode: params.mode }),
         ...(params.tag && { tag: params.tag }),
+        ...(params.sessionId && { sessionId: params.sessionId }),
       },
       auth: true,
     });
@@ -65,6 +92,19 @@ class FeedService {
 
   async toggleLike(postId: string) {
     return apiClient.post<{ liked: boolean; likeCount: number }>(`/feed/${postId}/like`, {
+      auth: true,
+    });
+  }
+
+  async listFeedPage(params: { limit?: number; cursor?: string; before?: string; mode?: 'following' | 'for-you'; sessionId?: string } = {}) {
+    const mode = params.mode === 'following' ? 'following' : 'for-you';
+    return apiClient.get<FeedPageResponse>(`/feed/${mode}`, {
+      query: {
+        ...(params.limit && { limit: params.limit.toString() }),
+        ...(params.cursor && { cursor: params.cursor }),
+        ...(params.before && { before: params.before }),
+        ...(params.sessionId && { sessionId: params.sessionId }),
+      },
       auth: true,
     });
   }
@@ -117,6 +157,28 @@ class FeedService {
         auth: true,
       }
     );
+  }
+
+  async recordEvents(events: FeedEventPayload[] | FeedEventPayload) {
+    const payload = Array.isArray(events) ? { events } : events;
+    return apiClient.post<{ accepted: number }>('/feed/events', {
+      body: payload,
+      auth: true,
+    });
+  }
+
+  async hidePost(postId: string, reason = 'hidden') {
+    return apiClient.post<{ hidden: boolean }>(`/feed/${postId}/hide`, {
+      body: { reason },
+      auth: true,
+    });
+  }
+
+  async markNotInterested(postId: string, reason = 'not_interested') {
+    return apiClient.post<{ notInterested: boolean }>(`/feed/${postId}/not-interested`, {
+      body: { reason },
+      auth: true,
+    });
   }
 }
 

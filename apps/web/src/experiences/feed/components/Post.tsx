@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, MessageCircle, Share2, MoreHorizontal, Eye } from 'lucide-react';
+import { Heart, MessageCircle, Share2, MoreHorizontal, Eye, EyeOff, Ban } from 'lucide-react';
 import { GlassCard } from '../../../ui-system';
 import { FeedPost } from '../../../services/feed-service';
 import { timeAgo } from '../../../utils/date-utils';
@@ -11,11 +11,14 @@ interface PostProps {
   onLike?: (postId: string) => void;
   onComment?: (postId: string) => void;
   onShare?: (postId: string) => void;
+  onHide?: (postId: string) => void;
+  onNotInterested?: (postId: string) => void;
   delay?: number;
 }
 
-export function Post({ post, onLike, onComment, onShare, delay = 0 }: PostProps) {
+export function Post({ post, onLike, onComment, onShare, onHide, onNotInterested, delay = 0 }: PostProps) {
   const [isAnimating, setIsAnimating] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const handleLike = () => {
     setIsAnimating(true);
@@ -53,7 +56,7 @@ export function Post({ post, onLike, onComment, onShare, delay = 0 }: PostProps)
   };
 
   return (
-    <GlassCard delay={delay} className="hover:bg-white/[0.95] dark:hover:bg-white/[0.06] transition-colors duration-300">
+    <GlassCard delay={delay} className="relative hover:bg-white/[0.95] dark:hover:bg-white/[0.06] transition-colors duration-300">
       <div className="flex items-start gap-3">
         {/* Avatar */}
         <div className="flex-shrink-0">
@@ -87,9 +90,40 @@ export function Post({ post, onLike, onComment, onShare, delay = 0 }: PostProps)
                 @{post.author.username} - {timeAgo(post.createdAt)}
               </div>
             </div>
-            <button className="text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary hover:bg-prava-light-surface dark:hover:bg-prava-dark-surface p-1.5 rounded-full transition-colors">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((current) => !current)}
+              className="text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary hover:bg-prava-light-surface dark:hover:bg-prava-dark-surface p-1.5 rounded-full transition-colors"
+              aria-label="Post options"
+            >
               <MoreHorizontal className="w-4 h-4" />
             </button>
+            {menuOpen && (
+              <div className="absolute right-4 top-12 z-20 w-48 overflow-hidden rounded-[16px] border border-prava-light-border bg-white p-1 shadow-[0_16px_42px_rgba(0,0,0,0.16)] dark:border-prava-dark-border dark:bg-prava-dark-elevated">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onNotInterested?.(post.id);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2 text-left text-body-sm font-semibold text-prava-light-text-secondary transition-colors hover:bg-prava-light-surface dark:text-prava-dark-text-secondary dark:hover:bg-white/10"
+                >
+                  <Ban className="h-4 w-4" strokeWidth={3} />
+                  Not interested
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onHide?.(post.id);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2 text-left text-body-sm font-semibold text-prava-light-text-secondary transition-colors hover:bg-prava-light-surface dark:text-prava-dark-text-secondary dark:hover:bg-white/10"
+                >
+                  <EyeOff className="h-4 w-4" strokeWidth={3} />
+                  Hide post
+                </button>
+              </div>
+            )}
           </div>
 
           <p className="text-prava-light-text-primary dark:text-prava-dark-text-primary whitespace-pre-wrap mb-3 leading-relaxed text-[14px]">

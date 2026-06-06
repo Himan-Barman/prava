@@ -62,6 +62,8 @@ class FeedPost {
     required this.shareCount,
     required this.readCount,
     required this.rankScore,
+    required this.recommendationReason,
+    required this.recommendationReasons,
     required this.liked,
     required this.followed,
     required this.mentions,
@@ -77,6 +79,8 @@ class FeedPost {
   int shareCount;
   int readCount;
   int rankScore;
+  final String? recommendationReason;
+  final List<String> recommendationReasons;
   bool liked;
   bool followed;
   final List<String> mentions;
@@ -84,6 +88,14 @@ class FeedPost {
   final FeedAuthor author;
 
   factory FeedPost.fromJson(Map<String, dynamic> json) {
+    final rawRecommendationReason = (json['recommendationReason'] ?? '')
+        .toString()
+        .trim();
+    final recommendationReason =
+        rawRecommendationReason == null || rawRecommendationReason.isEmpty
+        ? null
+        : rawRecommendationReason;
+
     return FeedPost(
       id: json['id']?.toString() ?? '',
       body: json['body']?.toString() ?? '',
@@ -105,6 +117,12 @@ class FeedPost {
       rankScore: json['rankScore'] is int
           ? json['rankScore'] as int
           : int.tryParse(json['rankScore']?.toString() ?? '') ?? 0,
+      recommendationReason: recommendationReason,
+      recommendationReasons:
+          (json['recommendationReasons'] as List<dynamic>? ?? [])
+              .map((item) => item.toString())
+              .where((item) => item.trim().isNotEmpty)
+              .toList(),
       liked: json['liked'] == true,
       followed: json['followed'] == true,
       mentions: (json['mentions'] as List<dynamic>? ?? [])
@@ -180,6 +198,7 @@ class FeedService {
     int limit = 20,
     String mode = 'for-you',
     String? tag,
+    String? sessionId,
   }) async {
     final query = <String, String>{'limit': limit.toString(), 'mode': mode};
     if (before != null) {
@@ -187,6 +206,9 @@ class FeedService {
     }
     if (tag != null && tag.trim().isNotEmpty) {
       query['tag'] = tag.trim().replaceFirst('#', '');
+    }
+    if (sessionId != null && sessionId.trim().isNotEmpty) {
+      query['sessionId'] = sessionId.trim();
     }
 
     final data = await _client.get('/feed', auth: true, query: query);
@@ -196,6 +218,46 @@ class FeedService {
         .whereType<Map<String, dynamic>>()
         .map(FeedPost.fromJson)
         .toList();
+  }
+
+  Future<Map<String, dynamic>> listFeedPage({
+    String? cursor,
+    DateTime? before,
+    int limit = 20,
+    String mode = 'for-you',
+    String? sessionId,
+  }) async {
+    final normalizedMode = mode == 'following' ? 'following' : 'for-you';
+    final query = <String, String>{'limit': limit.toString()};
+    if (cursor != null && cursor.trim().isNotEmpty) {
+      query['cursor'] = cursor.trim();
+    }
+    if (before != null) {
+      query['before'] = before.toUtc().toIso8601String();
+    }
+    if (sessionId != null && sessionId.trim().isNotEmpty) {
+      query['sessionId'] = sessionId.trim();
+    }
+
+    final data = await _client.get(
+      '/feed/$normalizedMode',
+      auth: true,
+      query: query,
+    );
+    if (data is! Map<String, dynamic>) {
+      return <String, dynamic>{'items': <FeedPost>[], 'nextCursor': null};
+    }
+
+    final items = (data['items'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(FeedPost.fromJson)
+        .toList();
+
+    return <String, dynamic>{
+      'items': items,
+      'nextCursor': data['nextCursor']?.toString(),
+      'metrics': data['metrics'],
+    };
   }
 
   Future<List<FeedTag>> listTags({int limit = 16}) async {
@@ -232,6 +294,41 @@ class FeedService {
 
   Future<Map<String, dynamic>> sharePost(String postId) async {
     final data = await _client.post('/feed/$postId/share', auth: true);
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> recordEvents(
+    List<Map<String, dynamic>> events,
+  ) async {
+    final data = await _client.post(
+      '/feed/events',
+      auth: true,
+      body: {'events': events},
+    );
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> hidePost(
+    String postId, {
+    String reason = 'hidden',
+  }) async {
+    final data = await _client.post(
+      '/feed/$postId/hide',
+      auth: true,
+      body: {'reason': reason},
+    );
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> markNotInterested(
+    String postId, {
+    String reason = 'not_interested',
+  }) async {
+    final data = await _client.post(
+      '/feed/$postId/not-interested',
+      auth: true,
+      body: {'reason': reason},
+    );
     return data is Map<String, dynamic> ? data : <String, dynamic>{};
   }
 

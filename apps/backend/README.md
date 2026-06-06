@@ -68,6 +68,11 @@ Recommended:
 - `PRESSURE_MAX_HEAP_USED_BYTES`
 - `PRESSURE_MAX_RSS_BYTES`
 - `PRESSURE_RETRY_AFTER_SECONDS`
+- `FEED_CANDIDATE_MULTIPLIER`
+- `FEED_MAX_AGE_DAYS`
+- `FEED_SERVED_HISTORY_HOURS`
+- `FEED_AGGREGATION_INTERVAL_MS`
+- `FEED_WEIGHT_*` ranking weights for recency, affinity, interest, engagement, trend, social proof, quality, exploration, negative feedback, repetition, and spam
 
 ## Local Docker
 From the repository root:
@@ -84,3 +89,14 @@ Set these env vars, then run `npm run load:chat`:
 - `CHAT_LOAD_ACCESS_TOKEN`
 - `CHAT_LOAD_CONVERSATION_ID`
 - Optional tuning: `CHAT_LOAD_CONNECTIONS`, `CHAT_LOAD_DURATION_SEC`, `CHAT_LOAD_WORKERS`, `CHAT_LOAD_PIPELINING`, `CHAT_LOAD_TIMEOUT_SEC`
+
+## Personalized Feed
+The feed service exposes:
+- `GET /api/feed?mode=for-you|following` for existing web/mobile clients.
+- `GET /api/feed/for-you?cursor=&limit=&sessionId=` for cursor-paginated ranked serving.
+- `GET /api/feed/following?cursor=&limit=&sessionId=` for followed-author recency serving.
+- `POST /api/feed/events` for impressions, dwell, clicks, likes, comments, shares, hides, reports, and related ranking signals.
+- `POST /api/feed/:postId/hide` and `POST /api/feed/:postId/not-interested` for negative feedback.
+- `POST /api/users/:userId/mute` and `DELETE /api/users/:userId/mute` for account-level feed filtering.
+
+The current ranker is heuristic, not ML-trained. It uses followed accounts, interacted authors, hashtags/topics, social proof, trending velocity, exploration, freshness, engagement quality, content quality, and negative feedback. Aggregates are maintained by the feed scheduler at `FEED_AGGREGATION_INTERVAL_MS`; Redis remains optional.

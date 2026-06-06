@@ -59,6 +59,8 @@ export default function FeedPage() {
   const beforeCursor = useRef<string | undefined>(undefined);
   const observerTarget = useRef<HTMLDivElement>(null);
   const hasMore = useRef(true);
+  const feedSessionId = useRef(`web-feed-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const recordedImpressions = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let isMounted = true;
@@ -69,11 +71,13 @@ export default function FeedPage() {
         setPosts([]);
         hasMore.current = true;
         beforeCursor.current = undefined;
+        recordedImpressions.current = new Set();
 
         const data = await feedService.listFeed({
           limit: PAGE_SIZE,
           mode: feedMode,
           tag,
+          sessionId: feedSessionId.current,
         });
 
         if (!isMounted) return;
@@ -103,6 +107,27 @@ export default function FeedPage() {
       isMounted = false;
     };
   }, [feedMode, tag]);
+
+  useEffect(() => {
+    const fresh = posts.filter((post) => !recordedImpressions.current.has(post.id));
+    if (fresh.length === 0) return;
+
+    for (const post of fresh) {
+      recordedImpressions.current.add(post.id);
+    }
+
+    void feedService.recordEvents(fresh.map((post) => ({
+      type: 'impression',
+      postId: post.id,
+      source: feedMode,
+      sessionId: feedSessionId.current,
+      metadata: {
+        reason: post.recommendationReason || null,
+      },
+    }))).catch(() => {
+      // Feed rendering should not fail because analytics ingestion is unavailable.
+    });
+  }, [posts, feedMode]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -184,6 +209,7 @@ export default function FeedPage() {
         before: beforeCursor.current,
         mode: feedMode,
         tag,
+        sessionId: feedSessionId.current,
       });
 
       if (data.length > 0) {
@@ -260,6 +286,30 @@ export default function FeedPage() {
       smartToast.success(result.created ? 'Post shared' : 'Already shared');
     } catch (error) {
       smartToast.error('Share failed');
+    }
+  };
+
+  const handleNotInterested = async (postId: string) => {
+    const previous = posts;
+    setPosts(prev => prev.filter((post) => post.id !== postId));
+    try {
+      await feedService.markNotInterested(postId);
+      smartToast.success('Removed from your feed');
+    } catch {
+      setPosts(previous);
+      smartToast.error('Action failed');
+    }
+  };
+
+  const handleHide = async (postId: string) => {
+    const previous = posts;
+    setPosts(prev => prev.filter((post) => post.id !== postId));
+    try {
+      await feedService.hidePost(postId);
+      smartToast.success('Post hidden');
+    } catch {
+      setPosts(previous);
+      smartToast.error('Action failed');
     }
   };
 
@@ -364,6 +414,8 @@ export default function FeedPage() {
                 onLike={handleLike}
                 onShare={handleShare}
                 onComment={handleComment}
+                onHide={handleHide}
+                onNotInterested={handleNotInterested}
               />
             ))
           )}
