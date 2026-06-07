@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Bell, Heart, MessageCircle, UserPlus, Settings, Check } from 'lucide-react';
-import { GlassCard } from '../../ui-system';
-import { Link } from 'react-router-dom';
+import { Bell, Heart, MessageCircle, UserPlus, Check } from 'lucide-react';
 import { notificationsService, NotificationItem } from '../../services/notifications-service';
 import { timeAgo } from '../../utils/date-utils';
 import { smartToast } from '../../ui-system/components/SmartToast';
@@ -14,11 +12,11 @@ const iconMap: Record<string, typeof Bell> = {
   message: Bell,
 };
 
-const colorMap: Record<string, string> = {
-  like: 'text-prava-error bg-prava-error/10',
-  comment: 'text-prava-accent bg-prava-accent/10',
-  follow: 'text-prava-success bg-prava-success/10',
-  message: 'text-prava-warning bg-prava-warning/10',
+const colorMap: Record<string, { text: string; bg: string }> = {
+  like: { text: '#E5533D', bg: 'rgba(229,83,61,0.08)' },
+  comment: { text: '#5B8CFF', bg: 'rgba(91,140,255,0.08)' },
+  follow: { text: '#3CCB7F', bg: 'rgba(60,203,127,0.08)' },
+  message: { text: '#F4C430', bg: 'rgba(244,196,48,0.08)' },
 };
 
 export default function NotificationsPage() {
@@ -27,9 +25,7 @@ export default function NotificationsPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => {
-    loadNotifications();
-  }, []);
+  useEffect(() => { loadNotifications(); }, []);
 
   const loadNotifications = async (cursor?: string) => {
     try {
@@ -38,7 +34,7 @@ export default function NotificationsPage() {
       setItems((prev) => (cursor ? [...prev, ...data.items] : data.items));
       setNextCursor(data.nextCursor ?? null);
       setUnreadCount(data.unreadCount ?? 0);
-    } catch (error) {
+    } catch {
       smartToast.error('Failed to load notifications');
     } finally {
       setLoading(false);
@@ -71,108 +67,91 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      {/* Page Header */}
+    <div className="max-w-2xl mx-auto pb-8">
+      {/* Header */}
       <motion.div
-        initial={{ opacity: 0, y: 8 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="mb-6"
+        transition={{ duration: 0.35 }}
+        className="app-page-header"
       >
-        <div className="flex items-center justify-between">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
-              Notifications
-            </h1>
-            <p className="mt-1 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-              Stay updated with your activity
-            </p>
+            <h1 className="app-page-title">Notifications</h1>
+            <p className="app-page-subtitle">Stay updated with your activity</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {unreadCount > 0 && (
-              <span className="px-2 py-1 rounded-full bg-prava-accent text-white text-[10px] font-semibold">
-                {unreadCount} unread
+              <span style={{
+                padding: '3px 10px', borderRadius: 100,
+                background: '#5B8CFF', color: '#fff',
+                fontSize: 11, fontWeight: 700,
+              }}>
+                {unreadCount}
               </span>
             )}
-            <Link
-              to="/settings"
-              className="p-3 rounded-[14px] bg-prava-light-surface dark:bg-prava-dark-surface border border-prava-light-border dark:border-prava-dark-border hover:bg-prava-light-border/50 dark:hover:bg-prava-dark-border/50 transition-colors"
-            >
-              <Settings className="w-5 h-5 text-prava-light-text-secondary dark:text-prava-dark-text-secondary" />
-            </Link>
           </div>
         </div>
       </motion.div>
 
-      {/* Mark All Read */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
-        className="flex justify-end mb-4"
-      >
-        <button
-          onClick={handleMarkAllRead}
-          className="flex items-center gap-2 px-4 py-2 rounded-[12px] text-body-sm font-medium text-prava-accent hover:bg-prava-accent/10 transition-colors"
+      {/* Mark all read */}
+      {unreadCount > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.05 }}
+          style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}
         >
-          <Check className="w-4 h-4" />
-          Mark all as read
-        </button>
-      </motion.div>
+          <button onClick={handleMarkAllRead} className="app-btn app-btn--ghost app-btn--sm">
+            <Check size={13} />
+            Mark all read
+          </button>
+        </motion.div>
+      )}
 
-      {/* Notifications List */}
-      <div className="space-y-2">
+      {/* Notification list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {loading ? (
-          <GlassCard className="text-center py-10">
-            <div className="w-8 h-8 border-2 border-prava-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-              Loading notifications...
-            </p>
-          </GlassCard>
+          <div className="app-empty">
+            <div className="w-6 h-6 border-2 border-prava-accent border-t-transparent rounded-full animate-spin mx-auto" />
+          </div>
         ) : items.length === 0 ? (
-          <GlassCard className="text-center py-10">
-            <Bell className="w-10 h-10 mx-auto mb-3 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" />
-            <p className="text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-              You're all caught up.
-            </p>
-          </GlassCard>
+          <div className="app-empty">
+            <div className="app-empty__icon"><Bell size={20} /></div>
+            <h3 className="app-empty__title">All caught up</h3>
+            <p className="app-empty__desc">No notifications yet.</p>
+          </div>
         ) : (
           items.map((notification, i) => {
             const Icon = iconMap[notification.type] ?? Bell;
-            const colorClass = colorMap[notification.type] ?? 'text-prava-accent bg-prava-accent/10';
+            const colors = colorMap[notification.type] ?? colorMap.comment;
             const isUnread = !notification.readAt;
 
             return (
               <motion.div
                 key={notification.id}
-                initial={{ opacity: 0, y: 8 }}
+                initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.1 + i * 0.03 }}
+                transition={{ duration: 0.3, delay: 0.05 + i * 0.02 }}
                 onClick={() => handleMarkRead(notification)}
-                className={`flex items-center gap-3 p-4 rounded-[16px] border transition-colors cursor-pointer ${isUnread
-                    ? 'bg-white/80 dark:bg-white/[0.04] border-prava-light-border/50 dark:border-prava-dark-border/50'
-                    : 'bg-white/50 dark:bg-white/[0.02] border-prava-light-border/30 dark:border-prava-dark-border/30'
-                  } hover:bg-white dark:hover:bg-white/[0.08]`}
+                className={`app-notif ${isUnread ? 'app-notif--unread' : ''}`}
               >
-                <div className={`p-2.5 rounded-full ${colorClass}`}>
-                  <Icon className="w-5 h-5" />
+                <div
+                  className="app-notif__icon"
+                  style={{ background: colors.bg, color: colors.text }}
+                >
+                  <Icon size={16} />
                 </div>
 
-                <div className="flex-1 min-w-0">
-                  <p className="text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                    <span className="font-semibold">{notification.title}</span>{' '}
-                    <span className="text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-                      {notification.body}
-                    </span>
+                <div className="app-notif__body">
+                  <p>
+                    <span className="app-notif__title">{notification.title} </span>
+                    <span className="app-notif__text">{notification.body}</span>
                   </p>
-                  <p className="text-caption text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-                    {timeAgo(notification.createdAt)}
-                  </p>
+                  <span className="app-notif__time">{timeAgo(notification.createdAt)}</span>
                 </div>
 
-                {isUnread && (
-                  <div className="w-2 h-2 rounded-full bg-prava-accent" />
-                )}
+                {isUnread && <div className="app-notif__dot" />}
               </motion.div>
             );
           })
@@ -180,10 +159,10 @@ export default function NotificationsPage() {
       </div>
 
       {nextCursor && (
-        <div className="mt-4 flex justify-center">
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
           <button
             onClick={() => loadNotifications(nextCursor)}
-            className="px-4 py-2 text-body-sm font-semibold text-prava-accent hover:bg-prava-accent/10 rounded-[12px] transition-colors"
+            className="app-btn app-btn--ghost app-btn--sm"
           >
             Load more
           </button>

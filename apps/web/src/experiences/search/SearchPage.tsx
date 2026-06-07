@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Clock, FileText, Hash, Search as SearchIcon, Users, X } from 'lucide-react';
-import { PravaInput } from '../../ui-system';
 import {
   SmartHashtagResult,
   SmartPostSearchResult,
@@ -28,9 +27,7 @@ function loadRecentSearches(): string[] {
     const stored = window.localStorage.getItem(RECENT_SEARCH_KEY);
     const parsed = stored ? JSON.parse(stored) : [];
     return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string').slice(0, 8) : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 function saveRecentSearches(items: string[]) {
@@ -60,7 +57,7 @@ export default function SearchPage() {
   const categories = useMemo(
     () => [
       { id: 'accounts' as const, label: 'Accounts', icon: Users, count: results.accounts.length },
-      { id: 'hashtags' as const, label: 'Hashtags', icon: Hash, count: results.hashtags.length },
+      { id: 'hashtags' as const, label: 'Tags', icon: Hash, count: results.hashtags.length },
       { id: 'posts' as const, label: 'Posts', icon: FileText, count: results.posts.length },
     ],
     [results]
@@ -68,60 +65,37 @@ export default function SearchPage() {
 
   useEffect(() => {
     const next = query.trim();
-    if (next) {
-      setSearchParams({ q: next }, { replace: true });
-    } else {
-      setSearchParams({}, { replace: true });
-    }
+    if (next) { setSearchParams({ q: next }, { replace: true }); }
+    else { setSearchParams({}, { replace: true }); }
   }, [query, setSearchParams]);
 
   useEffect(() => {
-    if (trimmedQuery.length < 2) {
-      setResults(emptyResults);
-      setLoading(false);
-      return;
-    }
-
+    if (trimmedQuery.length < 2) { setResults(emptyResults); setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
     const timer = window.setTimeout(async () => {
       try {
         const data = await usersService.smartSearch(trimmedQuery, 10);
-        if (!cancelled) {
-          setResults(data);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          smartToast.error('Search failed');
-          setResults(emptyResults);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+        if (!cancelled) setResults(data);
+      } catch {
+        if (!cancelled) { smartToast.error('Search failed'); setResults(emptyResults); }
+      } finally { if (!cancelled) setLoading(false); }
     }, 250);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
+    return () => { cancelled = true; window.clearTimeout(timer); };
   }, [trimmedQuery]);
 
   useEffect(() => {
-    const current = categories.find((category) => category.id === activeCategory);
+    const current = categories.find((c) => c.id === activeCategory);
     if (current && current.count > 0) return;
-    const firstWithResults = categories.find((category) => category.count > 0);
-    if (firstWithResults) {
-      setActiveCategory(firstWithResults.id);
-    }
+    const first = categories.find((c) => c.count > 0);
+    if (first) setActiveCategory(first.id);
   }, [activeCategory, categories]);
 
   const rememberSearch = (value = trimmedQuery) => {
-    const normalized = value.trim();
-    if (normalized.length < 2) return;
+    const n = value.trim();
+    if (n.length < 2) return;
     setRecentSearches((prev) => {
-      const next = [normalized, ...prev.filter((item) => item.toLowerCase() !== normalized.toLowerCase())].slice(0, 8);
+      const next = [n, ...prev.filter((i) => i.toLowerCase() !== n.toLowerCase())].slice(0, 8);
       saveRecentSearches(next);
       return next;
     });
@@ -129,16 +103,13 @@ export default function SearchPage() {
 
   const removeRecentSearch = (value: string) => {
     setRecentSearches((prev) => {
-      const next = prev.filter((item) => item !== value);
+      const next = prev.filter((i) => i !== value);
       saveRecentSearches(next);
       return next;
     });
   };
 
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    rememberSearch();
-  };
+  const handleSubmit = (event: FormEvent) => { event.preventDefault(); rememberSearch(); };
 
   const handleToggleFollow = async (userId: string) => {
     try {
@@ -149,104 +120,99 @@ export default function SearchPage() {
           item.id === userId ? { ...item, isFollowing: result.following } : item
         ),
       }));
-    } catch {
-      smartToast.error('Unable to update follow status');
-    }
+    } catch { smartToast.error('Unable to update follow status'); }
   };
 
   return (
     <div className="mx-auto max-w-2xl pb-8">
       <motion.div
-        initial={{ opacity: 0, y: 8 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="mb-5"
+        transition={{ duration: 0.35 }}
+        className="app-page-header"
       >
-        <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
-          Search
-        </h1>
+        <h1 className="app-page-title">Search</h1>
       </motion.div>
 
+      {/* Search Input */}
       <motion.form
-        initial={{ opacity: 0, y: 8 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
-        className="mb-5"
+        transition={{ duration: 0.35, delay: 0.05 }}
+        style={{ marginBottom: 16 }}
         onSubmit={handleSubmit}
       >
-        <PravaInput
-          placeholder="Search Prava"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="app-search-wrap">
+          <SearchIcon size={16} />
+          <input
+            className="app-search-input"
+            placeholder="Search Prava"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
       </motion.form>
 
+      {/* Category pills */}
       {trimmedQuery.length >= 2 && (
         <motion.div
-          initial={{ opacity: 0, y: 8 }}
+          initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.15 }}
-          className="mb-6 overflow-x-auto"
+          transition={{ duration: 0.3, delay: 0.1 }}
+          style={{ display: 'flex', gap: 6, marginBottom: 16, overflowX: 'auto' }}
         >
-          <div className="flex min-w-max gap-2">
-            {categories.map((category) => {
-              const Icon = category.icon;
-              const isActive = activeCategory === category.id;
-              return (
-                <button
-                  key={category.id}
-                  type="button"
-                  onClick={() => setActiveCategory(category.id)}
-                  className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-body-sm font-bold transition-colors ${
-                    isActive
-                      ? 'bg-prava-accent text-white'
-                      : 'bg-prava-light-surface text-prava-light-text-secondary hover:text-prava-light-text-primary dark:bg-white/[0.08] dark:text-prava-dark-text-secondary dark:hover:text-white'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" strokeWidth={3} />
-                  {category.label} {category.count}
-                </button>
-              );
-            })}
-          </div>
+          {categories.map((cat) => {
+            const Icon = cat.icon;
+            const isActive = activeCategory === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className={`app-btn app-btn--sm ${isActive ? 'app-btn--primary' : 'app-btn--ghost'}`}
+              >
+                <Icon size={13} /> {cat.label} {cat.count}
+              </button>
+            );
+          })}
         </motion.div>
       )}
 
+      {/* Recent searches */}
       {!trimmedQuery && (
         <motion.section
-          initial={{ opacity: 0, y: 8 }}
+          initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.15 }}
+          transition={{ duration: 0.35, delay: 0.1 }}
         >
-          <div className="mb-3 flex items-center gap-2">
-            <Clock className="h-4 w-4 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" strokeWidth={3} />
-            <h2 className="text-label font-semibold uppercase tracking-wider text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-              Recent Searches
-            </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <Clock size={13} style={{ color: 'var(--text-tertiary)' }} />
+            <span style={{
+              fontSize: 11, fontWeight: 700, textTransform: 'uppercase' as const,
+              letterSpacing: '0.08em', color: 'var(--text-tertiary)',
+            }}>Recent Searches</span>
           </div>
           {recentSearches.length === 0 ? (
-            <p className="py-8 text-center text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
+            <p style={{ textAlign: 'center', padding: '24px 0', fontSize: 13, color: 'var(--text-secondary)' }}>
               No recent searches
             </p>
           ) : (
-            <div className="space-y-1">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {recentSearches.map((search) => (
-                <div key={search} className="flex items-center gap-2 py-2">
+                <div key={search} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <button
-                    type="button"
                     onClick={() => setQuery(search)}
-                    className="flex flex-1 items-center gap-3 rounded-[14px] py-2 text-left text-prava-light-text-primary transition-colors hover:bg-prava-light-surface dark:text-prava-dark-text-primary dark:hover:bg-white/[0.08]"
+                    className="app-list-item"
+                    style={{ flex: 1, textAlign: 'left' }}
                   >
-                    <SearchIcon className="h-4 w-4 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" strokeWidth={3} />
-                    <span className="text-body">{search}</span>
+                    <SearchIcon size={14} style={{ color: 'var(--text-tertiary)' }} />
+                    <span style={{ fontSize: 14, color: 'var(--text-primary)' }}>{search}</span>
                   </button>
                   <button
-                    type="button"
                     onClick={() => removeRecentSearch(search)}
-                    className="grid h-9 w-9 place-items-center rounded-full text-prava-light-text-tertiary transition-colors hover:bg-prava-light-surface dark:text-prava-dark-text-tertiary dark:hover:bg-white/[0.08]"
-                    aria-label={`Remove ${search}`}
+                    className="app-btn app-btn--icon app-btn--ghost"
+                    style={{ width: 28, height: 28 }}
                   >
-                    <X className="h-4 w-4" strokeWidth={3} />
+                    <X size={13} />
                   </button>
                 </div>
               ))}
@@ -255,15 +221,16 @@ export default function SearchPage() {
         </motion.section>
       )}
 
+      {/* Results */}
       {trimmedQuery.length >= 2 && (
         <motion.section
-          initial={{ opacity: 0, y: 8 }}
+          initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
+          transition={{ duration: 0.25 }}
         >
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-prava-accent border-t-transparent" />
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+              <div className="w-6 h-6 animate-spin rounded-full border-2 border-prava-accent border-t-transparent" />
             </div>
           ) : (
             <>
@@ -284,11 +251,7 @@ export default function SearchPage() {
   );
 }
 
-function AccountsResults({
-  users,
-  onToggleFollow,
-  onOpen,
-}: {
+function AccountsResults({ users, onToggleFollow, onOpen }: {
   users: UserSearchResult[];
   onToggleFollow: (userId: string) => void;
   onOpen: () => void;
@@ -296,44 +259,32 @@ function AccountsResults({
   if (users.length === 0) return <EmptyState label="No accounts found" />;
 
   return (
-    <div className="space-y-1">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {users.map((user) => (
         <Link
           key={user.id}
           to={`/profile/${user.id}`}
           onClick={() => onOpen()}
-          className="flex items-center gap-3 rounded-[18px] py-3 transition-colors hover:bg-prava-light-surface dark:hover:bg-white/[0.08]"
+          className="app-list-item"
+          style={{ textDecoration: 'none' }}
         >
           {user.avatarUrl ? (
-            <img src={user.avatarUrl} alt="" className="h-12 w-12 rounded-full object-cover" />
+            <img src={user.avatarUrl} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
           ) : (
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-prava-accent/15 text-lg font-bold text-prava-accent">
-              {user.displayName.charAt(0).toUpperCase()}
-            </span>
+            <div className="app-list-item__avatar">{user.displayName.charAt(0).toUpperCase()}</div>
           )}
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-              {user.displayName}
-            </span>
-            <span className="block truncate text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-              @{user.username}
-            </span>
-          </span>
+          <div className="app-list-item__body">
+            <div className="app-list-item__name">{user.displayName}</div>
+            <div className="app-list-item__meta">@{user.username}</div>
+          </div>
           <button
-            type="button"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (user.isFollowing && user.isFollowedBy) {
-                smartToast.info('Open chats to message');
-              } else {
-                onToggleFollow(user.id);
-              }
+            onClick={(e) => {
+              e.preventDefault(); e.stopPropagation();
+              if (user.isFollowing && user.isFollowedBy) { smartToast.info('Open chats to message'); }
+              else { onToggleFollow(user.id); }
             }}
-            className={`shrink-0 rounded-full px-4 py-2 text-body-sm font-bold transition-colors ${
-              user.isFollowing && !user.isFollowedBy
-                ? 'bg-prava-light-surface text-prava-light-text-secondary dark:bg-white/[0.08] dark:text-prava-dark-text-secondary'
-                : 'bg-prava-accent text-white'
+            className={`app-btn app-btn--sm ${
+              user.isFollowing && !user.isFollowedBy ? 'app-btn--ghost' : 'app-btn--primary'
             }`}
           >
             {relationshipLabel(user)}
@@ -348,25 +299,22 @@ function HashtagResults({ hashtags, onOpen }: { hashtags: SmartHashtagResult[]; 
   if (hashtags.length === 0) return <EmptyState label="No hashtags found" />;
 
   return (
-    <div className="space-y-1">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {hashtags.map((item) => (
         <Link
           key={item.tag}
           to={`/feed?tag=${encodeURIComponent(item.tag)}`}
           onClick={() => onOpen()}
-          className="flex items-center gap-3 rounded-[18px] py-3 transition-colors hover:bg-prava-light-surface dark:hover:bg-white/[0.08]"
+          className="app-list-item"
+          style={{ textDecoration: 'none' }}
         >
-          <span className="grid h-11 w-11 place-items-center rounded-full bg-prava-accent/15 text-prava-accent">
-            <Hash className="h-5 w-5" strokeWidth={3} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-              #{item.tag}
-            </span>
-            <span className="block text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-              {item.postCount} posts
-            </span>
-          </span>
+          <div className="app-list-item__avatar" style={{ background: 'rgba(91,140,255,0.1)', color: '#5B8CFF' }}>
+            <Hash size={16} />
+          </div>
+          <div className="app-list-item__body">
+            <div className="app-list-item__name">#{item.tag}</div>
+            <div className="app-list-item__meta">{item.postCount} posts</div>
+          </div>
         </Link>
       ))}
     </div>
@@ -377,37 +325,36 @@ function PostResults({ posts, onOpen }: { posts: SmartPostSearchResult[]; onOpen
   if (posts.length === 0) return <EmptyState label="No posts found" />;
 
   return (
-    <div className="space-y-2">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {posts.map((post) => (
         <Link
           key={post.id}
           to={`/post/${post.id}`}
           onClick={() => onOpen()}
-          className="block rounded-[18px] py-3 transition-colors hover:bg-prava-light-surface dark:hover:bg-white/[0.08]"
+          className="app-list-item"
+          style={{ textDecoration: 'none', alignItems: 'flex-start', padding: '10px 14px' }}
         >
-          <div className="mb-2 flex items-center gap-3">
-            {post.author.avatarUrl ? (
-              <img src={post.author.avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover" />
-            ) : (
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-prava-accent/15 text-sm font-bold text-prava-accent">
-                {post.author.displayName.charAt(0).toUpperCase()}
+          {post.author.avatarUrl ? (
+            <img src={post.author.avatarUrl} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+          ) : (
+            <div className="app-list-item__avatar" style={{ width: 36, height: 36, fontSize: 13 }}>
+              {post.author.displayName.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="app-list-item__body">
+            <div className="app-list-item__name" style={{ fontSize: 13 }}>
+              {post.author.displayName}
+              <span className="app-list-item__meta" style={{ marginLeft: 6 }}>
+                @{post.author.username} · {timeAgo(post.createdAt)}
               </span>
-            )}
-            <span className="min-w-0">
-              <span className="block truncate font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                {post.author.displayName}
-              </span>
-              <span className="block truncate text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-                @{post.author.username} - {timeAgo(post.createdAt)}
-              </span>
-            </span>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 2, lineHeight: 1.4 }}>
+              {postPreview(post.body)}
+            </p>
+            <p className="app-list-item__meta" style={{ marginTop: 4 }}>
+              {post.likeCount} likes · {post.commentCount} comments · {post.shareCount} shares
+            </p>
           </div>
-          <p className="text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
-            {postPreview(post.body)}
-          </p>
-          <p className="mt-2 text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-            {post.likeCount} likes - {post.commentCount} comments - {post.shareCount} shares
-          </p>
         </Link>
       ))}
     </div>
@@ -416,11 +363,9 @@ function PostResults({ posts, onOpen }: { posts: SmartPostSearchResult[]; onOpen
 
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className="py-16 text-center">
-      <SearchIcon className="mx-auto mb-4 h-10 w-10 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" strokeWidth={3} />
-      <p className="text-body font-semibold text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-        {label}
-      </p>
+    <div className="app-empty">
+      <div className="app-empty__icon"><SearchIcon size={20} /></div>
+      <h3 className="app-empty__title">{label}</h3>
     </div>
   );
 }

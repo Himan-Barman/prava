@@ -1153,3 +1153,375 @@ html, body, #root {
 
   .auth-footer { padding: 12px 16px; }
 }
+
+/* ═══════════════════════════════════════════════════
+   APP PAGES — Compact, solid-color design system
+   No glowing effects, tight spacing, premium feel
+   ═══════════════════════════════════════════════════ */
+
+/* ─── Page Header ─── */
+.app-page-header {
+  margin-bottom: 20px;
+}
+.app-page-title {
+  font-size: 24px; font-weight: 800; letter-spacing: -0.3px;
+  color: var(--text-primary);
+}
+.app-page-subtitle {
+  font-size: 13px; color: var(--text-secondary); margin-top: 2px;
+}
+
+/* ─── Compact Card ─── */
+.app-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  transition: border-color 0.2s;
+}
+.app-card:hover {
+  border-color: var(--border-hover);
+}
+.app-card--flush { padding: 0; }
+
+/* ─── Compact Tab Bar ─── */
+.app-tabs {
+  display: flex; gap: 2px; padding: 3px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  margin-bottom: 16px;
+}
+.app-tab {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding: 10px 8px;
+  border-radius: 12px; border: none; cursor: pointer;
+  background: transparent; transition: all 0.2s;
+  font-family: inherit;
+}
+.app-tab--active {
+  background: #5B8CFF; color: #fff;
+}
+.app-tab__count {
+  font-size: 20px; font-weight: 800; line-height: 1;
+}
+.app-tab__label {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  opacity: 0.75;
+}
+.app-tab:not(.app-tab--active) {
+  color: var(--text-secondary);
+}
+.app-tab:not(.app-tab--active):hover {
+  background: var(--hover-bg);
+}
+
+/* ─── Compact List Item ─── */
+.app-list-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-radius: 14px;
+  transition: background 0.15s;
+  cursor: pointer;
+}
+.app-list-item:hover {
+  background: var(--hover-bg);
+}
+.app-list-item__avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700; flex-shrink: 0;
+  background: #5B8CFF; color: #fff;
+}
+.app-list-item__body {
+  flex: 1; min-width: 0;
+}
+.app-list-item__name {
+  font-size: 14px; font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.app-list-item__meta {
+  font-size: 12px; color: var(--text-tertiary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.app-list-item__actions {
+  display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+}
+
+/* ─── Compact Button ─── */
+.app-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 16px; border-radius: 10px;
+  font-size: 13px; font-weight: 600;
+  border: none; cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.app-btn--primary {
+  background: #5B8CFF; color: #fff;
+}
+.app-btn--primary:hover { opacity: 0.88; }
+.app-btn--ghost {
+  background: var(--hover-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.app-btn--ghost:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+.app-btn--danger {
+  background: rgba(229, 83, 61, 0.08);
+  color: #E5533D;
+}
+.app-btn--danger:hover { background: rgba(229, 83, 61, 0.14); }
+.app-btn--sm { padding: 5px 12px; font-size: 12px; border-radius: 8px; }
+.app-btn--icon {
+  width: 34px; height: 34px; padding: 0;
+  border-radius: 10px;
+}
+
+/* ─── Compact Empty State ─── */
+.app-empty {
+  text-align: center; padding: 40px 20px;
+}
+.app-empty__icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 12px;
+  background: var(--hover-bg);
+  color: var(--text-tertiary);
+}
+.app-empty__title {
+  font-size: 16px; font-weight: 700;
+  color: var(--text-primary); margin-bottom: 4px;
+}
+.app-empty__desc {
+  font-size: 13px; color: var(--text-secondary);
+  max-width: 280px; margin: 0 auto;
+}
+
+/* ─── Settings Row (compact) ─── */
+.app-settings-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 0;
+  text-decoration: none; color: inherit;
+  transition: color 0.15s;
+}
+.app-settings-row:hover { color: #5B8CFF; }
+.app-settings-row__icon {
+  width: 38px; height: 38px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  background: rgba(91, 140, 255, 0.08);
+  color: #5B8CFF;
+}
+.app-settings-row__body {
+  flex: 1; min-width: 0;
+}
+.app-settings-row__label {
+  font-size: 14px; font-weight: 700;
+  color: var(--text-primary);
+}
+.app-settings-row__desc {
+  font-size: 12px; color: var(--text-tertiary);
+}
+.app-settings-row__chevron {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* ─── Notification Item (compact) ─── */
+.app-notif {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 12px;
+  transition: background 0.15s; cursor: pointer;
+}
+.app-notif:hover { background: var(--hover-bg); }
+.app-notif--unread { background: var(--card-bg); }
+.app-notif__icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.app-notif__body { flex: 1; min-width: 0; }
+.app-notif__title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.app-notif__text { font-size: 13px; color: var(--text-secondary); }
+.app-notif__time { font-size: 11px; color: var(--text-tertiary); }
+.app-notif__dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #5B8CFF; flex-shrink: 0;
+}
+
+/* ─── Profile Header (compact, solid) ─── */
+.app-profile-header {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden; margin-bottom: 16px;
+}
+.app-profile-cover {
+  height: 100px;
+  background: #5B8CFF;
+  position: relative;
+}
+.app-profile-info {
+  padding: 0 20px 16px;
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center;
+}
+.app-profile-avatar {
+  width: 80px; height: 80px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 800; color: #fff;
+  background: #5B8CFF;
+  border: 3px solid var(--card-bg);
+  margin-top: -40px;
+}
+.app-profile-name {
+  font-size: 22px; font-weight: 800;
+  color: var(--text-primary); margin-top: 8px;
+}
+.app-profile-handle {
+  font-size: 14px; font-weight: 600; color: #5B8CFF;
+}
+.app-profile-bio {
+  font-size: 13px; color: var(--text-secondary);
+  margin-top: 6px; max-width: 340px;
+}
+
+/* ─── Stats Strip (compact) ─── */
+.app-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin-bottom: 16px;
+}
+.app-stat {
+  text-align: center; padding: 12px 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.app-stat__value {
+  font-size: 20px; font-weight: 800;
+  color: var(--text-primary); line-height: 1;
+}
+.app-stat__label {
+  font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+/* ─── Section divider ─── */
+.app-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 12px 0;
+}
+
+/* ─── Online indicator ─── */
+.app-online-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid var(--card-bg);
+  position: absolute; bottom: 0; right: 0;
+}
+.app-online-dot--active { background: #3CCB7F; }
+.app-online-dot--offline { background: var(--text-tertiary); }
+
+/* ─── Inline Underline Tabs ─── */
+.app-underline-tabs {
+  display: flex; gap: 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.app-underline-tab {
+  padding: 8px 0; font-size: 13px; font-weight: 600;
+  color: var(--text-secondary);
+  background: none; border: none; cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s; font-family: inherit;
+}
+.app-underline-tab--active {
+  color: #5B8CFF;
+  border-bottom-color: #5B8CFF;
+}
+.app-underline-tab:hover:not(.app-underline-tab--active) {
+  color: var(--text-primary);
+}
+
+/* ─── Search Input (compact) ─── */
+.app-search-input {
+  width: 100%; height: 42px; padding: 0 14px 0 38px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px; color: var(--text-primary);
+  font-size: 14px; font-weight: 500;
+  outline: none; transition: border-color 0.2s;
+  font-family: inherit;
+}
+.app-search-input::placeholder { color: var(--text-tertiary); }
+.app-search-input:focus {
+  border-color: #5B8CFF;
+}
+.app-search-wrap { position: relative; }
+.app-search-wrap svg {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--text-tertiary); pointer-events: none;
+}
+
+/* ─── Chat page layout ─── */
+.app-chat-layout {
+  display: flex; gap: 1px;
+  height: calc(100vh - 100px);
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--border);
+}
+.app-chat-sidebar {
+  width: 320px; flex-shrink: 0;
+  background: var(--bg);
+  overflow-y: auto;
+}
+.app-chat-main {
+  flex: 1; display: flex; flex-direction: column;
+  background: var(--bg);
+}
+.app-chat-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+}
+
+/* ─── Token Variables (light/dark) ─── */
+:root {
+  --bg: #ffffff;
+  --card-bg: #f8f8f9;
+  --border: rgba(0, 0, 0, 0.06);
+  --border-hover: rgba(0, 0, 0, 0.12);
+  --hover-bg: rgba(0, 0, 0, 0.03);
+  --text-primary: #0c0c0c;
+  --text-secondary: #6b6b6b;
+  --text-tertiary: #9a9a9a;
+}
+
+.dark {
+  --bg: #0c0c0c;
+  --card-bg: rgba(255, 255, 255, 0.04);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-hover: rgba(255, 255, 255, 0.12);
+  --hover-bg: rgba(255, 255, 255, 0.04);
+  --text-primary: #f2f2f2;
+  --text-secondary: #8a8a8a;
+  --text-tertiary: #5a5a5a;
+}
+
+/* ═══ App pages responsive ═══ */
+@media (max-width: 640px) {
+  .app-chat-sidebar { width: 100%; }
+  .app-profile-avatar { width: 64px; height: 64px; font-size: 22px; margin-top: -32px; }
+  .app-profile-name { font-size: 20px; }
+  .app-profile-cover { height: 80px; }
+  .app-stats { gap: 6px; }
+  .app-stat { padding: 10px 6px; }
+  .app-stat__value { font-size: 18px; }
+  .app-page-title { font-size: 22px; }
+}

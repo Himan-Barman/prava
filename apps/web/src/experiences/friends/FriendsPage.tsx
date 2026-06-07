@@ -3,14 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
   UserPlus,
-  MoreHorizontal,
   Send,
   X,
   MessageCircle,
-  Phone,
-  Star
+  MoreHorizontal,
+  Star,
 } from 'lucide-react';
-import { GlassCard, PravaInput } from '../../ui-system';
 import { friendsService, FriendsResponse, FriendConnectionItem } from '../../services/friends-service';
 import { smartToast } from '../../ui-system/components/SmartToast';
 import { timeAgo } from '../../utils/date-utils';
@@ -21,21 +19,19 @@ export default function FriendsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('requests');
   const [data, setData] = useState<FriendsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
       const res = await friendsService.getConnections();
       setData(res);
-      // Auto-switch to friends if no requests
       if (res.requests.length === 0 && res.friends.length > 0) {
         setActiveTab('friends');
       }
-    } catch (error) {
+    } catch {
       smartToast.error('Failed to load connections');
     } finally {
       setLoading(false);
@@ -49,138 +45,109 @@ export default function FriendsPage() {
       setData(prev => prev ? {
         ...prev,
         requests: prev.requests.filter(r => r.id !== req.id),
-        friends: [{
-          ...req,
-          isFollowing: true,
-          isFollowedBy: true,
-        }, ...prev.friends]
+        friends: [{ ...req, isFollowing: true, isFollowedBy: true }, ...prev.friends]
       } : null);
-    } catch (e) {
-      smartToast.error('Action failed');
-    }
+    } catch { smartToast.error('Action failed'); }
   };
 
   const handleDecline = async (req: FriendConnectionItem) => {
     try {
       await friendsService.declineRequest(req.id);
       smartToast.info('Request declined');
-      setData(prev => prev ? {
-        ...prev,
-        requests: prev.requests.filter(r => r.id !== req.id)
-      } : null);
-    } catch (e) {
-      smartToast.error('Action failed');
-    }
+      setData(prev => prev ? { ...prev, requests: prev.requests.filter(r => r.id !== req.id) } : null);
+    } catch { smartToast.error('Action failed'); }
   };
 
   const handleCancel = async (req: FriendConnectionItem) => {
     try {
       await friendsService.cancelRequest(req.id);
       smartToast.warning('Request canceled');
-      setData(prev => prev ? {
-        ...prev,
-        sent: prev.sent.filter(s => s.id !== req.id)
-      } : null);
-    } catch (e) {
-      smartToast.error('Action failed');
-    }
+      setData(prev => prev ? { ...prev, sent: prev.sent.filter(s => s.id !== req.id) } : null);
+    } catch { smartToast.error('Action failed'); }
   };
 
   const handleNudge = (req: FriendConnectionItem) => {
     smartToast.success(`Nudged @${req.username}`);
   };
 
+  const tabs = [
+    { id: 'requests' as const, label: 'Requests', count: data?.requests.length || 0 },
+    { id: 'sent' as const, label: 'Sent', count: data?.sent.length || 0 },
+    { id: 'friends' as const, label: 'Friends', count: data?.friends.length || 0 },
+  ];
+
+  const filteredFriends = data?.friends.filter(f => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return f.displayName.toLowerCase().includes(q) || f.username.toLowerCase().includes(q);
+  }) ?? [];
+
   return (
     <div className="max-w-2xl mx-auto pb-8">
       {/* Header */}
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        className="prava-tab-page-header mb-5"
+        transition={{ duration: 0.35 }}
+        className="app-page-header"
       >
-        <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
-          Connections
-        </h1>
-        <p className="mt-1 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-          Manage your network
-        </p>
+        <h1 className="app-page-title">Connections</h1>
+        <p className="app-page-subtitle">Manage your network</p>
       </motion.div>
 
-      {/* Summary / Stats Strip */}
-      <GlassCard className="mb-6 p-2 flex justify-between items-center">
-        {[
-          { id: 'requests', label: 'Requests', count: data?.requests.length || 0 },
-          { id: 'sent', label: 'Sent', count: data?.sent.length || 0 },
-          { id: 'friends', label: 'Friends', count: data?.friends.length || 0 },
-        ].map((tab) => (
+      {/* Tab bar — compact */}
+      <div className="app-tabs">
+        {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as Tab)}
-            className={`
-              flex-1 py-3 px-4 rounded-[14px] flex flex-col items-center gap-1 transition-all
-              ${activeTab === tab.id
-                ? 'bg-prava-accent/10 text-prava-accent'
-                : 'text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:bg-black/5 dark:hover:bg-white/5'
-              }
-            `}
+            onClick={() => setActiveTab(tab.id)}
+            className={`app-tab ${activeTab === tab.id ? 'app-tab--active' : ''}`}
           >
-            <span className="text-2xl font-bold font-outfit">
-              {loading ? '-' : tab.count}
-            </span>
-            <span className="text-xs font-semibold uppercase tracking-wide opacity-80">
-              {tab.label}
-            </span>
+            <span className="app-tab__count">{loading ? '-' : tab.count}</span>
+            <span className="app-tab__label">{tab.label}</span>
           </button>
         ))}
-      </GlassCard>
+      </div>
 
-      {/* Content Area */}
+      {/* Content */}
       <AnimatePresence mode="wait">
         {activeTab === 'requests' && (
           <motion.div
             key="requests"
-            initial={{ opacity: 0, x: -20 }}
+            initial={{ opacity: 0, x: -12 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
+            exit={{ opacity: 0, x: 12 }}
             transition={{ duration: 0.2 }}
           >
             {data?.requests.length === 0 ? (
-              <EmptyState title="No requests" subtitle="New friend requests will appear here." />
+              <EmptyState title="No requests" desc="New friend requests will appear here." />
             ) : (
-              <div className="space-y-4">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {data?.requests.map(req => (
-                  <GlassCard key={req.id} className="flex gap-4 items-center">
-                    <Avatar user={req} size="lg" isOnline={req.isOnline} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold text-lg text-prava-light-text-primary dark:text-prava-dark-text-primary truncate">
-                          {req.displayName}
-                        </h3>
+                  <div key={req.id} className="app-card" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <Avatar user={req} isOnline={req.isOnline} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                        <span className="app-list-item__name">{req.displayName}</span>
                         {req.isVerified && (
-                          <span className="px-2 py-0.5 rounded-full bg-prava-accent/20 text-prava-accent text-[10px] font-bold uppercase">
-                            Verified
-                          </span>
+                          <span style={{
+                            padding: '1px 6px', borderRadius: 100,
+                            background: 'rgba(91,140,255,0.1)', color: '#5B8CFF',
+                            fontSize: 10, fontWeight: 700,
+                          }}>Verified</span>
                         )}
                       </div>
-                      <p className="text-sm text-prava-light-text-secondary dark:text-prava-dark-text-secondary mb-3">
-                        @{req.username} - {req.since ? timeAgo(req.since) : 'recently'}
-                      </p>
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => handleAccept(req)}
-                          className="flex-1 py-2 bg-prava-accent text-white rounded-[12px] font-semibold text-sm hover:scale-[1.02] transition-transform"
-                        >
+                      <span className="app-list-item__meta">@{req.username} · {req.since ? timeAgo(req.since) : 'recently'}</span>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                        <button onClick={() => handleAccept(req)} className="app-btn app-btn--primary app-btn--sm" style={{ flex: 1 }}>
                           Accept
                         </button>
-                        <button
-                          onClick={() => handleDecline(req)}
-                          className="flex-1 py-2 bg-prava-light-surface dark:bg-prava-dark-surface border border-prava-light-border dark:border-prava-dark-border text-prava-light-text-primary dark:text-prava-dark-text-primary rounded-[12px] font-semibold text-sm hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                        >
+                        <button onClick={() => handleDecline(req)} className="app-btn app-btn--ghost app-btn--sm" style={{ flex: 1 }}>
                           Decline
                         </button>
                       </div>
                     </div>
-                  </GlassCard>
+                  </div>
                 ))}
               </div>
             )}
@@ -190,43 +157,31 @@ export default function FriendsPage() {
         {activeTab === 'sent' && (
           <motion.div
             key="sent"
-            initial={{ opacity: 0, x: -20 }}
+            initial={{ opacity: 0, x: -12 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
+            exit={{ opacity: 0, x: 12 }}
             transition={{ duration: 0.2 }}
           >
             {data?.sent.length === 0 ? (
-              <EmptyState title="No sent requests" subtitle="Send requests to grow your network." />
+              <EmptyState title="No sent requests" desc="Send requests to grow your network." />
             ) : (
-              <div className="space-y-4">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {data?.sent.map(req => (
-                  <GlassCard key={req.id} className="flex gap-4 items-center">
+                  <div key={req.id} className="app-list-item">
                     <Avatar user={req} />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                        {req.displayName}
-                      </h3>
-                      <p className="text-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-                        @{req.username} - {req.since ? timeAgo(req.since) : 'recently'} - Pending
-                      </p>
+                    <div className="app-list-item__body">
+                      <div className="app-list-item__name">{req.displayName}</div>
+                      <div className="app-list-item__meta">@{req.username} · Pending</div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleNudge(req)}
-                        className="p-2 text-prava-accent hover:bg-prava-accent/10 rounded-full transition-colors"
-                        title="Nudge"
-                      >
-                        <Send className="w-5 h-5" />
+                    <div className="app-list-item__actions">
+                      <button onClick={() => handleNudge(req)} className="app-btn app-btn--icon app-btn--ghost" title="Nudge">
+                        <Send size={14} />
                       </button>
-                      <button
-                        onClick={() => handleCancel(req)}
-                        className="p-2 text-prava-error hover:bg-prava-error/10 rounded-full transition-colors"
-                        title="Cancel"
-                      >
-                        <X className="w-5 h-5" />
+                      <button onClick={() => handleCancel(req)} className="app-btn app-btn--icon app-btn--danger" title="Cancel">
+                        <X size={14} />
                       </button>
                     </div>
-                  </GlassCard>
+                  </div>
                 ))}
               </div>
             )}
@@ -236,51 +191,46 @@ export default function FriendsPage() {
         {activeTab === 'friends' && (
           <motion.div
             key="friends"
-            initial={{ opacity: 0, x: -20 }}
+            initial={{ opacity: 0, x: -12 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
+            exit={{ opacity: 0, x: 12 }}
             transition={{ duration: 0.2 }}
           >
-            <div className="mb-4">
-              <PravaInput
+            {/* Search */}
+            <div className="app-search-wrap" style={{ marginBottom: 12 }}>
+              <Search size={16} />
+              <input
+                className="app-search-input"
                 placeholder="Search friends..."
-                prefixIcon={<Search className="w-5 h-5 text-prava-light-text-tertiary" />}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
 
-            {data?.friends.length === 0 ? (
-              <EmptyState title="No friends yet" subtitle="Connect with people to see them here." />
+            {filteredFriends.length === 0 ? (
+              <EmptyState
+                title={searchQuery ? 'No matches' : 'No friends yet'}
+                desc={searchQuery ? 'Try a different search term.' : 'Connect with people to see them here.'}
+              />
             ) : (
-              <div className="space-y-3">
-                {data?.friends.map(friend => (
-                  <div
-                    key={friend.id}
-                    className="group bg-white/80 dark:bg-white/[0.04] p-4 rounded-[20px] border border-transparent hover:border-prava-light-border dark:hover:border-prava-dark-border transition-all hover:bg-white dark:hover:bg-white/10"
-                  >
-                    <div className="flex items-center gap-4">
-                      <Avatar user={friend} isOnline={friend.isOnline} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                            {friend.displayName}
-                          </h3>
-                          {friend.isVerified && <Star className="w-3 h-3 fill-prava-warning text-prava-warning" />}
-                        </div>
-                        <p className="text-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-                          @{friend.username} - {friend.since ? timeAgo(friend.since) : 'recently'}
-                        </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {filteredFriends.map(friend => (
+                  <div key={friend.id} className="app-list-item">
+                    <Avatar user={friend} isOnline={friend.isOnline} />
+                    <div className="app-list-item__body">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span className="app-list-item__name">{friend.displayName}</span>
+                        {friend.isVerified && <Star size={11} style={{ color: '#F4C430', fill: '#F4C430' }} />}
                       </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-2 text-prava-accent hover:bg-prava-accent/10 rounded-full">
-                          <MessageCircle className="w-5 h-5" />
-                        </button>
-                        <button className="p-2 text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:bg-black/5 dark:hover:bg-white/5 rounded-full">
-                          <Phone className="w-5 h-5" />
-                        </button>
-                        <button className="p-2 text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:bg-black/5 dark:hover:bg-white/5 rounded-full">
-                          <MoreHorizontal className="w-5 h-5" />
-                        </button>
-                      </div>
+                      <div className="app-list-item__meta">@{friend.username}</div>
+                    </div>
+                    <div className="app-list-item__actions">
+                      <button className="app-btn app-btn--icon app-btn--ghost" title="Message">
+                        <MessageCircle size={14} />
+                      </button>
+                      <button className="app-btn app-btn--icon app-btn--ghost" title="More">
+                        <MoreHorizontal size={14} />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -293,40 +243,25 @@ export default function FriendsPage() {
   );
 }
 
-function Avatar({ user, size = 'md', isOnline }: { user: FriendConnectionItem, size?: 'md' | 'lg', isOnline?: boolean }) {
+function Avatar({ user, isOnline }: { user: FriendConnectionItem; isOnline?: boolean }) {
   return (
-    <div className="relative">
-      <div className={`
-        ${size === 'lg' ? 'w-14 h-14' : 'w-12 h-12'}
-        rounded-full bg-gradient-to-br from-prava-accent to-prava-accent-muted
-        flex items-center justify-center shrink-0 text-white font-bold
-        ${size === 'lg' ? 'text-xl' : 'text-lg'}
-      `}>
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <div className="app-list-item__avatar">
         {user.displayName[0]}
       </div>
       {isOnline !== undefined && (
-        <div className={`
-          absolute bottom-0 right-0 border-2 border-white dark:border-[#1D1D1D] rounded-full
-          ${size === 'lg' ? 'w-4 h-4' : 'w-3 h-3'}
-          ${isOnline ? 'bg-prava-success' : 'bg-prava-light-text-tertiary'}
-        `} />
+        <div className={`app-online-dot ${isOnline ? 'app-online-dot--active' : 'app-online-dot--offline'}`} />
       )}
     </div>
   );
 }
 
-function EmptyState({ title, subtitle }: { title: string, subtitle: string }) {
+function EmptyState({ title, desc }: { title: string; desc: string }) {
   return (
-    <div className="text-center py-12 opacity-60">
-      <div className="w-16 h-16 bg-prava-light-surface dark:bg-prava-dark-surface rounded-full flex items-center justify-center mx-auto mb-4">
-        <UserPlus className="w-8 h-8 text-prava-light-text-tertiary" />
-      </div>
-      <h3 className="text-xl font-bold text-prava-light-text-primary dark:text-prava-dark-text-primary mb-1">
-        {title}
-      </h3>
-      <p className="text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-        {subtitle}
-      </p>
+    <div className="app-empty">
+      <div className="app-empty__icon"><UserPlus size={20} /></div>
+      <h3 className="app-empty__title">{title}</h3>
+      <p className="app-empty__desc">{desc}</p>
     </div>
   );
 }

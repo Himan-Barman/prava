@@ -1,8 +1,10 @@
 import type { ElementType } from 'react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   AtSign,
   Bell,
+  ChevronRight,
   Database,
   Download,
   FileText,
@@ -122,49 +124,61 @@ const sections: Array<{ title: string; items: SettingsItem[] }> = [
   },
 ];
 
-function SettingsRow({ item }: { item: SettingsItem }) {
+function SettingsRow({ item, index }: { item: SettingsItem; index: number }) {
   const Icon = item.icon;
   return (
-    <Link
-      to={item.path}
-      className="flex items-center gap-4 py-4 transition-colors hover:text-prava-accent"
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay: index * 0.02 }}
     >
-      <Icon className="h-6 w-6 shrink-0 text-prava-accent" strokeWidth={2.6} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-body font-extrabold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-          {item.label}
-        </p>
-        <p className="truncate text-caption text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-          {item.description}
-        </p>
-      </div>
-    </Link>
+      <Link to={item.path} className="app-settings-row">
+        <div className="app-settings-row__icon">
+          <Icon size={17} strokeWidth={2.4} />
+        </div>
+        <div className="app-settings-row__body">
+          <p className="app-settings-row__label">{item.label}</p>
+          <p className="app-settings-row__desc">{item.description}</p>
+        </div>
+        <ChevronRight size={16} className="app-settings-row__chevron" />
+      </Link>
+    </motion.div>
   );
 }
 
 export default function SettingsPage() {
-  return (
-    <div className="mx-auto max-w-2xl">
-      <div className="sticky top-0 z-10 -mx-4 bg-prava-light-bg/90 px-4 pb-3 pt-1 backdrop-blur-xl dark:bg-prava-dark-bg/90 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pt-0 sm:backdrop-blur-0">
-        <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
-          Settings
-        </h1>
-      </div>
+  let rowIndex = 0;
 
-      <div className="divide-y divide-prava-light-border/70 dark:divide-prava-dark-border/70">
-        {sections.map((section) => (
-          <section key={section.title} className="py-4 first:pt-1">
-            <h2 className="mb-1 text-label font-bold uppercase tracking-[0.08em] text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-              {section.title}
-            </h2>
-            <div className="divide-y divide-prava-light-border/50 dark:divide-prava-dark-border/50">
-              {section.items.map((item) => (
-                <SettingsRow key={`${section.title}-${item.label}`} item={item} />
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+  return (
+    <div className="mx-auto max-w-2xl pb-8">
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+        className="app-page-header"
+      >
+        <h1 className="app-page-title">Settings</h1>
+      </motion.div>
+
+      {sections.map((section) => (
+        <section key={section.title} style={{ marginBottom: 8 }}>
+          <p style={{
+            fontSize: 11, fontWeight: 700,
+            textTransform: 'uppercase' as const, letterSpacing: '0.08em',
+            color: 'var(--text-tertiary)',
+            marginBottom: 4, marginTop: 16,
+          }}>
+            {section.title}
+          </p>
+          <div className="app-divider" />
+          {section.items.map((item) => {
+            const idx = rowIndex++;
+            return (
+              <SettingsRow key={`${section.title}-${item.label}`} item={item} index={idx} />
+            );
+          })}
+        </section>
+      ))}
     </div>
   );
 }

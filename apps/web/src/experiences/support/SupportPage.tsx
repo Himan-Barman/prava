@@ -1,18 +1,17 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { HelpCircle, MessageSquare, Bug, Lightbulb, FileText, ExternalLink } from 'lucide-react';
-import { PravaButton, PravaInput } from '../../ui-system';
+import { HelpCircle, MessageSquare, Bug, Lightbulb, ExternalLink, Send } from 'lucide-react';
 import { supportService } from '../../services/support-service';
 import { smartToast } from '../../ui-system/components/SmartToast';
 
 const helpTopics = [
   { label: 'Getting Started', icon: Lightbulb, description: 'Learn the basics of Prava' },
   { label: 'Account Issues', icon: HelpCircle, description: 'Password, login, and account recovery' },
-  { label: 'Privacy & Security', icon: FileText, description: 'End-to-end encryption explained' },
+  { label: 'Privacy & Security', icon: MessageSquare, description: 'End-to-end encryption explained' },
 ];
 
 export default function SupportPage() {
-  const [mode, setMode] = useState<'report' | 'feedback' | 'help'>('help');
+  const [mode, setMode] = useState<'report' | 'feedback'>('report');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -35,151 +34,143 @@ export default function SupportPage() {
           message: fullMessage,
           includeLogs: false,
         });
-      } else if (mode === 'feedback') {
+      } else {
         await supportService.sendFeedback({
           score: 5,
           message: fullMessage,
           allowContact: true,
-        });
-      } else {
-        await supportService.sendHelp({
-          message: fullMessage,
         });
       }
 
       smartToast.success('Message sent');
       setSubject('');
       setMessage('');
-    } catch (error) {
+    } catch {
       smartToast.error('Failed to send message');
     } finally {
       setSending(false);
     }
   };
+
   return (
-    <div className="max-w-2xl mx-auto">
-      {/* Page Header */}
+    <div className="max-w-2xl mx-auto pb-8">
+      {/* Header */}
       <motion.div
-        initial={{ opacity: 0, y: 8 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="mb-6"
+        transition={{ duration: 0.35 }}
+        className="app-page-header"
       >
-        <h1 className="text-h1 text-prava-light-text-primary dark:text-prava-dark-text-primary">
-          Help & Support
-        </h1>
-        <p className="mt-1 text-body text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-          Get help or send us feedback
-        </p>
+        <h1 className="app-page-title">Help & Support</h1>
+        <p className="app-page-subtitle">Get help or send us feedback</p>
       </motion.div>
 
       {/* Quick Help */}
       <motion.div
-        initial={{ opacity: 0, y: 8 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
-        className="mb-6"
+        transition={{ duration: 0.35, delay: 0.05 }}
+        style={{ marginBottom: 20 }}
       >
-        <h2 className="text-label font-semibold text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary uppercase tracking-wider mb-3">
-          Quick Help
-        </h2>
-        <div className="grid gap-3">
-          {helpTopics.map((topic, i) => (
-            <motion.div
-              key={topic.label}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.15 + i * 0.05 }}
-              className="py-3"
-            >
-              <div className="flex items-center gap-4">
-                <topic.icon className="w-5 h-5 text-prava-accent" strokeWidth={3} />
-                <div className="flex-1">
-                  <p className="font-medium text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                    {topic.label}
-                  </p>
-                  <p className="text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-                    {topic.description}
-                  </p>
+        <p style={{
+          fontSize: 11, fontWeight: 700,
+          textTransform: 'uppercase' as const, letterSpacing: '0.08em',
+          color: 'var(--text-tertiary)', marginBottom: 8,
+        }}>Quick Help</p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {helpTopics.map((topic) => {
+            const Icon = topic.icon;
+            return (
+              <div key={topic.label} className="app-list-item" style={{ cursor: 'pointer' }}>
+                <div className="app-settings-row__icon">
+                  <Icon size={16} />
                 </div>
-                <ExternalLink className="w-4 h-4 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary" strokeWidth={3} />
+                <div className="app-list-item__body">
+                  <div className="app-list-item__name">{topic.label}</div>
+                  <div className="app-list-item__meta">{topic.description}</div>
+                </div>
+                <ExternalLink size={14} style={{ color: 'var(--text-tertiary)' }} />
               </div>
-            </motion.div>
-          ))}
+            );
+          })}
         </div>
       </motion.div>
 
       {/* Contact Form */}
       <motion.div
-        initial={{ opacity: 0, y: 8 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.3 }}
+        transition={{ duration: 0.35, delay: 0.1 }}
       >
-        <h2 className="text-label font-semibold text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary uppercase tracking-wider mb-3">
-          Contact Us
-        </h2>
-        <section>
-          <div className="flex items-center gap-3 mb-6">
-            <MessageSquare className="w-5 h-5 text-prava-accent" strokeWidth={3} />
-            <div>
-              <h3 className="font-semibold text-body text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                Send us a message
-              </h3>
-              <p className="text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-                We typically respond within 24 hours
-              </p>
-            </div>
+        <p style={{
+          fontSize: 11, fontWeight: 700,
+          textTransform: 'uppercase' as const, letterSpacing: '0.08em',
+          color: 'var(--text-tertiary)', marginBottom: 8,
+        }}>Contact Us</p>
+
+        <div className="app-card">
+          {/* Mode toggle */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+            <button
+              onClick={() => setMode('report')}
+              className={`app-btn app-btn--sm ${mode === 'report' ? 'app-btn--primary' : 'app-btn--ghost'}`}
+              style={{ flex: 1 }}
+            >
+              <Bug size={13} /> Report Bug
+            </button>
+            <button
+              onClick={() => setMode('feedback')}
+              className={`app-btn app-btn--sm ${mode === 'feedback' ? 'app-btn--primary' : 'app-btn--ghost'}`}
+              style={{ flex: 1 }}
+            >
+              <Lightbulb size={13} /> Suggestion
+            </button>
           </div>
 
-          <div className="space-y-4">
-            <div className="flex gap-3">
-              <button
-                onClick={() => setMode('report')}
-                className={`flex-1 px-4 py-2.5 rounded-[12px] border text-body-sm font-medium transition-colors ${
-                  mode === 'report'
-                    ? 'bg-prava-accent/15 border-prava-accent/40 text-prava-accent'
-                    : 'bg-prava-light-surface dark:bg-prava-dark-surface border-prava-light-border dark:border-prava-dark-border'
-                }`}
-              >
-                <Bug className="w-4 h-4 inline mr-2" />
-                Report Bug
-              </button>
-              <button
-                onClick={() => setMode('feedback')}
-                className={`flex-1 px-4 py-2.5 rounded-[12px] border text-body-sm font-medium transition-colors ${
-                  mode === 'feedback'
-                    ? 'bg-prava-accent/15 border-prava-accent/40 text-prava-accent'
-                    : 'bg-prava-light-surface dark:bg-prava-dark-surface border-prava-light-border dark:border-prava-dark-border'
-                }`}
-              >
-                <Lightbulb className="w-4 h-4 inline mr-2" />
-                Suggestion
-              </button>
-            </div>
-
-            <PravaInput
-              label="Subject"
-              placeholder="Brief description of your issue"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-            />
-
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div>
-              <label className="block text-label font-semibold text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary mb-2">
-                Message
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
+                SUBJECT
               </label>
-              <textarea
-                placeholder="Describe your issue or feedback in detail..."
-                className="w-full p-4 rounded-[16px] bg-prava-light-surface dark:bg-prava-dark-surface border border-prava-light-border dark:border-prava-dark-border text-body text-prava-light-text-primary dark:text-prava-dark-text-primary placeholder:text-prava-light-text-tertiary dark:placeholder:text-prava-dark-text-tertiary focus:outline-none focus:ring-2 focus:ring-prava-accent/30 resize-none"
-                rows={4}
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
+              <input
+                className="app-search-input"
+                placeholder="Brief description"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                style={{ paddingLeft: 14 }}
               />
             </div>
 
-            <PravaButton label={sending ? 'Sending...' : 'Send Message'} onClick={handleSubmit} disabled={sending} />
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>
+                MESSAGE
+              </label>
+              <textarea
+                placeholder="Describe your issue or feedback..."
+                rows={4}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                style={{
+                  width: '100%', padding: 12, borderRadius: 12, resize: 'none',
+                  background: 'var(--card-bg)', border: '1px solid var(--border)',
+                  color: 'var(--text-primary)', fontSize: 14,
+                  fontFamily: 'inherit', outline: 'none',
+                }}
+              />
+            </div>
+
+            <button
+              className="app-btn app-btn--primary"
+              onClick={handleSubmit}
+              disabled={sending}
+              style={{ width: '100%', height: 42 }}
+            >
+              <Send size={14} />
+              {sending ? 'Sending...' : 'Send Message'}
+            </button>
           </div>
-        </section>
+        </div>
       </motion.div>
     </div>
   );
