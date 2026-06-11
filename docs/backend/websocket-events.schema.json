@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prava.local/schemas/websocket-events.json",
+  "title": "Prava WebSocket Event",
+  "type": "object",
+  "required": ["type", "payload"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "CONVERSATION_SUBSCRIBE",
+        "FEED_SUBSCRIBE",
+        "MESSAGE_SEND",
+        "MESSAGE_EDIT",
+        "MESSAGE_DELETE",
+        "REACTION_SET",
+        "REACTION_REMOVE",
+        "READ_RECEIPT",
+        "DELIVERY_RECEIPT",
+        "SYNC_INIT",
+        "TYPING_START",
+        "TYPING_STOP"
+      ]
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

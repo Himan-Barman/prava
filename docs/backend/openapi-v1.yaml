@@ -1,0 +1,81 @@
+openapi: 3.1.0
+info:
+  title: Prava API
+  version: 1.0.0
+servers:
+  - url: /api/v1
+paths:
+  /auth/signup:
+    post:
+      summary: Start signup and email verification
+      responses:
+        "200": { description: OK }
+  /auth/verify-email:
+    post:
+      summary: Verify email OTP
+      responses:
+        "200": { description: OK }
+  /auth/login:
+    post:
+      summary: Login
+      responses:
+        "200": { description: OK }
+  /auth/refresh:
+    post:
+      summary: Rotate refresh token
+      responses:
+        "200": { description: OK }
+  /me:
+    get:
+      summary: Current account
+      responses:
+        "200": { description: OK }
+  /users/{handle}:
+    get:
+      summary: Public profile by handle or id
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /posts:
+    post:
+      summary: Create post
+      responses:
+        "200": { description: OK }
+  /posts/{postId}/likes:
+    post:
+      summary: Like post
+      responses:
+        "200": { description: OK }
+    delete:
+      summary: Unlike post
+      responses:
+        "200": { description: OK }
+  /feed/for-you:
+    get:
+      summary: Personalized feed
+      responses:
+        "200": { description: OK }
+  /feed/following:
+    get:
+      summary: Following feed
+      responses:
+        "200": { description: OK }
+  /conversations:
+    get:
+      summary: Conversation list
+      responses:
+        "200": { description: OK }
+  /notifications:
+    get:
+      summary: Notification list
+      responses:
+        "200": { description: OK }
+  /search:
+    get:
+      summary: Smart search
+      responses:
+        "200": { description: OK }

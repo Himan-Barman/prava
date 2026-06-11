@@ -13,6 +13,9 @@ import { configureCloudinary } from "./lib/cloudinary.js";
 import { closePg, connectPg } from "./lib/pg.js";
 import { closeRedis, connectRedis } from "./lib/redis.js";
 import { HttpError } from "./lib/security.js";
+import { buildErrorEnvelope, isApiV1Request } from "./shared/http/envelope.js";
+import { snapshotMetrics } from "./shared/metrics/index.js";
+import apiV1Service from "./services/api-v1/index.js";
 import authService from "./services/auth/index.js";
 import chatService from "./services/chat/index.js";
 import cryptoService from "./services/crypto/index.js";
@@ -183,6 +186,7 @@ function registerRoutes(): void {
   app.register(supportService, { prefix: "/api/support" });
   app.register(cryptoService, { prefix: "/api/crypto" });
   app.register(mediaService, { prefix: "/api/media" });
+  app.register(apiV1Service, { prefix: "/api/v1" });
 
   app.get("/health", { config: { rateLimit: false } }, async () => ({
     status: ready ? "ok" : "starting",
@@ -212,6 +216,8 @@ function registerRoutes(): void {
       ready: true,
     };
   });
+
+  app.get("/api/metrics", { config: { rateLimit: false } }, async () => snapshotMetrics());
 }
 
 function parseBooleanEnv(value: string | undefined): boolean {
@@ -329,6 +335,15 @@ function registerErrorHandlers(): void {
               : "Request failed"));
 
     request.log.error({ err: error }, "request failed");
+    if (isApiV1Request(request)) {
+      reply.code(statusCode).send(buildErrorEnvelope(
+        request,
+        statusCode >= 500 ? "INTERNAL_SERVER_ERROR" : message.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, ""),
+        message
+      ));
+      return;
+    }
+
     reply.code(statusCode).send({
       message,
       requestId: request.id,
@@ -336,6 +351,11 @@ function registerErrorHandlers(): void {
   });
 
   app.setNotFoundHandler((request, reply) => {
+    if (isApiV1Request(request)) {
+      reply.code(404).send(buildErrorEnvelope(request, "ROUTE_NOT_FOUND", "Route not found"));
+      return;
+    }
+
     reply.code(404).send({
       message: "Route not found",
       requestId: request.id,
