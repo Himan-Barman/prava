@@ -1,6 +1,7 @@
 import pg from "pg";
 
 import { env } from "../config/env.js";
+import { runDatabaseFoundationMigrations } from "./database-foundation.js";
 
 const { Pool } = pg;
 
@@ -649,4 +650,6 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_media_user ON media_assets (user_id, created_at DESC);
   `);
+
+  await runDatabaseFoundationMigrations(p);
 }
