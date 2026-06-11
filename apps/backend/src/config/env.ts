@@ -52,6 +52,9 @@ const envSchema = z.object({
   JWT_PUBLIC_KEY: z.string().min(1).optional(),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 30),
+  PASSWORD_ARGON2_MEMORY_COST: z.coerce.number().int().positive().default(19_456),
+  PASSWORD_ARGON2_TIME_COST: z.coerce.number().int().positive().default(2),
+  PASSWORD_ARGON2_PARALLELISM: z.coerce.number().int().positive().default(1),
 });
 
 type ParsedEnv = z.infer<typeof envSchema>;

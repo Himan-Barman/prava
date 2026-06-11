@@ -41,6 +41,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS handle_normalized VARCHAR(30);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status VARCHAR(24) NOT NULL DEFAULT 'active';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_private BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(32) NOT NULL DEFAULT 'user';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS language_code VARCHAR(12) NOT NULL DEFAULT 'en';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_uuid_unique ON users (id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_handle_normalized_unique ON users (handle_normalized) WHERE deleted_at IS NULL;
 

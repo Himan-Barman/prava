@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
+import { hashSync as argon2HashSync, type Options as Argon2Options, verifySync as argon2VerifySync } from "@node-rs/argon2";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 
 import { env } from "../config/env.js";
+
+const ARGON2ID_ALGORITHM = 2 as Argon2Options["algorithm"];
 
 export interface JwtUserPayload extends JwtPayload {
   sub: string;
@@ -15,6 +18,9 @@ export interface UserIdentity {
   username?: string;
   displayName?: string;
   isVerified?: boolean;
+  sessionId?: string;
+  role?: string;
+  tokenVersion?: number;
 }
 
 function normalizeJwtKey(value: string | undefined): string | undefined {
@@ -110,14 +116,25 @@ export function isValidPassword(password: unknown): boolean {
 }
 
 export function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
-  return `scrypt$${salt}$${hash}`;
+  return argon2HashSync(password, {
+    algorithm: ARGON2ID_ALGORITHM,
+    memoryCost: env.PASSWORD_ARGON2_MEMORY_COST,
+    timeCost: env.PASSWORD_ARGON2_TIME_COST,
+    parallelism: env.PASSWORD_ARGON2_PARALLELISM,
+  });
 }
 
 export function verifyPassword(password: string, encoded: unknown): boolean {
   if (!encoded || typeof encoded !== "string") {
     return false;
+  }
+
+  if (encoded.startsWith("$argon2id$")) {
+    try {
+      return argon2VerifySync(encoded, password);
+    } catch {
+      return false;
+    }
   }
 
   const parts = encoded.split("$");
@@ -164,6 +181,9 @@ export function issueAccessToken(user: UserIdentity): string {
       sub: user.userId,
       email: user.email,
       username: user.username,
+      sid: user.sessionId,
+      role: user.role,
+      tokenVersion: user.tokenVersion ?? 1,
     },
     signing.key,
     {

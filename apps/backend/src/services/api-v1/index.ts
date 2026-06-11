@@ -6,9 +6,20 @@ import {
   HttpError,
   ensure,
   generateId,
+  generateOtpCode,
+  generateRefreshToken,
+  getRefreshTtlSeconds,
+  hashPassword,
+  isValidEmail,
+  isValidPassword,
+  isValidUsername,
+  issueAccessToken,
+  normalizeEmail,
   normalizeUsername,
   now,
+  sha256,
   toIso,
+  verifyPassword,
 } from "../../lib/security.js";
 import { bridgeToLegacy } from "../../shared/http/legacy-bridge.js";
 import { registerApiV1Envelope } from "../../shared/http/envelope.js";
@@ -34,6 +45,18 @@ function body(request: FastifyRequest): Record<string, unknown> {
 
 function queryParams(request: FastifyRequest): Record<string, unknown> {
   return (request.query && typeof request.query === "object" ? request.query : {}) as Record<string, unknown>;
+}
+
+function addSeconds(date: Date, seconds: number): Date {
+  return new Date(date.getTime() + seconds * 1000);
+}
+
+function addMinutes(date: Date, minutes: number): Date {
+  return new Date(date.getTime() + minutes * 60 * 1000);
+}
+
+function sanitizeDevice(value: unknown): string {
+  return String(value || "").trim().slice(0, 128) || "unknown-device";
 }
 
 function normalizePostBody(value: unknown): string {
@@ -103,6 +126,204 @@ async function resolvePostUuid(postId: string): Promise<string | null> {
   return row?.id || null;
 }
 
+async function loadV1UserByIdentifier(identifier: string): Promise<any> {
+  const normalized = normalizeEmail(identifier);
+  let user: any | null = null;
+  if (normalized.includes("@")) {
+    user = await queryOne(
+      `SELECT *, id::text AS id
+       FROM users
+       WHERE email_lower = $1
+       LIMIT 1`,
+      [normalized]
+    );
+    if (!user) {
+      const email = await queryOne<{ user_id: string }>(
+        `SELECT user_id::text AS user_id
+         FROM user_emails
+         WHERE email_normalized = $1 AND deleted_at IS NULL
+         ORDER BY is_primary DESC, created_at DESC
+         LIMIT 1`,
+        [normalized]
+      );
+      if (email?.user_id) {
+        user = await queryOne(
+          `SELECT *, id::text AS id
+           FROM users
+           WHERE id = $1
+           LIMIT 1`,
+          [email.user_id]
+        );
+      }
+    }
+  } else {
+    const handle = normalizeUsername(identifier);
+    user = await queryOne(
+      `SELECT *, id::text AS id
+       FROM users
+       WHERE username_lower = $1 OR handle_normalized = $1
+       LIMIT 1`,
+      [handle]
+    );
+  }
+
+  if (!user?.id) {
+    return user;
+  }
+
+  const credential = await queryOne<{ password_hash: string }>(
+    `SELECT password_hash FROM user_credentials WHERE user_id = $1 LIMIT 1`,
+    [user.id]
+  );
+  return {
+    ...user,
+    credential_password_hash: credential?.password_hash,
+  };
+}
+
+async function createAuthChallenge(
+  userUuid: string,
+  target: string,
+  purpose: string,
+  ttlMinutes: number,
+  client?: { query: (text: string, params?: unknown[]) => Promise<any> }
+): Promise<{ code: string; expiresAt: Date }> {
+  const code = generateOtpCode();
+  const expiresAt = addMinutes(now(), ttlMinutes);
+  const runner = client || { query };
+  await runner.query(
+    `INSERT INTO auth_challenges (
+       id, user_id, channel, target, purpose, code_hash,
+       attempts, max_attempts, expires_at, created_at
+     )
+     VALUES ($1, $2, 'email', $3, $4, $5, 0, 5, $6, NOW())`,
+    [generateId(), userUuid, target, purpose, sha256(code), expiresAt]
+  );
+  return { code, expiresAt };
+}
+
+async function createV1Session(
+  user: any,
+  context: { deviceId?: unknown; deviceName?: unknown; platform?: unknown; ipAddress?: string; userAgent?: string }
+): Promise<{ accessToken: string; refreshToken: string; sessionId: string; expiresAt: Date }> {
+  const userUuid = await resolveUserUuid(user.user_id);
+  if (!userUuid) throw new HttpError(404, "User not found");
+
+  const deviceFingerprint = sanitizeDevice(context.deviceId);
+  const sessionId = generateId();
+  const refreshId = generateId();
+  const refreshToken = generateRefreshToken();
+  const issuedAt = now();
+  const expiresAt = addSeconds(issuedAt, getRefreshTtlSeconds());
+
+  await withTransaction(async (client) => {
+    let device = await client.query(
+      `SELECT id
+       FROM user_devices
+       WHERE user_id = $1 AND device_fingerprint = $2 AND revoked_at IS NULL
+       LIMIT 1`,
+      [userUuid, deviceFingerprint]
+    );
+    if ((device.rowCount || 0) > 0) {
+      device = await client.query(
+        `UPDATE user_devices
+         SET last_seen_at = $3,
+             platform = $4,
+             device_name = $5,
+             updated_at = $3
+         WHERE id = $1 AND user_id = $2
+         RETURNING id`,
+        [
+          device.rows[0]?.id,
+          userUuid,
+          issuedAt,
+          sanitizeDevice(context.platform),
+          sanitizeDevice(context.deviceName),
+        ]
+      );
+    } else {
+      device = await client.query(
+        `INSERT INTO user_devices (
+           id, user_id, device_fingerprint, platform, device_name, last_seen_at, created_at, updated_at
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $6, $6)
+         RETURNING id`,
+      [
+        generateId(),
+        userUuid,
+        deviceFingerprint,
+        sanitizeDevice(context.platform),
+        sanitizeDevice(context.deviceName),
+        issuedAt,
+      ]
+      );
+    }
+
+    await client.query(
+      `INSERT INTO auth_sessions (
+         id, user_id, device_id, session_token_hash, ip_address, user_agent,
+         created_at, expires_at, last_seen_at, last_used_at, session_family_id
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $7, $7, $1)`,
+      [
+        sessionId,
+        userUuid,
+        device.rows[0]?.id || null,
+        sha256(`${sessionId}:${refreshToken.raw}`),
+        context.ipAddress || null,
+        context.userAgent || "",
+        issuedAt,
+        expiresAt,
+      ]
+    );
+
+    await client.query(
+      `INSERT INTO auth_refresh_tokens (
+         id, session_id, token_hash, created_at, issued_at, expires_at
+       )
+       VALUES ($1, $2, $3, $4, $4, $5)`,
+      [refreshId, sessionId, refreshToken.hash, issuedAt, expiresAt]
+    );
+
+    await client.query(
+      `UPDATE users SET last_seen_at = $2, updated_at = $2 WHERE user_id = $1`,
+      [user.user_id, issuedAt]
+    );
+  });
+
+  return {
+    accessToken: issueAccessToken({
+      userId: user.user_id,
+      email: user.email,
+      username: user.username,
+      displayName: user.display_name,
+      isVerified: user.is_verified === true,
+      sessionId,
+      role: user.role || "user",
+    }),
+    refreshToken: refreshToken.raw,
+    sessionId,
+    expiresAt,
+  };
+}
+
+async function revokeSessionFamily(sessionId: string): Promise<void> {
+  const session = await queryOne(
+    `SELECT COALESCE(session_family_id, id)::text AS family_id
+     FROM auth_sessions
+     WHERE id = $1`,
+    [sessionId]
+  );
+  if (!session?.family_id) return;
+  await query(
+    `UPDATE auth_sessions
+     SET revoked_at = COALESCE(revoked_at, NOW()),
+         revoke_reason = COALESCE(revoke_reason, 'refresh_reuse')
+     WHERE id = $1 OR session_family_id = $1`,
+    [session.family_id]
+  );
+}
+
 async function mapPostRows(rows: any[], viewerId: string): Promise<any[]> {
   if (rows.length === 0) return [];
   const authorIds = [...new Set(rows.map((row) => row.author_id).filter(Boolean))];
@@ -154,19 +375,28 @@ async function setPostLike(postId: string, userId: string, shouldLike: boolean):
   if (!allowed.allowed) throw new HttpError(403, "Post is not available");
 
   const ts = now();
+  let changed = false;
   await withTransaction(async (client) => {
     if (shouldLike) {
-      await client.query(
-        `INSERT INTO post_likes (post_id, user_id, created_at)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (post_id, user_id) DO NOTHING`,
+      const existing = await client.query(
+        `SELECT 1 FROM post_likes WHERE post_id = $1 AND user_id = $2 LIMIT 1`,
+        [postId, userId]
+      );
+      changed = (existing.rowCount || 0) === 0;
+      if (changed) {
+        await client.query(
+          `INSERT INTO post_likes (post_id, user_id, created_at)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (post_id, user_id) DO NOTHING`,
         [postId, userId, ts]
       );
+      }
     } else {
-      await client.query(
+      const result = await client.query(
         `DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`,
         [postId, userId]
       );
+      changed = (result.rowCount || 0) > 0;
     }
 
     await client.query(
@@ -178,7 +408,7 @@ async function setPostLike(postId: string, userId: string, shouldLike: boolean):
     );
 
     const postUuid = await resolvePostUuid(postId);
-    if (postUuid) {
+    if (changed && postUuid) {
       await enqueueOutboxEvent({
         eventType: shouldLike ? "post.liked" : "post.unliked",
         aggregateType: "post",
@@ -192,6 +422,7 @@ async function setPostLike(postId: string, userId: string, shouldLike: boolean):
   return {
     postId,
     liked: shouldLike,
+    changed,
     likeCount: Number(updated?.like_count || 0),
   };
 }
@@ -306,17 +537,443 @@ function addBridge(app: FastifyInstance, route: BridgeRoute): void {
 export default async function apiV1Service(app: FastifyInstance): Promise<void> {
   registerApiV1Envelope(app);
 
+  app.post("/auth/signup", async (request, reply) => {
+    const input = body(request);
+    const email = normalizeEmail(input.email);
+    const handle = normalizeUsername(input.handle || input.username);
+    const displayName = String(input.displayName || handle).trim().slice(0, 120);
+    const password = String(input.password || "");
+    const languageCode = String(input.languageCode || "en").trim().slice(0, 12);
+
+    ensure(isValidEmail(email), 400, "Invalid email");
+    ensure(isValidUsername(handle), 400, "Invalid handle");
+    ensure(isValidPassword(password), 400, "Invalid password");
+    ensure(displayName.length >= 1, 400, "Invalid display name");
+
+    const existing = await queryOne(
+      `SELECT user_id FROM users WHERE email_lower = $1 OR username_lower = $2 OR handle_normalized = $2 LIMIT 1`,
+      [email, handle]
+    );
+    if (existing) {
+      throw new HttpError(409, "Account already exists");
+    }
+
+    const passwordHash = hashPassword(password);
+    const userId = generateId();
+    const userUuid = generateId();
+    const emailUuid = generateId();
+    let devCode: string | undefined;
+    const ts = now();
+
+    await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO users (
+           user_id, id, email, email_lower, username, username_lower,
+           handle, handle_normalized, display_name, display_name_lower,
+           password_hash, is_verified, account_status, language_code,
+           primary_email_id, created_at, updated_at
+         )
+         VALUES ($1, $2, $3, $3, $4, $4, $4, $4, $5, $6, $7, FALSE, 'pending_verification', $8, $9, $10, $10)`,
+        [
+          userId,
+          userUuid,
+          email,
+          handle,
+          displayName,
+          displayName.toLowerCase(),
+          passwordHash,
+          languageCode,
+          emailUuid,
+          ts,
+        ]
+      );
+      await client.query(
+        `INSERT INTO user_emails (
+           id, user_id, email, email_normalized, is_primary, is_verified, created_at, updated_at
+         )
+         VALUES ($1, $2, $3, $3, TRUE, FALSE, $4, $4)`,
+        [emailUuid, userUuid, email, ts]
+      );
+      await client.query(
+        `INSERT INTO user_profiles (user_id, profile_metadata, created_at, updated_at)
+         VALUES ($1, $2, $3, $3)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userUuid, JSON.stringify({ languageCode }), ts]
+      );
+      await client.query(
+        `INSERT INTO user_stats (user_id, updated_at)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userUuid, ts]
+      );
+      await client.query(
+        `INSERT INTO user_settings (user_id, settings, updated_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userId, JSON.stringify({ languageCode, pushNotifications: true }), ts]
+      );
+      await client.query(
+        `INSERT INTO user_privacy_settings (user_id, updated_at)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userUuid, ts]
+      );
+      await client.query(
+        `INSERT INTO user_credentials (
+           user_id, password_hash, password_algo, password_algorithm,
+           password_updated_at, password_changed_at, created_at, updated_at
+         )
+         VALUES ($1, $2, 'argon2id', 'argon2id', $3, $3, $3, $3)`,
+        [userUuid, passwordHash, ts]
+      );
+      await client.query(
+        `INSERT INTO user_roles (user_id, role_id, granted_at)
+         SELECT $1, id, $2::timestamptz
+         FROM roles
+         WHERE name = 'user'
+         ON CONFLICT (user_id, role_id) DO NOTHING`,
+        [userUuid, ts]
+      );
+
+      const challenge = await createAuthChallenge(userUuid, email, "email_verification", 10, client);
+      devCode = challenge.code;
+      await enqueueOutboxEvent({
+        eventType: "auth.verification_email.requested",
+        aggregateType: "user",
+        aggregateId: userUuid,
+        payload: { userId, email, code: challenge.code, challengeExpiresAt: challenge.expiresAt.toISOString() },
+      }, client);
+    });
+
+    reply.code(201);
+    return {
+      verificationRequired: true,
+      userId,
+      email,
+      handle,
+      expiresIn: 600,
+      ...((process.env.NODE_ENV || "development") !== "production" ? { devCode } : {}),
+    };
+  });
+
+  app.post("/auth/verify-email", async (request) => {
+    const input = body(request);
+    const email = normalizeEmail(input.email);
+    const code = String(input.code || input.otp || "").trim();
+    ensure(isValidEmail(email), 400, "Invalid email");
+    ensure(/^\d{6}$/.test(code), 400, "Invalid code");
+
+    const challenge = await queryOne(
+      `SELECT ac.*, u.user_id
+       FROM auth_challenges ac
+       JOIN users u ON u.id = ac.user_id
+       WHERE ac.target = $1
+         AND ac.purpose = 'email_verification'
+         AND ac.consumed_at IS NULL
+         AND ac.expires_at > NOW()
+       ORDER BY ac.created_at DESC
+       LIMIT 1`,
+      [email]
+    );
+    if (!challenge) throw new HttpError(401, "Invalid or expired code");
+    if (Number(challenge.attempts || 0) >= Number(challenge.max_attempts || 5)) {
+      throw new HttpError(401, "Invalid or expired code");
+    }
+
+    if (sha256(code) !== challenge.code_hash) {
+      await query(
+        `UPDATE auth_challenges SET attempts = attempts + 1 WHERE id = $1`,
+        [challenge.id]
+      );
+      throw new HttpError(401, "Invalid or expired code");
+    }
+
+    await withTransaction(async (client) => {
+      await client.query(
+        `UPDATE auth_challenges SET consumed_at = NOW() WHERE id = $1`,
+        [challenge.id]
+      );
+      await client.query(
+        `UPDATE user_emails
+         SET is_verified = TRUE, verified_at = COALESCE(verified_at, NOW()), updated_at = NOW()
+         WHERE user_id = $1 AND email_normalized = $2`,
+        [challenge.user_id, email]
+      );
+      await client.query(
+        `UPDATE users
+         SET is_verified = TRUE,
+             email_verified_at = COALESCE(email_verified_at, NOW()),
+             account_status = 'active',
+             updated_at = NOW()
+         WHERE id = $1`,
+        [challenge.user_id]
+      );
+      await client.query(
+        `INSERT INTO security_events (user_id, event_type, metadata, created_at, occurred_at)
+         VALUES ($1, 'email_verified', $2, NOW(), NOW())`,
+        [challenge.user_id, JSON.stringify({ email })]
+      );
+    });
+
+    return { verified: true };
+  });
+
+  app.post("/auth/resend-verification", async (request) => {
+    const email = normalizeEmail(body(request).email);
+    ensure(isValidEmail(email), 400, "Invalid email");
+    const user = await loadV1UserByIdentifier(email);
+    if (!user) {
+      return { success: true };
+    }
+    const userUuid = await resolveUserUuid(user.user_id);
+    if (!userUuid) {
+      return { success: true };
+    }
+    const challenge = await createAuthChallenge(userUuid, email, "email_verification", 10);
+    await enqueueOutboxEvent({
+      eventType: "auth.verification_email.requested",
+      aggregateType: "user",
+      aggregateId: userUuid,
+      payload: { userId: user.user_id, email, code: challenge.code, challengeExpiresAt: challenge.expiresAt.toISOString() },
+    });
+    return {
+      success: true,
+      expiresIn: 600,
+      ...((process.env.NODE_ENV || "development") !== "production" ? { devCode: challenge.code } : {}),
+    };
+  });
+
+  app.post("/auth/login", async (request) => {
+    const input = body(request);
+    const identifier = String(input.identifier || input.email || input.username || "").trim();
+    const password = String(input.password || "");
+    ensure(identifier.length >= 3, 400, "Invalid request");
+    ensure(isValidPassword(password), 400, "Invalid request");
+
+    const user = await loadV1UserByIdentifier(identifier);
+    const passwordHash = user?.credential_password_hash || user?.password_hash;
+    if (!user || !passwordHash || !verifyPassword(password, passwordHash)) {
+      await query(
+        `INSERT INTO auth_login_attempts (identifier, success, failure_reason, created_at, occurred_at)
+         VALUES ($1, FALSE, 'invalid_credentials', NOW(), NOW())`,
+        [identifier.toLowerCase()]
+      ).catch(() => undefined);
+      throw new HttpError(401, "Invalid credentials");
+    }
+    if (user.account_status && !["active", "pending_verification"].includes(user.account_status)) {
+      throw new HttpError(403, "Account is not active");
+    }
+
+    await query(
+      `INSERT INTO auth_login_attempts (identifier, user_id, success, created_at, occurred_at)
+       VALUES ($1, $2, TRUE, NOW(), NOW())`,
+      [identifier.toLowerCase(), user.id]
+    ).catch(() => undefined);
+
+    const session = await createV1Session(user, {
+      deviceId: input.deviceId || request.headers["x-device-id"],
+      deviceName: input.deviceName,
+      platform: input.platform,
+      ipAddress: request.ip,
+      userAgent: request.headers["user-agent"],
+    });
+    return {
+      user: {
+        id: user.user_id,
+        email: user.email,
+        handle: user.handle || user.username,
+        username: user.username,
+        displayName: user.display_name || user.username,
+        isVerified: user.is_verified === true,
+      },
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      sessionId: session.sessionId,
+      expiresAt: toIso(session.expiresAt),
+    };
+  });
+
+  app.post("/auth/refresh", async (request) => {
+    const rawToken = String(body(request).refreshToken || "").trim();
+    ensure(rawToken.length >= 32, 400, "Invalid request");
+    const tokenHash = sha256(rawToken);
+    const token = await queryOne(
+      `SELECT rt.*, s.user_id, s.id AS session_id, s.revoked_at AS session_revoked_at, u.user_id AS legacy_user_id, u.email, u.username, u.display_name, u.is_verified, u.role
+       FROM auth_refresh_tokens rt
+       JOIN auth_sessions s ON s.id = rt.session_id
+       JOIN users u ON u.id = s.user_id
+       WHERE rt.token_hash = $1
+       LIMIT 1`,
+      [tokenHash]
+    );
+    if (!token) throw new HttpError(401, "Invalid refresh token");
+    if (token.consumed_at || token.revoked_at || token.session_revoked_at) {
+      await revokeSessionFamily(token.session_id);
+      await query(
+        `INSERT INTO security_events (user_id, event_type, severity, metadata, created_at, occurred_at)
+         VALUES ($1, 'refresh_reuse_detected', 'high', $2, NOW(), NOW())`,
+        [token.user_id, JSON.stringify({ sessionId: token.session_id })]
+      ).catch(() => undefined);
+      throw new HttpError(401, "Reauthentication required");
+    }
+    if (new Date(token.expires_at).getTime() <= Date.now()) {
+      throw new HttpError(401, "Refresh token expired");
+    }
+
+    const next = generateRefreshToken();
+    const nextId = generateId();
+    const expiresAt = addSeconds(now(), getRefreshTtlSeconds());
+    await withTransaction(async (client) => {
+      await client.query(
+        `UPDATE auth_refresh_tokens
+         SET consumed_at = NOW(), replaced_by_token_id = $2
+         WHERE id = $1`,
+        [token.id, nextId]
+      );
+      await client.query(
+        `INSERT INTO auth_refresh_tokens (
+           id, session_id, token_hash, parent_token_id, created_at, issued_at, expires_at
+         )
+         VALUES ($1, $2, $3, $4, NOW(), NOW(), $5)`,
+        [nextId, token.session_id, next.hash, token.id, expiresAt]
+      );
+      await client.query(
+        `UPDATE auth_sessions SET last_used_at = NOW(), last_seen_at = NOW() WHERE id = $1`,
+        [token.session_id]
+      );
+    });
+
+    return {
+      accessToken: issueAccessToken({
+        userId: token.legacy_user_id,
+        email: token.email,
+        username: token.username,
+        displayName: token.display_name,
+        isVerified: token.is_verified === true,
+        sessionId: token.session_id,
+        role: token.role || "user",
+      }),
+      refreshToken: next.raw,
+      sessionId: token.session_id,
+      expiresAt: toIso(expiresAt),
+    };
+  });
+
+  app.post("/auth/logout", { preHandler: requireAuth }, async (request) => {
+    const sessionId = request.user?.sessionId || String(body(request).sessionId || "").trim();
+    if (sessionId) {
+      await query(
+        `UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, NOW()), revoke_reason = 'logout' WHERE id = $1 AND user_id = (SELECT id FROM users WHERE user_id = $2)`,
+        [sessionId, request.user!.userId]
+      );
+    }
+    return { loggedOut: true };
+  });
+
+  app.post("/auth/logout-all", { preHandler: requireAuth }, async (request) => {
+    await query(
+      `UPDATE auth_sessions
+       SET revoked_at = COALESCE(revoked_at, NOW()), revoke_reason = 'logout_all'
+       WHERE user_id = (SELECT id FROM users WHERE user_id = $1)`,
+      [request.user!.userId]
+    );
+    return { loggedOut: true };
+  });
+
+  app.get("/auth/sessions", { preHandler: requireAuth }, async (request) => {
+    const rows = await queryMany(
+      `SELECT s.id, s.created_at, s.expires_at, s.last_seen_at, s.last_used_at, s.revoked_at,
+              d.device_name, d.platform, d.device_fingerprint
+       FROM auth_sessions s
+       LEFT JOIN user_devices d ON d.id = s.device_id
+       WHERE s.user_id = (SELECT id FROM users WHERE user_id = $1)
+       ORDER BY s.created_at DESC
+       LIMIT 100`,
+      [request.user!.userId]
+    );
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        deviceName: row.device_name || "",
+        platform: row.platform || "",
+        deviceId: row.device_fingerprint || "",
+        createdAt: toIso(row.created_at),
+        lastSeenAt: toIso(row.last_seen_at || row.last_used_at),
+        expiresAt: toIso(row.expires_at),
+        revokedAt: toIso(row.revoked_at),
+      })),
+    };
+  });
+
+  app.post("/auth/password-reset/request", async (request) => {
+    const email = normalizeEmail(body(request).email);
+    ensure(isValidEmail(email), 400, "Invalid email");
+    const user = await loadV1UserByIdentifier(email);
+    if (!user) return { success: true };
+    const userUuid = await resolveUserUuid(user.user_id);
+    if (!userUuid) return { success: true };
+    const challenge = await createAuthChallenge(userUuid, email, "password_reset", 10);
+    await enqueueOutboxEvent({
+      eventType: "auth.password_reset_email.requested",
+      aggregateType: "user",
+      aggregateId: userUuid,
+      payload: { userId: user.user_id, email, code: challenge.code, challengeExpiresAt: challenge.expiresAt.toISOString() },
+    });
+    return {
+      success: true,
+      ...((process.env.NODE_ENV || "development") !== "production" ? { devToken: challenge.code } : {}),
+    };
+  });
+
+  app.post("/auth/password-reset/confirm", async (request) => {
+    const input = body(request);
+    const email = normalizeEmail(input.email);
+    const token = String(input.token || input.code || "").trim();
+    const newPassword = String(input.newPassword || input.password || "");
+    ensure(isValidEmail(email), 400, "Invalid request");
+    ensure(/^\d{6}$/.test(token), 400, "Invalid request");
+    ensure(isValidPassword(newPassword), 400, "Invalid request");
+    const challenge = await queryOne(
+      `SELECT *
+       FROM auth_challenges
+       WHERE target = $1
+         AND purpose = 'password_reset'
+         AND consumed_at IS NULL
+         AND expires_at > NOW()
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [email]
+    );
+    if (!challenge || sha256(token) !== challenge.code_hash) {
+      throw new HttpError(401, "Invalid or expired code");
+    }
+    const passwordHash = hashPassword(newPassword);
+    await withTransaction(async (client) => {
+      await client.query(`UPDATE auth_challenges SET consumed_at = NOW() WHERE id = $1`, [challenge.id]);
+      await client.query(
+        `UPDATE user_credentials
+         SET password_hash = $2,
+             password_algo = 'argon2id',
+             password_algorithm = 'argon2id',
+             password_updated_at = NOW(),
+             password_changed_at = NOW(),
+             updated_at = NOW()
+         WHERE user_id = $1`,
+        [challenge.user_id, passwordHash]
+      );
+      await client.query(
+        `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`,
+        [challenge.user_id, passwordHash]
+      );
+      await client.query(
+        `UPDATE auth_sessions SET revoked_at = COALESCE(revoked_at, NOW()), revoke_reason = 'password_reset' WHERE user_id = $1`,
+        [challenge.user_id]
+      );
+    });
+    return { success: true };
+  });
+
   const bridges: BridgeRoute[] = [
-    { method: "POST", path: "/auth/signup", legacyMethod: "POST", legacyPath: "/api/auth/email-otp/request", payload: (request) => ({ email: body(request).email, username: body(request).handle || body(request).username }) },
-    { method: "POST", path: "/auth/verify-email", legacyMethod: "POST", legacyPath: "/api/auth/email-otp/verify", payload: (request) => ({ email: body(request).email, code: body(request).code || body(request).otp }) },
-    { method: "POST", path: "/auth/resend-verification", legacyMethod: "POST", legacyPath: "/api/auth/email-otp/request", payload: (request) => ({ email: body(request).email, username: body(request).handle || body(request).username }) },
-    { method: "POST", path: "/auth/login", legacyPath: "/api/auth/login" },
-    { method: "POST", path: "/auth/refresh", legacyPath: "/api/auth/refresh" },
-    { method: "POST", path: "/auth/logout", legacyPath: "/api/auth/logout" },
-    { method: "POST", path: "/auth/logout-all", legacyPath: "/api/auth/logout-all" },
-    { method: "GET", path: "/auth/sessions", legacyMethod: "POST", legacyPath: "/api/auth/sessions" },
-    { method: "POST", path: "/auth/password-reset/request", legacyPath: "/api/auth/password-reset/request" },
-    { method: "POST", path: "/auth/password-reset/confirm", legacyPath: "/api/auth/password-reset/confirm" },
     { method: "GET", path: "/me", legacyPath: "/api/users/me/account" },
     { method: "PATCH", path: "/me/profile", legacyMethod: "PUT", legacyPath: "/api/users/me/profile-details" },
     { method: "PATCH", path: "/me/handle", legacyMethod: "PUT", legacyPath: "/api/users/me/handle" },

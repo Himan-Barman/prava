@@ -51,6 +51,7 @@ export async function runDatabaseFoundationMigrations(pool: pg.Pool): Promise<vo
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_private BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(32) NOT NULL DEFAULT 'user';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS language_code VARCHAR(12) NOT NULL DEFAULT 'en';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_uuid_unique ON users (id);
@@ -1044,6 +1045,9 @@ async function isFoundationApplied(pool: pg.Pool): Promise<boolean> {
 }
 
 async function refreshFoundationBackfills(pool: pg.Pool): Promise<void> {
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS language_code VARCHAR(12) NOT NULL DEFAULT 'en';
+  `);
   await backfillPrimaryUuidColumns(pool);
   await remapPrimaryUuidReferences(pool);
   await refreshCommentUuidReferences(pool);

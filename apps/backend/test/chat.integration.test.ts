@@ -501,11 +501,11 @@ test("realtime websocket: push, ack, read-update", async () => {
   await Promise.all([once(socketA, "open"), once(socketB, "open")]);
 
   socketA.send(JSON.stringify({
-    type: "CONVERSATION_SUBSCRIBE",
+    type: "conversation.join",
     payload: { conversationId },
   }));
   socketB.send(JSON.stringify({
-    type: "CONVERSATION_SUBSCRIBE",
+    type: "conversation.subscribe",
     payload: { conversationId },
   }));
 
@@ -513,7 +513,7 @@ test("realtime websocket: push, ack, read-update", async () => {
   const waitPush = waitForSocketEvent(socketB, "MESSAGE_PUSH");
 
   socketA.send(JSON.stringify({
-    type: "MESSAGE_SEND",
+    type: "chat.message.send",
     payload: {
       conversationId,
       body: "hello websocket integration",
@@ -539,7 +539,7 @@ test("realtime websocket: push, ack, read-update", async () => {
 
   const waitReadUpdate = waitForSocketEvent(socketA, "READ_UPDATE");
   socketB.send(JSON.stringify({
-    type: "READ_RECEIPT",
+    type: "message.read",
     payload: {
       conversationId,
       lastReadSeq: Number(ack.payload.seq),

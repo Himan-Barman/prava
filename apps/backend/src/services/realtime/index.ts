@@ -30,6 +30,51 @@ function parseIntStrict(value: unknown): number | null {
   return parsed;
 }
 
+const EVENT_ALIASES = new Map<string, string>([
+  ["CONNECTION_AUTHENTICATE", "CONNECTION_AUTHENTICATE"],
+  ["CONNECTION_PING", "CONNECTION_PING"],
+  ["PRESENCE_HEARTBEAT", "PRESENCE_HEARTBEAT"],
+  ["CONVERSATION_JOIN", "CONVERSATION_SUBSCRIBE"],
+  ["CONVERSATION_SUBSCRIBE", "CONVERSATION_SUBSCRIBE"],
+  ["CONVERSATION_LEAVE", "CONVERSATION_UNSUBSCRIBE"],
+  ["CONVERSATION_UNSUBSCRIBE", "CONVERSATION_UNSUBSCRIBE"],
+  ["FEED_SUBSCRIBE", "FEED_SUBSCRIBE"],
+  ["CHAT_MESSAGE_SEND", "MESSAGE_SEND"],
+  ["MESSAGE_SEND", "MESSAGE_SEND"],
+  ["CHAT_MESSAGE_EDIT", "MESSAGE_EDIT"],
+  ["MESSAGE_EDIT", "MESSAGE_EDIT"],
+  ["CHAT_MESSAGE_DELETE", "MESSAGE_DELETE"],
+  ["MESSAGE_DELETE", "MESSAGE_DELETE"],
+  ["MESSAGE_REACTION_SET", "REACTION_SET"],
+  ["REACTION_SET", "REACTION_SET"],
+  ["MESSAGE_REACTION_REMOVE", "REACTION_REMOVE"],
+  ["REACTION_REMOVE", "REACTION_REMOVE"],
+  ["MESSAGE_READ", "READ_RECEIPT"],
+  ["READ_RECEIPT", "READ_RECEIPT"],
+  ["MESSAGE_DELIVERED", "DELIVERY_RECEIPT"],
+  ["DELIVERY_RECEIPT", "DELIVERY_RECEIPT"],
+  ["SYNC_INIT", "SYNC_INIT"],
+  ["CHAT_SYNC_INIT", "SYNC_INIT"],
+  ["TYPING_START", "TYPING_START"],
+  ["TYPING_STOP", "TYPING_STOP"],
+]);
+
+function normalizeEventType(value: unknown): string {
+  const key = String(value || "")
+    .trim()
+    .replace(/[.:\-/\s]+/g, "_")
+    .toUpperCase();
+  return EVENT_ALIASES.get(key) || key;
+}
+
+function sendSocketEvent(socket: any, type: string, payload: Record<string, unknown>): void {
+  try {
+    socket.send(JSON.stringify({ type, payload }));
+  } catch {
+    // Transport write failures are handled by the socket close path.
+  }
+}
+
 export default async function realtimeService(app: FastifyInstance): Promise<void> {
   const handleConnection = async (socket: any, request: any) => {
     const params = request.query as Record<string, unknown> | undefined;
@@ -69,6 +114,11 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
     };
 
     registerConnection(state);
+    sendSocketEvent(socket, "connection.ready", {
+      userId,
+      deviceId,
+      connectedAt: toIso(new Date()),
+    });
 
     const cleanup = () => {
       touchLastSeen();
@@ -294,11 +344,24 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       }
       if (!event || typeof event !== "object") return;
 
-      const type = String(event.type || "").trim().toUpperCase();
+      const type = normalizeEventType(event.type);
       const payload = (event.payload || {}) as Record<string, unknown>;
 
       try {
         switch (type) {
+          case "CONNECTION_AUTHENTICATE":
+          case "CONNECTION_PING":
+          case "PRESENCE_HEARTBEAT":
+            touchLastSeen();
+            sendSocketEvent(socket, type === "CONNECTION_AUTHENTICATE"
+              ? "connection.ready"
+              : type === "CONNECTION_PING"
+                ? "connection.pong"
+                : "presence.heartbeat", {
+              userId,
+              serverTime: toIso(new Date()),
+            });
+            break;
           case "CONVERSATION_SUBSCRIBE": {
             const conversationId = normalizeString(payload.conversationId);
             if (!conversationId) return;
@@ -310,6 +373,21 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
                 conversation.memberIds,
                 "PRESENCE_UPDATE",
                 { conversationId, userId, isOnline: true },
+                userId
+              );
+            }
+            break;
+          }
+          case "CONVERSATION_UNSUBSCRIBE": {
+            const conversationId = normalizeString(payload.conversationId);
+            if (!conversationId) return;
+            state.subscribedConversations.delete(conversationId);
+            const meta = state.conversationMeta.get(conversationId);
+            if (meta?.type === "dm") {
+              publishToConversation(
+                meta.memberIds,
+                "PRESENCE_UPDATE",
+                { conversationId, userId, isOnline: false },
                 userId
               );
             }

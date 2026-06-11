@@ -10,6 +10,26 @@ function parseLimit(raw, fallback, min, max) {
   return Math.max(min, Math.min(max, parsed));
 }
 
+async function refreshUnreadCounter(userId: string): Promise<number> {
+  const unreadResult = await queryOne(
+    `SELECT COUNT(*)::int AS count FROM notifications WHERE user_id = $1 AND read_at IS NULL`,
+    [userId]
+  );
+  const unreadCount = Number(unreadResult?.count || 0);
+  const user = await queryOne<{ id: string }>(`SELECT id::text AS id FROM users WHERE user_id = $1`, [userId]);
+  if (user?.id) {
+    await query(
+      `INSERT INTO user_stats (user_id, unread_notifications_count, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (user_id)
+       DO UPDATE SET unread_notifications_count = EXCLUDED.unread_notifications_count,
+                     updated_at = EXCLUDED.updated_at`,
+      [user.id, unreadCount]
+    );
+  }
+  return unreadCount;
+}
+
 export default async function notificationService(app) {
   app.get("/", { preHandler: requireAuth }, async (request) => {
     const limit = parseLimit(request.query?.limit, 20, 1, 100);
@@ -105,29 +125,30 @@ export default async function notificationService(app) {
     const readAt = now();
     await query(
       `UPDATE notifications
-       SET read_at = COALESCE(read_at, $1)
+       SET read_at = COALESCE(read_at, $1),
+           clicked_at = COALESCE(clicked_at, $1)
        WHERE notification_id = $2 AND user_id = $3`,
       [readAt, notificationId, request.user.userId]
     );
 
-    const unreadResult = await queryOne(
-      `SELECT COUNT(*)::int AS count FROM notifications WHERE user_id = $1 AND read_at IS NULL`,
-      [request.user.userId]
-    );
+    const unreadCount = await refreshUnreadCounter(request.user.userId);
 
     return {
       success: true,
       readAt: toIso(readAt),
-      unreadCount: unreadResult?.count || 0,
+      unreadCount,
     };
   });
 
   app.post("/read-all", { preHandler: requireAuth }, async (request) => {
     await query(
-      `UPDATE notifications SET read_at = $1 WHERE user_id = $2 AND read_at IS NULL`,
+      `UPDATE notifications
+       SET read_at = $1,
+           clicked_at = COALESCE(clicked_at, $1)
+       WHERE user_id = $2 AND read_at IS NULL`,
       [now(), request.user.userId]
     );
 
-    return { success: true };
+    return { success: true, unreadCount: await refreshUnreadCounter(request.user.userId) };
   });
 }
