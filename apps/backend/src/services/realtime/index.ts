@@ -443,6 +443,5 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
     });
   };
 
-  app.get("/", { websocket: true }, handleConnection);
   app.get("/ws", { websocket: true }, handleConnection);
 }

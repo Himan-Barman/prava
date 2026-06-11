@@ -341,6 +341,11 @@ test("username availability: taken and available", async () => {
   assert.equal(invalid.status, 400);
 });
 
+test("realtime plugin does not handle plain root requests", async () => {
+  const response = await fetch(baseUrl, { method: "HEAD" });
+  assert.notEqual(response.status, 500);
+});
+
 test("username reservation: holds for signup flow and blocks others", async () => {
   const email = "reserve_case@example.com";
   const username = "reserved_case_1";

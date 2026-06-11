@@ -102,6 +102,86 @@ test("foundation migration is re-runnable and backfills legacy ids", async () =>
   backfilledUserUuid = row.user_uuid;
 });
 
+test("foundation refresh adds missing comment uuid columns", async () => {
+  const pgLib = await import("../src/lib/pg.js");
+  const { runDatabaseFoundationMigrations } = await import("../src/lib/database-foundation.js");
+
+  const stamp = Date.now();
+  const userId = `foundation_comment_user_${stamp}`;
+  const postId = `foundation_comment_post_${stamp}`;
+  const commentId = `foundation_comment_${stamp}`;
+
+  await pgLib.query(
+    `INSERT INTO users (
+      user_id, email, email_lower, username, username_lower, display_name,
+      display_name_lower, password_hash, created_at, updated_at
+    ) VALUES ($1, $2, $2, $3, $3, 'Foundation Comment User', 'foundation comment user', 'hash', now(), now())`,
+    [userId, `${userId}@example.com`, userId]
+  );
+  await pgLib.query(
+    `INSERT INTO posts (post_id, author_id, body, media_urls, mentions, hashtags, created_at, updated_at)
+     VALUES ($1, $2, 'comment migration check', '[]', '[]', '[]', now(), now())`,
+    [postId, userId]
+  );
+  await pgLib.query(
+    `INSERT INTO comments (comment_id, post_id, author_id, body, created_at)
+     VALUES ($1, $2, $3, 'legacy comment', now())`,
+    [commentId, postId, userId]
+  );
+  await pgLib.query(
+    `INSERT INTO comment_likes (comment_id, user_id, created_at)
+     VALUES ($1, $2, now())`,
+    [commentId, userId]
+  );
+
+  await pgLib.query(`
+    DROP INDEX IF EXISTS idx_comment_likes_uuid_unique;
+    DROP INDEX IF EXISTS idx_comments_parent_uuid_created;
+    DROP INDEX IF EXISTS idx_comments_post_uuid_created;
+    DROP INDEX IF EXISTS idx_comments_uuid_unique;
+
+    ALTER TABLE comment_likes DROP COLUMN IF EXISTS comment_uuid;
+    ALTER TABLE comment_likes DROP COLUMN IF EXISTS user_uuid;
+
+    ALTER TABLE comments DROP COLUMN IF EXISTS id;
+    ALTER TABLE comments DROP COLUMN IF EXISTS post_uuid;
+    ALTER TABLE comments DROP COLUMN IF EXISTS author_uuid;
+    ALTER TABLE comments DROP COLUMN IF EXISTS parent_comment_uuid;
+    ALTER TABLE comments DROP COLUMN IF EXISTS depth;
+    ALTER TABLE comments DROP COLUMN IF EXISTS likes_count;
+    ALTER TABLE comments DROP COLUMN IF EXISTS replies_count;
+    ALTER TABLE comments DROP COLUMN IF EXISTS edited_at;
+    ALTER TABLE comments DROP COLUMN IF EXISTS deleted_at;
+  `);
+
+  await runDatabaseFoundationMigrations(pgLib.getPool());
+
+  const row = await pgLib.queryOne<{
+    comment_uuid: string;
+    post_uuid: string;
+    author_uuid: string;
+    like_comment_uuid: string;
+    like_user_uuid: string;
+  }>(
+    `SELECT
+       c.id::text AS comment_uuid,
+       c.post_uuid::text AS post_uuid,
+       c.author_uuid::text AS author_uuid,
+       cl.comment_uuid::text AS like_comment_uuid,
+       cl.user_uuid::text AS like_user_uuid
+     FROM comments c
+     JOIN comment_likes cl ON cl.comment_id = c.comment_id
+     WHERE c.comment_id = $1`,
+    [commentId]
+  );
+
+  assert.ok(row?.comment_uuid, JSON.stringify(row));
+  assert.ok(row?.post_uuid, JSON.stringify(row));
+  assert.ok(row?.author_uuid, JSON.stringify(row));
+  assert.equal(row?.like_comment_uuid, row?.comment_uuid);
+  assert.equal(row?.like_user_uuid, row?.author_uuid);
+});
+
 test("foundation enforces identity and reliability uniqueness", async () => {
   const pgLib = await import("../src/lib/pg.js");
   const stamp = Date.now();

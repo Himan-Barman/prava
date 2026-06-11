@@ -1045,15 +1045,48 @@ async function isFoundationApplied(pool: pg.Pool): Promise<boolean> {
 }
 
 async function refreshFoundationBackfills(pool: pg.Pool): Promise<void> {
-  await pool.query(`
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS language_code VARCHAR(12) NOT NULL DEFAULT 'en';
-  `);
+  await ensureBackfillColumns(pool);
   await backfillPrimaryUuidColumns(pool);
   await remapPrimaryUuidReferences(pool);
   await refreshCommentUuidReferences(pool);
 }
 
+async function ensureBackfillColumns(pool: pg.Pool): Promise<void> {
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS id UUID;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS language_code VARCHAR(12) NOT NULL DEFAULT 'en';
+
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS id UUID;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_uuid UUID;
+
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS id UUID;
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS created_by_uuid UUID;
+
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_uuid UUID;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_uuid UUID;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_uuid UUID;
+
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS notification_uuid UUID;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_uuid UUID;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actor_uuid UUID;
+
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS id UUID;
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS post_uuid UUID;
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS author_uuid UUID;
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS parent_comment_uuid UUID;
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS depth INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS likes_count BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS replies_count BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ;
+    ALTER TABLE comments ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+    ALTER TABLE comment_likes ADD COLUMN IF NOT EXISTS comment_uuid UUID;
+    ALTER TABLE comment_likes ADD COLUMN IF NOT EXISTS user_uuid UUID;
+  `);
+}
+
 async function refreshCommentUuidReferences(pool: pg.Pool): Promise<void> {
+  await ensureBackfillColumns(pool);
   await backfillUuidColumn(pool, "comments", "comment_id", "id", "comment");
   await pool.query(`
     UPDATE comments SET post_uuid = posts.id FROM posts WHERE comments.post_id = posts.post_id AND comments.post_uuid IS NULL;
@@ -1092,9 +1125,14 @@ async function backfillUuidColumn(
 ): Promise<void> {
   for (;;) {
     const result = await pool.query<{ legacy_value: string }>(
-      `SELECT ${legacyColumn} AS legacy_value FROM ${table} WHERE ${uuidColumn} IS NULL AND ${legacyColumn} IS NOT NULL ORDER BY ${legacyColumn} LIMIT 500`
+      `SELECT ${legacyColumn} AS legacy_value
+       FROM ${table}
+       WHERE ${uuidColumn} IS NULL
+         AND COALESCE(${legacyColumn}, '') <> ''
+       ORDER BY ${legacyColumn}
+       LIMIT 500`
     );
-    if (result.rowCount === 0) {
+    if (result.rows.length === 0) {
       return;
     }
     for (const row of result.rows) {

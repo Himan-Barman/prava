@@ -58,7 +58,9 @@ const app = Fastify({
   bodyLimit: env.BODY_LIMIT_BYTES,
   connectionTimeout: env.CONNECTION_TIMEOUT_MS,
   keepAliveTimeout: env.KEEP_ALIVE_TIMEOUT_MS,
-  maxParamLength: env.MAX_PARAM_LENGTH,
+  routerOptions: {
+    maxParamLength: env.MAX_PARAM_LENGTH,
+  },
   requestIdHeader: "x-request-id",
   genReqId: (request) => {
     const incoming = request.headers["x-request-id"];
@@ -202,6 +204,13 @@ function registerRoutes(): void {
   app.register(cryptoService, { prefix: "/api/crypto" });
   app.register(mediaService, { prefix: "/api/media" });
   app.register(apiV1Service, { prefix: "/api/v1" });
+
+  app.get("/", { config: { rateLimit: false } }, async () => ({
+    service: "prava-backend",
+    status: ready ? "ok" : "starting",
+    ready,
+    uptimeSec: Math.floor(process.uptime()),
+  }));
 
   app.get("/health", { config: { rateLimit: false } }, async () => ({
     status: ready ? "ok" : "starting",
