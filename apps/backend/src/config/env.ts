@@ -96,7 +96,6 @@ function normalizeOptionalString(value: string | undefined): string | undefined 
 }
 
 function validateEmailSettings(parsed: ParsedEnv): void {
-  const resend = normalizeOptionalString(parsed.RESEND_API_KEY);
   const from = normalizeOptionalString(parsed.EMAIL_FROM);
   const replyTo = normalizeOptionalString(parsed.EMAIL_REPLY_TO);
 
@@ -106,15 +105,6 @@ function validateEmailSettings(parsed: ParsedEnv): void {
 
   if (replyTo && !replyTo.includes("@")) {
     throw new Error("EMAIL_REPLY_TO must be a valid email address");
-  }
-
-  if (parsed.NODE_ENV === "production") {
-    if (!resend) {
-      throw new Error("RESEND_API_KEY is required in production");
-    }
-    if (!from) {
-      throw new Error("EMAIL_FROM is required in production");
-    }
   }
 }
 

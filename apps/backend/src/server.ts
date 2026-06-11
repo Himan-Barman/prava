@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 
 import compress from "@fastify/compress";
 import cors from "@fastify/cors";
@@ -27,16 +28,30 @@ import realtimeService from "./services/realtime/index.js";
 import supportService from "./services/support/index.js";
 import userService from "./services/user/index.js";
 
-const prettyTransport = env.NODE_ENV === "development"
-  ? {
-      target: "pino-pretty",
-      options: {
-        colorize: true,
-        translateTime: "SYS:standard",
-        ignore: "pid,hostname",
-      },
-    }
-  : undefined;
+const require = createRequire(import.meta.url);
+
+function resolvePrettyTransport() {
+  if (env.NODE_ENV !== "development") {
+    return undefined;
+  }
+
+  try {
+    require.resolve("pino-pretty");
+  } catch {
+    return undefined;
+  }
+
+  return {
+    target: "pino-pretty",
+    options: {
+      colorize: true,
+      translateTime: "SYS:standard",
+      ignore: "pid,hostname",
+    },
+  };
+}
+
+const prettyTransport = resolvePrettyTransport();
 
 const app = Fastify({
   trustProxy: env.TRUST_PROXY,
