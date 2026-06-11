@@ -10,12 +10,8 @@ const resolveApiBaseUrl = (): string => {
     return explicit.trim();
   }
 
-  if (import.meta.env.PROD) {
-    console.warn(`[apiClient] Missing VITE_API_URL. Falling back to ${DEFAULT_BACKEND_API_URL}.`);
-    return DEFAULT_BACKEND_API_URL;
-  }
-
-  return 'http://localhost:3000/api';
+  console.warn(`[apiClient] Missing VITE_API_URL. Falling back to ${DEFAULT_BACKEND_API_URL}.`);
+  return DEFAULT_BACKEND_API_URL;
 };
 
 const rawBaseUrl = resolveApiBaseUrl();

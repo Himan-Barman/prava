@@ -19,12 +19,8 @@ const resolveApiBaseUrl = (): string => {
     return explicit.trim().replace(/\/+$/, '');
   }
 
-  if (import.meta.env.PROD) {
-    console.warn(`[api-client] Missing VITE_API_URL. Falling back to ${DEFAULT_BACKEND_API_URL}.`);
-    return DEFAULT_BACKEND_API_URL;
-  }
-
-  return 'http://localhost:3000/api';
+  console.warn(`[api-client] Missing VITE_API_URL. Falling back to ${DEFAULT_BACKEND_API_URL}.`);
+  return DEFAULT_BACKEND_API_URL;
 };
 
 // Always use a base with no trailing slash.
@@ -68,6 +64,31 @@ class ApiClient {
       return (payload as { data: T }).data;
     }
     return payload as T;
+  }
+
+  private toApiException(error: AxiosError): ApiException {
+    const status = error.response?.status;
+    if (status === 503) {
+      return new ApiException(
+        'Backend is unavailable right now. Check https://prava-1.onrender.com/api/health and Render deployment env vars.',
+        status,
+      );
+    }
+    if (!error.response) {
+      return new ApiException(
+        'Cannot connect to backend. Check your internet connection and backend URL.',
+        undefined,
+      );
+    }
+
+    const errorData = error.response.data as { message?: string; error?: string | { message?: string } } | undefined;
+    const nested = typeof errorData?.error === 'object' ? errorData.error.message : undefined;
+    const message = errorData?.message
+      || nested
+      || (typeof errorData?.error === 'string' ? errorData.error : undefined)
+      || error.message
+      || 'Network error';
+    return new ApiException(message, status);
   }
 
   constructor() {
@@ -147,10 +168,7 @@ class ApiClient {
           }
         }
 
-        // Transform error to ApiException
-        const errorData = error.response?.data as { message?: string; error?: string } | undefined;
-        const message = errorData?.message || errorData?.error || error.message || 'Network error';
-        throw new ApiException(message, error.response?.status);
+        throw this.toApiException(error);
       }
     );
   }

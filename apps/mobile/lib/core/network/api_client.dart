@@ -226,11 +226,14 @@ class ApiClient {
           ? decoded
           : <String, dynamic>{};
       final error = data['error'];
-      final message =
-          data['message']?.toString() ??
-          (error is Map<String, dynamic> ? error['message']?.toString() : null) ??
-          (error is String ? error : null) ??
-          'Request failed';
+      final message = response.statusCode == 503
+          ? 'Backend is unavailable right now. Check https://prava-1.onrender.com/api/health and Render deployment env vars.'
+          : data['message']?.toString() ??
+              (error is Map<String, dynamic>
+                  ? error['message']?.toString()
+                  : null) ??
+              (error is String ? error : null) ??
+              'Request failed';
       throw ApiException(response.statusCode, message);
     }
 

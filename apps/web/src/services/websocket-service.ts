@@ -15,7 +15,7 @@ const resolveWsBase = () => {
         ? import.meta.env.VITE_API_URL
       : (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim().length > 0)
         ? import.meta.env.VITE_API_BASE_URL
-        : (import.meta.env.PROD ? DEFAULT_BACKEND_API_URL : 'http://localhost:3000/api')
+        : DEFAULT_BACKEND_API_URL
     )
   ).replace(/\/+$/, '');
   const trimmed = apiBase.replace(/\/api$/i, '');
