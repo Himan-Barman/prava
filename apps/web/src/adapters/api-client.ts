@@ -7,6 +7,8 @@ import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios';
 import { secureStore } from './secure-store';
 import { getOrCreateDeviceId } from './device-id';
 
+const DEFAULT_BACKEND_API_URL = 'https://prava-1.onrender.com/api';
+
 const resolveApiBaseUrl = (): string => {
   const explicit = (
     import.meta.env.VITE_API_URL
@@ -18,8 +20,8 @@ const resolveApiBaseUrl = (): string => {
   }
 
   if (import.meta.env.PROD) {
-    console.warn('[api-client] Missing VITE_API_URL. Falling back to same-origin /api.');
-    return '/api';
+    console.warn(`[api-client] Missing VITE_API_URL. Falling back to ${DEFAULT_BACKEND_API_URL}.`);
+    return DEFAULT_BACKEND_API_URL;
   }
 
   return 'http://localhost:3000/api';
@@ -53,6 +55,19 @@ class ApiClient {
     const asRecord = headers as Record<string, unknown>;
     const authValue = asRecord.Authorization ?? asRecord.authorization;
     return typeof authValue === 'string' && authValue.trim().length > 0;
+  }
+
+  private unwrapEnvelope<T>(payload: unknown): T {
+    if (
+      payload
+      && typeof payload === 'object'
+      && 'success' in payload
+      && 'data' in payload
+      && 'meta' in payload
+    ) {
+      return (payload as { data: T }).data;
+    }
+    return payload as T;
   }
 
   constructor() {
@@ -106,7 +121,11 @@ class ApiClient {
               deviceId,
             });
 
-            const { accessToken, refreshToken: newRefreshToken } = response.data;
+            const session = this.unwrapEnvelope<{ accessToken?: string; refreshToken?: string }>(response.data);
+            const { accessToken, refreshToken: newRefreshToken } = session;
+            if (!accessToken) {
+              throw new Error('Refresh response did not include an access token');
+            }
             secureStore.setAccessToken(accessToken);
             if (newRefreshToken) {
               secureStore.setRefreshToken(newRefreshToken);
@@ -147,7 +166,7 @@ class ApiClient {
       headers: options?.auth ? this.getAuthHeaders() : {},
     };
     const response = await this.client.get<T>(endpoint, config);
-    return response.data;
+    return this.unwrapEnvelope<T>(response.data);
   }
 
   async post<T>(endpoint: string, options?: { body?: unknown; auth?: boolean }): Promise<T> {
@@ -155,7 +174,7 @@ class ApiClient {
       headers: options?.auth ? this.getAuthHeaders() : {},
     };
     const response = await this.client.post<T>(endpoint, options?.body, config);
-    return response.data;
+    return this.unwrapEnvelope<T>(response.data);
   }
 
   async put<T>(endpoint: string, options?: { body?: unknown; auth?: boolean }): Promise<T> {
@@ -163,7 +182,7 @@ class ApiClient {
       headers: options?.auth ? this.getAuthHeaders() : {},
     };
     const response = await this.client.put<T>(endpoint, options?.body, config);
-    return response.data;
+    return this.unwrapEnvelope<T>(response.data);
   }
 
   async patch<T>(endpoint: string, options?: { body?: unknown; auth?: boolean }): Promise<T> {
@@ -171,7 +190,7 @@ class ApiClient {
       headers: options?.auth ? this.getAuthHeaders() : {},
     };
     const response = await this.client.patch<T>(endpoint, options?.body, config);
-    return response.data;
+    return this.unwrapEnvelope<T>(response.data);
   }
 
   async delete<T>(endpoint: string, options?: { auth?: boolean }): Promise<T> {
@@ -179,7 +198,7 @@ class ApiClient {
       headers: options?.auth ? this.getAuthHeaders() : {},
     };
     const response = await this.client.delete<T>(endpoint, config);
-    return response.data;
+    return this.unwrapEnvelope<T>(response.data);
   }
 }
 

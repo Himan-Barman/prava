@@ -1,3 +1,5 @@
+const DEFAULT_BACKEND_API_URL = 'https://prava-1.onrender.com/api';
+
 const resolveApiBaseUrl = (): string => {
   const explicit = (
     import.meta.env.VITE_API_URL
@@ -9,8 +11,8 @@ const resolveApiBaseUrl = (): string => {
   }
 
   if (import.meta.env.PROD) {
-    console.warn('[apiClient] Missing VITE_API_URL. Falling back to same-origin /api.');
-    return '/api';
+    console.warn(`[apiClient] Missing VITE_API_URL. Falling back to ${DEFAULT_BACKEND_API_URL}.`);
+    return DEFAULT_BACKEND_API_URL;
   }
 
   return 'http://localhost:3000/api';
@@ -44,5 +46,15 @@ export const jsonFetch = async <T>(
     throw new Error(message || `Request failed: ${response.status}`);
   }
 
-  return response.json() as Promise<T>;
+  const payload = await response.json();
+  if (
+    payload
+    && typeof payload === 'object'
+    && 'success' in payload
+    && 'data' in payload
+    && 'meta' in payload
+  ) {
+    return (payload as { data: T }).data;
+  }
+  return payload as T;
 };

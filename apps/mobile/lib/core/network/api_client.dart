@@ -186,9 +186,11 @@ class ApiClient {
 
       final data = jsonDecode(response.body);
       if (data is! Map<String, dynamic>) return false;
+      final session = _unwrapEnvelope(data);
+      if (session is! Map<String, dynamic>) return false;
 
-      final newAccessToken = data['accessToken']?.toString() ?? '';
-      final newRefreshToken = data['refreshToken']?.toString() ?? '';
+      final newAccessToken = session['accessToken']?.toString() ?? '';
+      final newRefreshToken = session['refreshToken']?.toString() ?? '';
 
       if (newAccessToken.isEmpty) return false;
 
@@ -223,10 +225,25 @@ class ApiClient {
       final Map<String, dynamic> data = decoded is Map<String, dynamic>
           ? decoded
           : <String, dynamic>{};
-      final message = data['message']?.toString() ?? 'Request failed';
+      final error = data['error'];
+      final message =
+          data['message']?.toString() ??
+          (error is Map<String, dynamic> ? error['message']?.toString() : null) ??
+          (error is String ? error : null) ??
+          'Request failed';
       throw ApiException(response.statusCode, message);
     }
 
+    return _unwrapEnvelope(decoded);
+  }
+
+  dynamic _unwrapEnvelope(dynamic decoded) {
+    if (decoded is Map<String, dynamic> &&
+        decoded.containsKey('success') &&
+        decoded.containsKey('data') &&
+        decoded.containsKey('meta')) {
+      return decoded['data'];
+    }
     return decoded;
   }
 }

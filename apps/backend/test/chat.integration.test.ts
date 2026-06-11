@@ -38,6 +38,10 @@ function signAccessToken(userId: string): string {
   );
 }
 
+function scalarText(value: unknown): string {
+  return Array.isArray(value) ? String(value[0] ?? "") : String(value ?? "");
+}
+
 async function waitForSocketEvent(
   socket: WebSocket,
   expectedType: string,
@@ -407,6 +411,28 @@ test("username reservation: holds for signup flow and blocks others", async () =
   assert.equal(register.status, 200);
   assert.equal(register.data.user.username, username);
   assert.ok(register.data.accessToken);
+
+  const pgLib = await import("../src/lib/pg.js");
+  const normalizedRows = await pgLib.queryOne<{
+    credentials: string;
+    profile: string;
+    stats: string;
+    privacy: string;
+    email: string;
+  }>(
+    `SELECT
+       (SELECT COUNT(*)::text FROM user_credentials WHERE user_id = (SELECT id FROM users WHERE username_lower = $1)) AS credentials,
+       (SELECT COUNT(*)::text FROM user_profiles WHERE user_id = (SELECT id FROM users WHERE username_lower = $1)) AS profile,
+       (SELECT COUNT(*)::text FROM user_stats WHERE user_id = (SELECT id FROM users WHERE username_lower = $1)) AS stats,
+       (SELECT COUNT(*)::text FROM user_privacy_settings WHERE user_id = (SELECT id FROM users WHERE username_lower = $1)) AS privacy,
+       (SELECT COUNT(*)::text FROM user_emails WHERE user_id = (SELECT id FROM users WHERE username_lower = $1) AND email_normalized = $2) AS email`,
+    [username, email]
+  );
+  assert.equal(scalarText(normalizedRows?.credentials), "1");
+  assert.equal(scalarText(normalizedRows?.profile), "1");
+  assert.equal(scalarText(normalizedRows?.stats), "1");
+  assert.equal(scalarText(normalizedRows?.privacy), "1");
+  assert.equal(scalarText(normalizedRows?.email), "1");
 
   const details = await httpJson<{ success: boolean }>(
     baseUrl,

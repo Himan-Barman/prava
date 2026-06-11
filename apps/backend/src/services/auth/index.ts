@@ -52,6 +52,126 @@ async function ensureRecentEmailOtp(emailLower: string): Promise<void> {
   }
 }
 
+async function ensureMobileUserDatabaseRows(userId: string, passwordHash?: string): Promise<string | null> {
+  const existing = await queryOne(`SELECT * FROM users WHERE user_id = $1`, [userId]);
+  if (!existing) {
+    return null;
+  }
+
+  let userUuid = existing.id ? String(existing.id) : generateId();
+  const settings = {
+    pushNotifications: true,
+    emailNotifications: true,
+    sound: true,
+    haptics: true,
+    languageCode: existing.language_code || "en",
+  };
+
+  await withTransaction(async (client) => {
+    if (!existing.id) {
+      const updated = await client.query(
+        `UPDATE users
+         SET id = $2
+         WHERE user_id = $1 AND id IS NULL
+         RETURNING id::text AS id`,
+        [userId, userUuid]
+      );
+      userUuid = String(updated.rows[0]?.id || userUuid);
+    }
+
+    await client.query(
+      `UPDATE users
+       SET handle = COALESCE(handle, username),
+           handle_normalized = COALESCE(handle_normalized, username_lower),
+           account_status = COALESCE(account_status, 'active'),
+           language_code = COALESCE(language_code, 'en')
+       WHERE user_id = $1`,
+      [userId]
+    );
+
+    await client.query(
+      `INSERT INTO user_settings (user_id, settings, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (user_id)
+       DO UPDATE SET settings = COALESCE(user_settings.settings, '{}'::jsonb) || EXCLUDED.settings,
+                     updated_at = EXCLUDED.updated_at`,
+      [userId, JSON.stringify(settings)]
+    );
+
+    await client.query(
+      `INSERT INTO user_profiles (user_id, profile_metadata, created_at, updated_at)
+       VALUES ($1, '{}'::jsonb, NOW(), NOW())
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userUuid]
+    );
+
+    await client.query(
+      `INSERT INTO user_stats (user_id, updated_at)
+       VALUES ($1, NOW())
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userUuid]
+    );
+
+    await client.query(
+      `INSERT INTO user_privacy_settings (user_id, updated_at)
+       VALUES ($1, NOW())
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userUuid]
+    );
+
+    if (existing.email_lower) {
+      const emailRow = await client.query(
+        `SELECT id
+         FROM user_emails
+         WHERE email_normalized = $1 AND deleted_at IS NULL
+         LIMIT 1`,
+        [existing.email_lower]
+      );
+      if ((emailRow.rowCount || 0) > 0) {
+        await client.query(
+          `UPDATE user_emails
+           SET user_id = $2,
+               is_primary = TRUE,
+               is_verified = is_verified OR $3,
+               verified_at = CASE WHEN $3 THEN COALESCE(verified_at, NOW()) ELSE verified_at END,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [emailRow.rows[0]?.id, userUuid, existing.is_verified === true]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO user_emails (
+             id, user_id, email, email_normalized, is_primary, is_verified, verified_at, created_at, updated_at
+           )
+           VALUES ($1, $2, $3, $3, TRUE, $4, CASE WHEN $4 THEN NOW() ELSE NULL END, NOW(), NOW())`,
+          [generateId(), userUuid, existing.email_lower, existing.is_verified === true]
+        );
+      }
+    }
+
+    const effectiveHash = passwordHash || existing.password_hash;
+    if (effectiveHash) {
+      await client.query(
+        `INSERT INTO user_credentials (
+           user_id, password_hash, password_algo, password_algorithm,
+           password_updated_at, password_changed_at, created_at, updated_at
+         )
+         VALUES ($1, $2, 'argon2id', 'argon2id', NOW(), NOW(), NOW(), NOW())
+         ON CONFLICT (user_id)
+         DO UPDATE SET password_hash = EXCLUDED.password_hash,
+                       password_algo = EXCLUDED.password_algo,
+                       password_algorithm = EXCLUDED.password_algorithm,
+                       password_updated_at = EXCLUDED.password_updated_at,
+                       password_changed_at = EXCLUDED.password_changed_at,
+                       updated_at = EXCLUDED.updated_at`,
+        [userUuid, effectiveHash]
+      );
+    }
+  });
+
+  return userUuid;
+}
+
 async function createSession(user: any, context: { deviceId?: string; deviceName?: string; platform?: string }) {
   const issuedAt = now();
   const refreshToken = generateRefreshToken();
@@ -150,11 +270,12 @@ export default async function authService(app: any) {
     }
 
     const userId = generateId();
+    const passwordHash = hashPassword(body.password);
     try {
       await query(
         `INSERT INTO users (user_id, email, email_lower, username, username_lower, display_name, display_name_lower, password_hash, is_verified, email_verified_at, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [userId, emailLower, emailLower, usernameLower, usernameLower, usernameLower, usernameLower, hashPassword(body.password), true, ts, ts, ts]
+        [userId, emailLower, emailLower, usernameLower, usernameLower, usernameLower, usernameLower, passwordHash, true, ts, ts, ts]
       );
     } catch (error: any) {
       if (error.code === "23505") {
@@ -175,6 +296,8 @@ export default async function authService(app: any) {
         [usernameLower, emailLower]
       );
     }
+
+    await ensureMobileUserDatabaseRows(userId, passwordHash);
 
     const user = { userId, email: emailLower, username: usernameLower, displayName: usernameLower, isVerified: true };
 
@@ -213,6 +336,8 @@ export default async function authService(app: any) {
     if (!row || !verifyPassword(body.password, row.password_hash)) {
       throw new HttpError(401, "Invalid credentials");
     }
+
+    await ensureMobileUserDatabaseRows(row.user_id, row.password_hash);
 
     const user = mapUser(row);
     const session = await createSession(user, {
@@ -476,6 +601,10 @@ export default async function authService(app: any) {
        WHERE email_lower = $3 AND is_verified = FALSE`,
       [ts, ts, emailLower]
     );
+    const verifiedUser = await queryOne(`SELECT user_id, password_hash FROM users WHERE email_lower = $1`, [emailLower]);
+    if (verifiedUser) {
+      await ensureMobileUserDatabaseRows(verifiedUser.user_id, verifiedUser.password_hash);
+    }
 
     return { verified: true };
   });
@@ -537,10 +666,12 @@ export default async function authService(app: any) {
     }
 
     await query(`UPDATE password_reset_tokens SET used_at = $1 WHERE id = $2`, [ts, resetToken.id]);
+    const nextPasswordHash = hashPassword(newPassword);
     await query(
       `UPDATE users SET password_hash = $1, updated_at = $2 WHERE user_id = $3`,
-      [hashPassword(newPassword), ts, resetToken.user_id]
+      [nextPasswordHash, ts, resetToken.user_id]
     );
+    await ensureMobileUserDatabaseRows(resetToken.user_id, nextPasswordHash);
     await query(
       `UPDATE refresh_tokens SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL`,
       [ts, resetToken.user_id]

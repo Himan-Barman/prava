@@ -1,6 +1,8 @@
 import { secureStore } from '../adapters/secure-store';
 import { getOrCreateDeviceId } from '../adapters/device-id';
 
+const DEFAULT_BACKEND_API_URL = 'https://prava-1.onrender.com/api';
+
 const resolveWsBase = () => {
   const explicit = import.meta.env.VITE_WS_URL as string | undefined;
   if (explicit && explicit.trim().length > 0) {
@@ -10,10 +12,10 @@ const resolveWsBase = () => {
   const apiBase = (
     (
       (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim().length > 0)
-      ? import.meta.env.VITE_API_URL
+        ? import.meta.env.VITE_API_URL
       : (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim().length > 0)
         ? import.meta.env.VITE_API_BASE_URL
-        : (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')
+        : (import.meta.env.PROD ? DEFAULT_BACKEND_API_URL : 'http://localhost:3000/api')
     )
   ).replace(/\/+$/, '');
   const trimmed = apiBase.replace(/\/api$/i, '');
