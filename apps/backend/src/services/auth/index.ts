@@ -135,17 +135,18 @@ async function ensureMobileUserDatabaseRows(userId: string, passwordHash?: strin
       const emailRow = await client.query(
         `SELECT id
          FROM user_emails
-         WHERE (email_normalized = $1 OR lower(email::text) = $1) AND deleted_at IS NULL
+         WHERE (email_normalized = $1::varchar(320) OR lower(email::text) = $2::text)
+           AND deleted_at IS NULL
          LIMIT 1`,
-        [existing.email_lower]
+        [existing.email_lower, existing.email_lower]
       );
       if ((emailRow.rowCount || 0) > 0) {
         await client.query(
           `UPDATE user_emails
            SET user_id = $2,
                is_primary = TRUE,
-               is_verified = is_verified OR $3,
-               verified_at = CASE WHEN $3 THEN COALESCE(verified_at, NOW()) ELSE verified_at END,
+               is_verified = is_verified OR $3::boolean,
+               verified_at = CASE WHEN $3::boolean THEN COALESCE(verified_at, NOW()) ELSE verified_at END,
                updated_at = NOW()
            WHERE id = $1`,
           [emailRow.rows[0]?.id, userUuid, existing.is_verified === true]
@@ -155,8 +156,8 @@ async function ensureMobileUserDatabaseRows(userId: string, passwordHash?: strin
           `INSERT INTO user_emails (
              id, user_id, email, email_normalized, is_primary, is_verified, verified_at, created_at, updated_at
            )
-           VALUES ($1, $2, $3, $3, TRUE, $4, CASE WHEN $4 THEN NOW() ELSE NULL END, NOW(), NOW())`,
-          [generateId(), userUuid, existing.email_lower, existing.is_verified === true]
+           VALUES ($1, $2, $3::text, $4::varchar(320), TRUE, $5::boolean, CASE WHEN $5::boolean THEN NOW() ELSE NULL END, NOW(), NOW())`,
+          [generateId(), userUuid, existing.email_lower, existing.email_lower, existing.is_verified === true]
         );
       }
     }
