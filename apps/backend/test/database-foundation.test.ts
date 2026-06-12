@@ -182,6 +182,30 @@ test("foundation refresh adds missing comment uuid columns", async () => {
   assert.equal(row?.like_user_uuid, row?.author_uuid);
 });
 
+test("foundation rerun repairs partially marked foundation tables", async () => {
+  const pgLib = await import("../src/lib/pg.js");
+  const { runDatabaseFoundationMigrations } = await import("../src/lib/database-foundation.js");
+
+  await pgLib.query(`
+    DROP TABLE IF EXISTS user_profiles;
+    DROP INDEX IF EXISTS user_profiles_pkey;
+  `);
+  await runDatabaseFoundationMigrations(pgLib.getPool());
+
+  const columns = await pgLib.queryMany<{ column_name: string }>(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'user_profiles'
+       AND column_name IN ('user_id', 'profile_metadata', 'display_name', 'search_vector')`
+  );
+  const names = new Set(columns.map((row) => row.column_name));
+  assert.equal(names.has("user_id"), true);
+  assert.equal(names.has("profile_metadata"), true);
+  assert.equal(names.has("display_name"), true);
+  assert.equal(names.has("search_vector"), true);
+});
+
 test("foundation enforces identity and reliability uniqueness", async () => {
   const pgLib = await import("../src/lib/pg.js");
   const stamp = Date.now();

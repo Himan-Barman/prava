@@ -6,6 +6,7 @@ import { runDatabaseDomainMigrations } from "./database-domain-migrations.js";
 export async function runDatabaseFoundationMigrations(pool: pg.Pool): Promise<void> {
   if (await isFoundationApplied(pool)) {
     await refreshFoundationBackfills(pool);
+    await ensureFoundationPrerequisiteTables(pool);
     await runDatabaseDomainMigrations(pool);
     await seedFoundationData(pool);
     return;
@@ -131,6 +132,10 @@ export async function runDatabaseFoundationMigrations(pool: pg.Pool): Promise<vo
       cover_media_id UUID,
       location_text VARCHAR(120),
       website_url TEXT,
+      display_name VARCHAR(100),
+      banner_media_id UUID,
+      birth_date DATE,
+      search_vector TEXT,
       profile_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -1035,13 +1040,524 @@ async function isFoundationApplied(pool: pg.Pool): Promise<boolean> {
        AND table_name = 'schema_migrations'
      LIMIT 1`
   );
-  if ((table.rowCount ?? 0) === 0) {
+  if (table.rows.length === 0) {
     return false;
   }
   const migration = await pool.query(
     "SELECT 1 FROM schema_migrations WHERE version = '0001_database_foundation' LIMIT 1"
   );
-  return (migration.rowCount ?? 0) > 0;
+  return migration.rows.length > 0;
+}
+
+async function tableExists(pool: pg.Pool, tableName: string): Promise<boolean> {
+  const result = await pool.query(
+    `SELECT 1
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name = $1
+     LIMIT 1`,
+    [tableName]
+  );
+  return result.rows.length > 0;
+}
+
+async function createTableIfMissing(pool: pg.Pool, tableName: string, ddl: string): Promise<void> {
+  if (await tableExists(pool, tableName)) {
+    return;
+  }
+  await pool.query(ddl);
+}
+
+async function ensureFoundationPrerequisiteTables(pool: pg.Pool): Promise<void> {
+  await createTableIfMissing(pool, "user_profiles", `
+    CREATE TABLE user_profiles (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      bio TEXT,
+      avatar_media_id UUID,
+      cover_media_id UUID,
+      location_text VARCHAR(120),
+      website_url TEXT,
+      display_name VARCHAR(100),
+      banner_media_id UUID,
+      birth_date DATE,
+      search_vector TEXT,
+      profile_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "user_stats", `
+    CREATE TABLE user_stats (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      posts_count BIGINT NOT NULL DEFAULT 0,
+      followers_count BIGINT NOT NULL DEFAULT 0,
+      following_count BIGINT NOT NULL DEFAULT 0,
+      friends_count BIGINT NOT NULL DEFAULT 0,
+      profile_views_count BIGINT NOT NULL DEFAULT 0,
+      unread_notifications_count BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "user_privacy_settings", `
+    CREATE TABLE user_privacy_settings (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      profile_visibility VARCHAR(24) NOT NULL DEFAULT 'public',
+      message_permission VARCHAR(24) NOT NULL DEFAULT 'friends',
+      mention_permission VARCHAR(24) NOT NULL DEFAULT 'everyone',
+      activity_visibility VARCHAR(24) NOT NULL DEFAULT 'friends',
+      search_discoverable BOOLEAN NOT NULL DEFAULT true,
+      personalized_feed_enabled BOOLEAN NOT NULL DEFAULT true,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "user_emails", `
+    CREATE TABLE user_emails (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      is_primary BOOLEAN NOT NULL DEFAULT false,
+      is_verified BOOLEAN NOT NULL DEFAULT false,
+      verified_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      deleted_at TIMESTAMPTZ
+    )
+  `);
+
+  await createTableIfMissing(pool, "user_credentials", `
+    CREATE TABLE user_credentials (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      password_hash TEXT NOT NULL,
+      password_algo VARCHAR(32) NOT NULL DEFAULT 'bcrypt',
+      password_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      must_rotate_password BOOLEAN NOT NULL DEFAULT false
+    )
+  `);
+
+  await createTableIfMissing(pool, "user_devices", `
+    CREATE TABLE user_devices (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      device_fingerprint TEXT NOT NULL,
+      platform VARCHAR(32) NOT NULL,
+      app_version VARCHAR(32),
+      device_name TEXT,
+      trusted_at TIMESTAMPTZ,
+      last_seen_at TIMESTAMPTZ,
+      revoked_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "auth_sessions", `
+    CREATE TABLE auth_sessions (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      device_id UUID REFERENCES user_devices(id) ON DELETE SET NULL,
+      session_token_hash TEXT NOT NULL,
+      ip_address INET,
+      user_agent TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      revoked_at TIMESTAMPTZ,
+      last_seen_at TIMESTAMPTZ
+    )
+  `);
+
+  await createTableIfMissing(pool, "auth_refresh_tokens", `
+    CREATE TABLE auth_refresh_tokens (
+      id UUID PRIMARY KEY,
+      session_id UUID NOT NULL REFERENCES auth_sessions(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      rotated_at TIMESTAMPTZ,
+      revoked_at TIMESTAMPTZ
+    )
+  `);
+
+  await createTableIfMissing(pool, "auth_challenges", `
+    CREATE TABLE auth_challenges (
+      id UUID PRIMARY KEY,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      channel VARCHAR(24) NOT NULL,
+      target TEXT,
+      purpose VARCHAR(48) NOT NULL,
+      code_hash TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 5,
+      expires_at TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "auth_login_attempts", `
+    CREATE TABLE auth_login_attempts (
+      id BIGSERIAL PRIMARY KEY,
+      identifier TEXT NOT NULL,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      ip_address INET,
+      success BOOLEAN NOT NULL,
+      failure_reason VARCHAR(64),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "security_events", `
+    CREATE TABLE security_events (
+      id BIGSERIAL PRIMARY KEY,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      event_type VARCHAR(64) NOT NULL,
+      ip_address INET,
+      user_agent TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "roles", `
+    CREATE TABLE roles (
+      id UUID PRIMARY KEY,
+      name VARCHAR(48) NOT NULL UNIQUE,
+      description TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "permissions", `
+    CREATE TABLE permissions (
+      id UUID PRIMARY KEY,
+      name VARCHAR(96) NOT NULL UNIQUE,
+      description TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "role_permissions", `
+    CREATE TABLE role_permissions (
+      role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+      permission_id UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (role_id, permission_id)
+    )
+  `);
+
+  await createTableIfMissing(pool, "user_roles", `
+    CREATE TABLE user_roles (
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+      granted_by UUID REFERENCES users(id),
+      granted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ,
+      PRIMARY KEY (user_id, role_id)
+    )
+  `);
+
+  await createTableIfMissing(pool, "friendships", `
+    CREATE TABLE friendships (
+      requester_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      addressee_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status VARCHAR(24) NOT NULL DEFAULT 'pending',
+      requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      responded_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CHECK (requester_id <> addressee_id),
+      PRIMARY KEY (requester_id, addressee_id)
+    )
+  `);
+
+  await createTableIfMissing(pool, "blocks", `
+    CREATE TABLE blocks (
+      blocker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      blocked_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reason VARCHAR(64),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CHECK (blocker_id <> blocked_id),
+      PRIMARY KEY (blocker_id, blocked_id)
+    )
+  `);
+
+  await createTableIfMissing(pool, "mutes", `
+    CREATE TABLE mutes (
+      muter_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      muted_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      mute_type VARCHAR(24) NOT NULL DEFAULT 'all',
+      expires_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CHECK (muter_id <> muted_user_id),
+      PRIMARY KEY (muter_id, muted_user_id, mute_type)
+    )
+  `);
+
+  await createTableIfMissing(pool, "topic_catalog", `
+    CREATE TABLE topic_catalog (
+      id UUID PRIMARY KEY,
+      slug VARCHAR(80) NOT NULL UNIQUE,
+      name VARCHAR(120) NOT NULL,
+      description TEXT,
+      parent_topic_id UUID REFERENCES topic_catalog(id) ON DELETE SET NULL,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "post_stats", `
+    CREATE TABLE post_stats (
+      post_id UUID PRIMARY KEY REFERENCES posts(id) ON DELETE CASCADE,
+      likes_count BIGINT NOT NULL DEFAULT 0,
+      comments_count BIGINT NOT NULL DEFAULT 0,
+      shares_count BIGINT NOT NULL DEFAULT 0,
+      bookmarks_count BIGINT NOT NULL DEFAULT 0,
+      impressions_count BIGINT NOT NULL DEFAULT 0,
+      reads_count BIGINT NOT NULL DEFAULT 0,
+      profile_clicks_count BIGINT NOT NULL DEFAULT 0,
+      engagement_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "hashtags", `
+    CREATE TABLE hashtags (
+      id UUID PRIMARY KEY,
+      tag VARCHAR(96) NOT NULL,
+      tag_normalized VARCHAR(96) NOT NULL UNIQUE,
+      posts_count BIGINT NOT NULL DEFAULT 0,
+      engagement_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+      last_used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "feed_algorithm_versions", `
+    CREATE TABLE feed_algorithm_versions (
+      id UUID PRIMARY KEY,
+      name VARCHAR(96) NOT NULL,
+      version VARCHAR(48) NOT NULL,
+      config JSONB NOT NULL DEFAULT '{}'::jsonb,
+      is_active BOOLEAN NOT NULL DEFAULT false,
+      rollout_percent INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      activated_at TIMESTAMPTZ,
+      UNIQUE (name, version)
+    )
+  `);
+
+  await createTableIfMissing(pool, "feed_requests", `
+    CREATE TABLE feed_requests (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      algorithm_version_id UUID REFERENCES feed_algorithm_versions(id) ON DELETE SET NULL,
+      feed_type VARCHAR(24) NOT NULL,
+      cursor_in TEXT,
+      cursor_out TEXT,
+      request_context JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "post_engagement_windows", `
+    CREATE TABLE post_engagement_windows (
+      post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+      window_start TIMESTAMPTZ NOT NULL,
+      window_size_minutes INTEGER NOT NULL,
+      impressions_count BIGINT NOT NULL DEFAULT 0,
+      likes_count BIGINT NOT NULL DEFAULT 0,
+      comments_count BIGINT NOT NULL DEFAULT 0,
+      shares_count BIGINT NOT NULL DEFAULT 0,
+      reads_count BIGINT NOT NULL DEFAULT 0,
+      engagement_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (post_id, window_start, window_size_minutes)
+    )
+  `);
+
+  await createTableIfMissing(pool, "notification_preferences", `
+    CREATE TABLE notification_preferences (
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      channel VARCHAR(24) NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT true,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, channel)
+    )
+  `);
+
+  await createTableIfMissing(pool, "reports", `
+    CREATE TABLE reports (
+      id UUID PRIMARY KEY,
+      reporter_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      target_type VARCHAR(32) NOT NULL,
+      target_uuid UUID NOT NULL,
+      reason VARCHAR(96) NOT NULL,
+      status VARCHAR(24) NOT NULL DEFAULT 'open',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      resolved_at TIMESTAMPTZ
+    )
+  `);
+
+  await createTableIfMissing(pool, "moderation_cases", `
+    CREATE TABLE moderation_cases (
+      id UUID PRIMARY KEY,
+      target_type VARCHAR(32) NOT NULL,
+      target_uuid UUID NOT NULL,
+      status VARCHAR(24) NOT NULL DEFAULT 'open',
+      priority INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "media_objects", `
+    CREATE TABLE media_objects (
+      id UUID PRIMARY KEY,
+      owner_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      bucket VARCHAR(96) NOT NULL,
+      object_key TEXT NOT NULL,
+      media_type VARCHAR(32) NOT NULL,
+      mime_type VARCHAR(120) NOT NULL,
+      byte_size BIGINT NOT NULL,
+      width INTEGER,
+      height INTEGER,
+      duration_ms INTEGER,
+      checksum_sha256 TEXT,
+      processing_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      moderation_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      deleted_at TIMESTAMPTZ
+    )
+  `);
+
+  await createTableIfMissing(pool, "upload_sessions", `
+    CREATE TABLE upload_sessions (
+      id UUID PRIMARY KEY,
+      owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      media_object_id UUID REFERENCES media_objects(id) ON DELETE SET NULL,
+      upload_type VARCHAR(32) NOT NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      expected_byte_size BIGINT,
+      expires_at TIMESTAMPTZ NOT NULL,
+      completed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+    )
+  `);
+
+  await createTableIfMissing(pool, "outbox_events", `
+    CREATE TABLE outbox_events (
+      id UUID PRIMARY KEY,
+      aggregate_type VARCHAR(64) NOT NULL,
+      aggregate_uuid UUID,
+      event_type VARCHAR(96) NOT NULL,
+      payload JSONB NOT NULL,
+      status VARCHAR(24) NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      available_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      processed_at TIMESTAMPTZ,
+      last_error TEXT
+    )
+  `);
+
+  await createTableIfMissing(pool, "processed_events", `
+    CREATE TABLE processed_events (
+      consumer_name VARCHAR(96) NOT NULL,
+      event_id UUID NOT NULL,
+      processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (consumer_name, event_id)
+    )
+  `);
+
+  await createTableIfMissing(pool, "dead_letter_events", `
+    CREATE TABLE dead_letter_events (
+      id UUID PRIMARY KEY,
+      source_event_id UUID,
+      source_table VARCHAR(96) NOT NULL,
+      event_type VARCHAR(96) NOT NULL,
+      payload JSONB NOT NULL,
+      error_message TEXT NOT NULL,
+      failed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+    )
+  `);
+
+  await createTableIfMissing(pool, "idempotency_keys", `
+    CREATE TABLE idempotency_keys (
+      key VARCHAR(160) PRIMARY KEY,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      request_hash TEXT NOT NULL,
+      response_status INTEGER,
+      response_body JSONB,
+      locked_until TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NOT NULL
+    )
+  `);
+
+  await createTableIfMissing(pool, "background_job_runs", `
+    CREATE TABLE background_job_runs (
+      id UUID PRIMARY KEY,
+      job_name VARCHAR(96) NOT NULL,
+      status VARCHAR(24) NOT NULL DEFAULT 'running',
+      started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      finished_at TIMESTAMPTZ,
+      duration_ms INTEGER,
+      stats JSONB NOT NULL DEFAULT '{}'::jsonb,
+      error_message TEXT
+    )
+  `);
+
+  await createTableIfMissing(pool, "background_job_locks", `
+    CREATE TABLE background_job_locks (
+      lock_key VARCHAR(120) PRIMARY KEY,
+      owner_id VARCHAR(120) NOT NULL,
+      locked_until TIMESTAMPTZ NOT NULL,
+      acquired_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "feature_flags", `
+    CREATE TABLE feature_flags (
+      key VARCHAR(96) PRIMARY KEY,
+      description TEXT,
+      enabled BOOLEAN NOT NULL DEFAULT false,
+      rollout_percent INTEGER NOT NULL DEFAULT 0,
+      rules JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "app_config_versions", `
+    CREATE TABLE app_config_versions (
+      id UUID PRIMARY KEY,
+      config_key VARCHAR(96) NOT NULL,
+      version INTEGER NOT NULL,
+      config JSONB NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT false,
+      created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      activated_at TIMESTAMPTZ,
+      UNIQUE (config_key, version)
+    )
+  `);
+
+  await createTableIfMissing(pool, "admin_audit_logs", `
+    CREATE TABLE admin_audit_logs (
+      id BIGSERIAL PRIMARY KEY,
+      actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      action VARCHAR(96) NOT NULL,
+      target_type VARCHAR(64),
+      target_uuid UUID,
+      ip_address INET,
+      user_agent TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
 }
 
 async function refreshFoundationBackfills(pool: pg.Pool): Promise<void> {
@@ -1082,6 +1598,13 @@ async function ensureBackfillColumns(pool: pg.Pool): Promise<void> {
 
     ALTER TABLE comment_likes ADD COLUMN IF NOT EXISTS comment_uuid UUID;
     ALTER TABLE comment_likes ADD COLUMN IF NOT EXISTS user_uuid UUID;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_uuid_unique ON users (id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_uuid_unique ON posts (id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_uuid_unique ON conversations (id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_uuid_unique ON messages (message_uuid);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_uuid_unique ON notifications (notification_uuid);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_comments_uuid_unique ON comments (id);
   `);
 }
 

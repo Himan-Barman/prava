@@ -546,13 +546,40 @@ async function isDomainExpansionApplied(pool: pg.Pool): Promise<boolean> {
        AND table_name = 'schema_migrations'
      LIMIT 1`
   );
-  if ((table.rowCount ?? 0) === 0) {
+  if (table.rows.length === 0) {
     return false;
   }
   const migration = await pool.query(
     "SELECT 1 FROM schema_migrations WHERE version = '0002_database_domain_expansion' LIMIT 1"
   );
-  return (migration.rowCount ?? 0) > 0;
+  if (migration.rows.length === 0) {
+    return false;
+  }
+
+  const requiredTables = await pool.query<{ table_name: string }>(
+    `SELECT table_name
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name IN (
+         'feed_candidate_sources',
+         'retention_policies',
+         'message_delivery_events',
+         'notification_delivery_attempts',
+         'moderation_queues',
+         'feature_flag_overrides',
+         'daily_system_metrics'
+       )`
+  );
+  const found = new Set(requiredTables.rows.map((row) => row.table_name));
+  return [
+    "feed_candidate_sources",
+    "retention_policies",
+    "message_delivery_events",
+    "notification_delivery_attempts",
+    "moderation_queues",
+    "feature_flag_overrides",
+    "daily_system_metrics",
+  ].every((tableName) => found.has(tableName));
 }
 
 async function refreshDomainReferences(pool: pg.Pool): Promise<void> {
