@@ -81,8 +81,8 @@ async function ensureMobileUserDatabaseRows(userId: string, passwordHash?: strin
 
     await client.query(
       `UPDATE users
-       SET handle = COALESCE(handle, username),
-           handle_normalized = COALESCE(handle_normalized, username_lower),
+       SET handle = COALESCE(handle, substring(username from 1 for 30)),
+           handle_normalized = COALESCE(handle_normalized, substring(username_lower from 1 for 30)),
            account_status = COALESCE(account_status, 'active'),
            language_code = COALESCE(language_code, 'en')
        WHERE user_id = $1`,
@@ -93,9 +93,21 @@ async function ensureMobileUserDatabaseRows(userId: string, passwordHash?: strin
       `INSERT INTO user_settings (user_id, settings, updated_at)
        VALUES ($1, $2, NOW())
        ON CONFLICT (user_id)
-       DO UPDATE SET settings = COALESCE(user_settings.settings, '{}'::jsonb) || EXCLUDED.settings,
+       DO UPDATE SET settings = COALESCE(user_settings.settings, EXCLUDED.settings),
                      updated_at = EXCLUDED.updated_at`,
       [userId, JSON.stringify(settings)]
+    );
+
+    await client.query(
+      `UPDATE user_settings
+       SET user_uuid = COALESCE(user_uuid, $2),
+           language_code = CASE
+             WHEN language_code IS NULL OR language_code = '' THEN $3
+             ELSE language_code
+           END,
+           updated_at = NOW()
+       WHERE user_id = $1`,
+      [userId, userUuid, settings.languageCode]
     );
 
     await client.query(
@@ -123,7 +135,7 @@ async function ensureMobileUserDatabaseRows(userId: string, passwordHash?: strin
       const emailRow = await client.query(
         `SELECT id
          FROM user_emails
-         WHERE email_normalized = $1 AND deleted_at IS NULL
+         WHERE (email_normalized = $1 OR lower(email::text) = $1) AND deleted_at IS NULL
          LIMIT 1`,
         [existing.email_lower]
       );

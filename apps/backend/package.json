@@ -13,7 +13,7 @@
     "worker": "node dist/app/bootstrap-worker.js",
     "scheduler": "node dist/app/bootstrap-scheduler.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "tsx --test --test-concurrency=1 test/chat.integration.test.ts test/feed.recommendation.test.ts test/database-foundation.test.ts test/database-domain.test.ts test/api-v1.contract.test.ts",
+    "test": "tsx --test --test-concurrency=1 test/chat.integration.test.ts test/feed.recommendation.test.ts test/database-foundation.test.ts test/database-domain.test.ts test/api-v1.contract.test.ts test/legacy-auth.integration.test.ts",
     "load:chat": "node scripts/load-chat.mjs",
     "clean": "rimraf dist"
   },
