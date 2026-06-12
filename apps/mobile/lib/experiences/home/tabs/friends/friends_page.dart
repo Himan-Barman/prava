@@ -82,22 +82,26 @@ class _FriendsPageState extends State<FriendsPage> {
 
   List<_FriendRowData> get _currentRows {
     final rows = switch (_tab) {
-      _FriendsTab.friends => _friends
-          .map((item) => _FriendRowData(item, _FriendRowKind.friend))
-          .toList(),
+      _FriendsTab.friends =>
+        _friends
+            .map((item) => _FriendRowData(item, _FriendRowKind.friend))
+            .toList(),
       _FriendsTab.following => [
-          ..._followingOnly
-              .map((item) => _FriendRowData(item, _FriendRowKind.following)),
-          ..._friends.map((item) => _FriendRowData(item, _FriendRowKind.friend)),
-        ],
+        ..._followingOnly.map(
+          (item) => _FriendRowData(item, _FriendRowKind.following),
+        ),
+        ..._friends.map((item) => _FriendRowData(item, _FriendRowKind.friend)),
+      ],
       _FriendsTab.followers => [
-          ..._requests
-              .map((item) => _FriendRowData(item, _FriendRowKind.follower)),
-          ..._friends.map((item) => _FriendRowData(item, _FriendRowKind.friend)),
-        ],
-      _FriendsTab.requests => _requests
-          .map((item) => _FriendRowData(item, _FriendRowKind.request))
-          .toList(),
+        ..._requests.map(
+          (item) => _FriendRowData(item, _FriendRowKind.follower),
+        ),
+        ..._friends.map((item) => _FriendRowData(item, _FriendRowKind.friend)),
+      ],
+      _FriendsTab.requests =>
+        _requests
+            .map((item) => _FriendRowData(item, _FriendRowKind.request))
+            .toList(),
     };
 
     final query = _searchController.text.trim().toLowerCase();
@@ -156,7 +160,9 @@ class _FriendsPageState extends State<FriendsPage> {
       if (conversationId == null || conversationId.isEmpty) {
         throw Exception('Conversation not created');
       }
-      final name = user.displayName.isNotEmpty ? user.displayName : user.username;
+      final name = user.displayName.isNotEmpty
+          ? user.displayName
+          : user.username;
       await Navigator.of(context, rootNavigator: true).push(
         PravaNavigator.route(
           ChatThreadPage(
@@ -344,16 +350,10 @@ class _FriendsPageState extends State<FriendsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+    final border = tokens.borderSubtle;
     final rows = _currentRows;
 
     return GestureDetector(
@@ -371,9 +371,7 @@ class _FriendsPageState extends State<FriendsPage> {
                   filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white10
-                          : Colors.white.withValues(alpha: 0.75),
+                      color: tokens.backgroundSurface.withValues(alpha: 0.9),
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: border),
                     ),
@@ -381,6 +379,13 @@ class _FriendsPageState extends State<FriendsPage> {
                       controller: _searchController,
                       placeholder: _searchPlaceholder(),
                       backgroundColor: Colors.transparent,
+                      itemColor: tokens.iconSecondary,
+                      style: PravaTypography.body.copyWith(
+                        color: tokens.textPrimary,
+                      ),
+                      placeholderStyle: PravaTypography.body.copyWith(
+                        color: tokens.textTertiary,
+                      ),
                     ),
                   ),
                 ),
@@ -429,7 +434,7 @@ class _FriendsPageState extends State<FriendsPage> {
                 ? const ChatListSkeleton()
                 : RefreshIndicator(
                     onRefresh: () => _loadConnections(silent: true),
-                    color: PravaColors.accentPrimary,
+                    color: tokens.brandPrimary,
                     child: rows.isEmpty
                         ? _EmptyFriendsState(
                             title: _emptyTitle(),
@@ -499,7 +504,8 @@ class _FriendsPageState extends State<FriendsPage> {
       _FriendsTab.friends => 'Follow each other to become friends.',
       _FriendsTab.following => 'People you follow will show here.',
       _FriendsTab.followers => 'People following you will show here.',
-      _FriendsTab.requests => 'New followers waiting for follow back show here.',
+      _FriendsTab.requests =>
+        'New followers waiting for follow back show here.',
     };
   }
 }
@@ -528,13 +534,9 @@ class _FriendCapsule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final secondary = tokens.textSecondary;
+    final border = tokens.borderSubtle;
 
     return GestureDetector(
       onTap: onTap,
@@ -543,19 +545,15 @@ class _FriendCapsule extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         height: 36,
         decoration: BoxDecoration(
-          color: selected
-              ? PravaColors.accentPrimary.withValues(alpha: 0.16)
-              : Colors.transparent,
+          color: selected ? tokens.brandContainer : Colors.transparent,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: selected ? PravaColors.accentPrimary : border,
-          ),
+          border: Border.all(color: selected ? tokens.brandPrimary : border),
         ),
         child: Center(
           child: Text(
             '$label $count',
             style: PravaTypography.button.copyWith(
-              color: selected ? PravaColors.accentPrimary : secondary,
+              color: selected ? tokens.brandContent : secondary,
               letterSpacing: 0,
               fontWeight: FontWeight.w800,
             ),
@@ -587,13 +585,9 @@ class _FriendRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark
-        ? PravaColors.darkBgSurface.withValues(alpha: 0.86)
-        : Colors.white.withValues(alpha: 0.9);
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final surface = tokens.backgroundSurface;
+    final border = tokens.borderSubtle;
     final user = row.item.user;
     final name = user.displayName.isNotEmpty ? user.displayName : user.username;
 
@@ -610,7 +604,7 @@ class _FriendRow extends StatelessWidget {
             border: Border.all(color: border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.05),
+                color: tokens.shadowSoft,
                 blurRadius: 14,
                 offset: const Offset(0, 8),
               ),
@@ -639,9 +633,9 @@ class _FriendRow extends StatelessWidget {
                         ),
                         if (user.isVerified) ...[
                           const SizedBox(width: 5),
-                          const Icon(
+                          Icon(
                             CupertinoIcons.check_mark_circled_solid,
-                            color: PravaColors.accentPrimary,
+                            color: tokens.brandPrimary,
                             size: 15,
                           ),
                         ],
@@ -700,10 +694,9 @@ class _FriendAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initial = (user.displayName.isNotEmpty
-            ? user.displayName
-            : user.username)
-        .trim();
+    final tokens = context.pravaColors;
+    final initial =
+        (user.displayName.isNotEmpty ? user.displayName : user.username).trim();
 
     return SizedBox(
       width: 52,
@@ -712,12 +705,12 @@ class _FriendAvatar extends StatelessWidget {
         child: user.avatarUrl.trim().isNotEmpty
             ? Image.network(user.avatarUrl, fit: BoxFit.cover)
             : Container(
-                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                color: tokens.brandContainer,
                 child: Center(
                   child: Text(
                     initial.isEmpty ? '?' : initial[0].toUpperCase(),
                     style: PravaTypography.h3.copyWith(
-                      color: PravaColors.accentPrimary,
+                      color: tokens.brandContent,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -743,6 +736,7 @@ class _FriendActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final constraints = compact
         ? const BoxConstraints(minWidth: 72, maxWidth: 88)
         : const BoxConstraints(minWidth: 90, maxWidth: 118);
@@ -755,9 +749,7 @@ class _FriendActionButton extends StatelessWidget {
         constraints: constraints,
         padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
         decoration: BoxDecoration(
-          color: pending
-              ? PravaColors.accentPrimary.withValues(alpha: 0.45)
-              : PravaColors.accentPrimary,
+          color: pending ? tokens.brandContainer : tokens.brandPrimary,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Center(
@@ -768,7 +760,7 @@ class _FriendActionButton extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: PravaTypography.button.copyWith(
-                    color: Colors.white,
+                    color: pending ? tokens.brandContent : tokens.textInverse,
                     letterSpacing: 0,
                     fontWeight: FontWeight.w800,
                   ),

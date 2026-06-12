@@ -119,15 +119,10 @@ class _PostDetailPageState extends State<PostDetailPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+    final border = tokens.borderSubtle;
 
     return Scaffold(
       body: Stack(
@@ -158,7 +153,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
                           secondary: secondary,
                         )
                       : RefreshIndicator(
-                          color: PravaColors.accentPrimary,
+                          color: tokens.brandPrimary,
                           onRefresh: _load,
                           child: ListView(
                             physics: const BouncingScrollPhysics(
@@ -232,10 +227,8 @@ class _PostDetailCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark
-        ? PravaColors.darkBgSurface
-        : PravaColors.lightBgSurface;
+    final tokens = context.pravaColors;
+    final surface = tokens.backgroundSurface;
     final body = post.body.trim().isEmpty ? 'Text post' : post.body.trim();
 
     return Container(
@@ -347,7 +340,8 @@ class _DetailAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? PravaColors.accentPrimary : Colors.grey;
+    final tokens = context.pravaColors;
+    final color = active ? tokens.socialLikeActive : tokens.iconSecondary;
     return CupertinoButton(
       minimumSize: const Size(38, 38),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -390,9 +384,8 @@ class _CommentPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fill = highlighted
-        ? PravaColors.accentPrimary.withValues(alpha: 0.12)
-        : Colors.transparent;
+    final tokens = context.pravaColors;
+    final fill = highlighted ? tokens.brandContainer : Colors.transparent;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -400,9 +393,7 @@ class _CommentPreview extends StatelessWidget {
       decoration: BoxDecoration(
         color: fill,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: highlighted ? PravaColors.accentPrimary : border,
-        ),
+        border: Border.all(color: highlighted ? tokens.brandPrimary : border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -455,10 +446,11 @@ class _FeedAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final avatarUrl = author.avatarUrl.trim();
     return CircleAvatar(
       radius: size / 2,
-      backgroundColor: PravaColors.accentPrimary.withValues(alpha: 0.16),
+      backgroundColor: tokens.brandContainer,
       backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
       child: avatarUrl.isNotEmpty
           ? null
@@ -467,7 +459,7 @@ class _FeedAvatar extends StatelessWidget {
                   ? author.username.substring(0, 1).toUpperCase()
                   : '@',
               style: PravaTypography.body.copyWith(
-                color: PravaColors.accentPrimary,
+                color: tokens.brandContent,
                 fontWeight: FontWeight.w800,
               ),
             ),

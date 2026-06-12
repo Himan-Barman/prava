@@ -78,15 +78,10 @@ class ProfilePostListPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+    final border = tokens.borderSubtle;
 
     return Scaffold(
       body: Stack(
@@ -200,15 +195,10 @@ class _ProfileConnectionsPageState extends State<ProfileConnectionsPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+    final border = tokens.borderSubtle;
 
     return Scaffold(
       body: Stack(
@@ -221,7 +211,7 @@ class _ProfileConnectionsPageState extends State<ProfileConnectionsPage> {
                 _ProfileContentHeader(title: widget.title, primary: primary),
                 Expanded(
                   child: RefreshIndicator(
-                    color: PravaColors.accentPrimary,
+                    color: tokens.brandPrimary,
                     onRefresh: _load,
                     child: _loading
                         ? const Center(
@@ -363,6 +353,7 @@ class _ProfileContentPostRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final body = post.body.trim().isEmpty ? 'Text post' : post.body.trim();
     final tags = <String>[
       ...post.hashtags.map((tag) => tag.startsWith('#') ? tag : '#$tag'),
@@ -394,7 +385,7 @@ class _ProfileContentPostRow extends StatelessWidget {
                 return Text(
                   tag,
                   style: PravaTypography.caption.copyWith(
-                    color: PravaColors.accentPrimary,
+                    color: tokens.linkDefault,
                     fontWeight: FontWeight.w700,
                   ),
                 );
@@ -430,6 +421,7 @@ class _ProfileConnectionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final user = item.user;
     final name = user.displayName.isNotEmpty ? user.displayName : user.username;
 
@@ -464,9 +456,9 @@ class _ProfileConnectionRow extends StatelessWidget {
                       ),
                       if (user.isVerified) ...[
                         const SizedBox(width: 5),
-                        const Icon(
+                        Icon(
                           CupertinoIcons.check_mark_circled_solid,
-                          color: PravaColors.accentPrimary,
+                          color: tokens.brandPrimary,
                           size: 15,
                         ),
                       ],
@@ -497,6 +489,7 @@ class _ProfileConnectionAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final name =
         (user.displayName.isNotEmpty ? user.displayName : user.username).trim();
 
@@ -507,12 +500,12 @@ class _ProfileConnectionAvatar extends StatelessWidget {
         child: user.avatarUrl.trim().isNotEmpty
             ? Image.network(user.avatarUrl, fit: BoxFit.cover)
             : Container(
-                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                color: tokens.brandContainer,
                 child: Center(
                   child: Text(
                     name.isEmpty ? '?' : name[0].toUpperCase(),
                     style: PravaTypography.h3.copyWith(
-                      color: PravaColors.accentPrimary,
+                      color: tokens.brandContent,
                       fontWeight: FontWeight.w800,
                     ),
                   ),

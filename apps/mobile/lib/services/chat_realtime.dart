@@ -11,8 +11,8 @@ typedef ChatEventHandler = void Function(Map<String, dynamic> event);
 
 class ChatRealtime {
   ChatRealtime({SecureStore? store})
-      : _store = store ?? SecureStore(),
-        _deviceIdStore = DeviceIdStore(store ?? SecureStore());
+    : _store = store ?? SecureStore(),
+      _deviceIdStore = DeviceIdStore(store ?? SecureStore());
 
   final SecureStore _store;
   final DeviceIdStore _deviceIdStore;
@@ -38,12 +38,9 @@ class ChatRealtime {
     if (token == null || token.isEmpty) return;
 
     final deviceId = await _deviceIdStore.getOrCreate();
-    final url = Uri.parse(AppConfig.wsBaseUrl).replace(
-      queryParameters: {
-        'token': token,
-        'deviceId': deviceId,
-      },
-    );
+    final url = Uri.parse(
+      AppConfig.wsBaseUrl,
+    ).replace(queryParameters: {'token': token, 'deviceId': deviceId});
 
     _channel = WebSocketChannel.connect(url);
     _reconnectAttempt = 0;
@@ -74,9 +71,7 @@ class ChatRealtime {
     if (_reconnectTimer != null) return;
     final delaySeconds = (_reconnectAttempt == 0)
         ? 1
-        : (_reconnectAttempt < 6
-            ? 2 << (_reconnectAttempt - 1)
-            : 30);
+        : (_reconnectAttempt < 6 ? 2 << (_reconnectAttempt - 1) : 30);
     _reconnectAttempt += 1;
     _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
       _reconnectTimer = null;
@@ -84,14 +79,10 @@ class ChatRealtime {
     });
   }
 
-  void sendTyping({
-    required String conversationId,
-    required bool isTyping,
-  }) {
-    _send(
-      isTyping ? 'TYPING_START' : 'TYPING_STOP',
-      {'conversationId': conversationId},
-    );
+  void sendTyping({required String conversationId, required bool isTyping}) {
+    _send(isTyping ? 'TYPING_START' : 'TYPING_STOP', {
+      'conversationId': conversationId,
+    });
   }
 
   void sendMessage({
@@ -99,6 +90,7 @@ class ChatRealtime {
     required String body,
     required String tempId,
     String contentType = 'text',
+    String? clientMessageId,
     String? mediaAssetId,
     DateTime? clientTimestamp,
   }) {
@@ -107,6 +99,7 @@ class ChatRealtime {
       'body': body,
       'contentType': contentType,
       'tempId': tempId,
+      'clientMessageId': clientMessageId ?? tempId,
       if (mediaAssetId != null) 'mediaAssetId': mediaAssetId,
       if (clientTimestamp != null)
         'clientTimestamp': clientTimestamp.millisecondsSinceEpoch,
@@ -178,15 +171,11 @@ class ChatRealtime {
   }
 
   void subscribeConversation(String conversationId) {
-    _send('CONVERSATION_SUBSCRIBE', {
-      'conversationId': conversationId,
-    });
+    _send('CONVERSATION_SUBSCRIBE', {'conversationId': conversationId});
   }
 
   void syncInit(List<Map<String, dynamic>> conversations) {
-    _send('SYNC_INIT', {
-      'conversations': conversations,
-    });
+    _send('SYNC_INIT', {'conversations': conversations});
   }
 
   void _send(String type, Map<String, dynamic> payload) {

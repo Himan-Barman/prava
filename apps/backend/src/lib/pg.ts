@@ -528,7 +528,11 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(conversation_id, seq)
     );
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS client_message_id UUID DEFAULT NULL;
     CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON messages (conversation_id, created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_legacy_client_dedupe
+      ON messages (conversation_id, sender_user_id, client_message_id)
+      WHERE client_message_id IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS message_reactions (
       message_id      TEXT NOT NULL,

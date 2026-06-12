@@ -38,16 +38,7 @@ class HomeBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final inactive = isDark
-        ? PravaColors.darkTextTertiary
-        : PravaColors.lightTextTertiary;
-    final shell = isDark
-        ? Colors.black.withValues(alpha: 0.34)
-        : Colors.white.withValues(alpha: 0.86);
-    final border = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.black.withValues(alpha: 0.06);
+    final tokens = context.pravaColors;
 
     return SafeArea(
       top: false,
@@ -57,12 +48,12 @@ class HomeBottomBar extends StatelessWidget {
           height: 58,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           decoration: BoxDecoration(
-            color: shell,
+            color: tokens.backgroundSurface.withValues(alpha: 0.94),
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: border),
+            border: Border.all(color: tokens.borderSubtle),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.08),
+                color: tokens.shadowMedium,
                 blurRadius: 24,
                 offset: const Offset(0, 10),
               ),
@@ -74,9 +65,9 @@ class HomeBottomBar extends StatelessWidget {
               return _NavItem(
                 item: item,
                 active: index == i,
-                activeColor: PravaColors.accentPrimary,
-                inactiveColor: inactive,
-                isDark: isDark,
+                activeColor: tokens.brandContent,
+                inactiveColor: tokens.iconSecondary,
+                activeContainer: tokens.brandContainer,
                 onTap: () => onChanged(i),
               );
             }),
@@ -105,7 +96,7 @@ class _NavItem extends StatelessWidget {
     required this.active,
     required this.activeColor,
     required this.inactiveColor,
-    required this.isDark,
+    required this.activeContainer,
     required this.onTap,
   });
 
@@ -113,7 +104,7 @@ class _NavItem extends StatelessWidget {
   final bool active;
   final Color activeColor;
   final Color inactiveColor;
-  final bool isDark;
+  final Color activeContainer;
   final VoidCallback onTap;
 
   @override
@@ -138,9 +129,7 @@ class _NavItem extends StatelessWidget {
                 width: 48,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: active
-                      ? activeColor.withValues(alpha: isDark ? 0.18 : 0.12)
-                      : Colors.transparent,
+                  color: active ? activeContainer : Colors.transparent,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: AnimatedScale(

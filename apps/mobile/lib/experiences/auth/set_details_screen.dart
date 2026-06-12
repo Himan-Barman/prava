@@ -78,8 +78,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
   String get _firstName => _firstNameController.text.trim();
   String get _lastName => _lastNameController.text.trim();
 
-  String get _countryCodeDigits =>
-      _selectedCountry?.phoneCode ?? '';
+  String get _countryCodeDigits => _selectedCountry?.phoneCode ?? '';
   String get _phoneDigits =>
       _phoneController.text.replaceAll(RegExp(r'\D'), '');
 
@@ -106,8 +105,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
   bool get _identityValid => _firstNameValid && _lastNameValid;
   bool get _contactValid => _countryValid && _phoneValid;
   bool get _canContinueIdentity => !_loading && _identityValid;
-  bool get _canSubmitDetails =>
-      !_loading && _identityValid && _contactValid;
+  bool get _canSubmitDetails => !_loading && _identityValid && _contactValid;
 
   String get _phonePreview {
     if (!_countryValid || !_phoneValid) return '';
@@ -170,26 +168,21 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
           ? err.message
           : 'Unable to save details';
 
-      PravaToast.show(
-        context,
-        message: message,
-        type: PravaToastType.error,
-      );
+      PravaToast.show(context, message: message, type: PravaToastType.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryText =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondaryText =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final tertiaryText =
-        isDark ? PravaColors.darkTextTertiary : PravaColors.lightTextTertiary;
+    final tokens = context.pravaColors;
+    final primaryText = tokens.textPrimary;
+    final secondaryText = tokens.textSecondary;
+    final tertiaryText = tokens.textTertiary;
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
-    final title =
-        _step == 0 ? 'Complete your profile' : 'Add your phone number';
+    final title = _step == 0
+        ? 'Complete your profile'
+        : 'Add your phone number';
     final subtitle = _step == 0
         ? 'Tell us your name before we secure your contact details.'
         : 'India is selected by default. You can change it anytime.';
@@ -222,8 +215,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
                             children: [
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       title,
@@ -266,8 +258,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
                                 : 'Details 2 of 2. Your phone stays private and is used for account recovery.',
                             style: PravaTypography.caption.copyWith(
                               color: tertiaryText,
-                              fontWeight:
-                                  _step == 0 ? FontWeight.w600 : null,
+                              fontWeight: _step == 0 ? FontWeight.w600 : null,
                             ),
                           ),
                         ],
@@ -289,15 +280,10 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
     required Color secondaryText,
     required Color tertiaryText,
   }) {
-    final cardColor = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.white.withValues(alpha: 0.9);
-    final cardBorder = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : Colors.black.withValues(alpha: 0.08);
-    final shadowColor = isDark
-        ? Colors.black.withValues(alpha: 0.4)
-        : Colors.black.withValues(alpha: 0.08);
+    final tokens = context.pravaColors;
+    final cardColor = tokens.backgroundSurface.withValues(alpha: 0.94);
+    final cardBorder = tokens.borderSubtle;
+    final shadowColor = tokens.shadowMedium;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -327,7 +313,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
                         ? Icons.person_outline
                         : Icons.phone_iphone_outlined,
                     size: 18,
-                    color: PravaColors.accentPrimary,
+                    color: tokens.brandContent,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -339,10 +325,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
                       ),
                     ),
                   ),
-                  _DetailsStepPills(
-                    step: _step,
-                    isDark: isDark,
-                  ),
+                  _DetailsStepPills(step: _step, isDark: isDark),
                 ],
               ),
               const SizedBox(height: 16),
@@ -376,9 +359,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
                 _step == 0
                     ? 'Your name helps friends recognize the right account.'
                     : 'Protected with encrypted storage and device-bound sessions.',
-                style: PravaTypography.caption.copyWith(
-                  color: secondaryText,
-                ),
+                style: PravaTypography.caption.copyWith(color: secondaryText),
               ),
             ],
           ),
@@ -401,15 +382,10 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
           keyboardType: TextInputType.name,
           autofillHints: const [AutofillHints.givenName],
           inputFormatters: [
-            FilteringTextInputFormatter.allow(
-              RegExp(r"[A-Za-z '\\-]"),
-            ),
+            FilteringTextInputFormatter.allow(RegExp(r"[A-Za-z '\\-]")),
             LengthLimitingTextInputFormatter(64),
           ],
-          suffixIcon: _statusIcon(
-            _firstName,
-            _firstNameValid,
-          ),
+          suffixIcon: _statusIcon(_firstName, _firstNameValid),
           onSubmitted: (_) => _lastNameFocus.requestFocus(),
         ),
         const SizedBox(height: 14),
@@ -422,15 +398,10 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
           keyboardType: TextInputType.name,
           autofillHints: const [AutofillHints.familyName],
           inputFormatters: [
-            FilteringTextInputFormatter.allow(
-              RegExp(r"[A-Za-z '\\-]"),
-            ),
+            FilteringTextInputFormatter.allow(RegExp(r"[A-Za-z '\\-]")),
             LengthLimitingTextInputFormatter(64),
           ],
-          suffixIcon: _statusIcon(
-            _lastName,
-            _lastNameValid,
-          ),
+          suffixIcon: _statusIcon(_lastName, _lastNameValid),
           onSubmitted: (_) => _goToContactStep(),
         ),
         const SizedBox(height: 22),
@@ -468,10 +439,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
             FilteringTextInputFormatter.digitsOnly,
             LengthLimitingTextInputFormatter(14),
           ],
-          suffixIcon: _statusIcon(
-            _phoneDigits,
-            _phoneValid,
-          ),
+          suffixIcon: _statusIcon(_phoneDigits, _phoneValid),
           onSubmitted: (_) => _submitDetails(),
         ),
         const SizedBox(height: 12),
@@ -479,9 +447,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
           _phonePreview.isNotEmpty
               ? 'Saved as $_phonePreview'
               : 'Enter your full number without the country code.',
-          style: PravaTypography.caption.copyWith(
-            color: tertiaryText,
-          ),
+          style: PravaTypography.caption.copyWith(color: tertiaryText),
         ),
         const SizedBox(height: 22),
         Row(
@@ -555,8 +521,10 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
           fillColor: isDark
               ? PravaColors.darkSurface
               : PravaColors.lightSurface,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 14,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide.none,
@@ -600,8 +568,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
               child: Text(
                 label,
                 style: PravaTypography.body.copyWith(
-                  color:
-                      selected != null ? primaryText : tertiaryText,
+                  color: selected != null ? primaryText : tertiaryText,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -617,11 +584,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
               ),
             ],
             const SizedBox(width: 4),
-            Icon(
-              Icons.expand_more,
-              size: 18,
-              color: tertiaryText,
-            ),
+            Icon(Icons.expand_more, size: 18, color: tertiaryText),
           ],
         ),
       ),
@@ -643,10 +606,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
 }
 
 class _DetailsStepPills extends StatelessWidget {
-  const _DetailsStepPills({
-    required this.step,
-    required this.isDark,
-  });
+  const _DetailsStepPills({required this.step, required this.isDark});
 
   final int step;
   final bool isDark;
@@ -668,23 +628,21 @@ class _DetailsStepPills extends StatelessWidget {
 }
 
 class _DetailsStepPill extends StatelessWidget {
-  const _DetailsStepPill({
-    required this.active,
-    required this.inactive,
-  });
+  const _DetailsStepPill({required this.active, required this.inactive});
 
   final bool active;
   final Color inactive;
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       width: active ? 28 : 14,
       height: 6,
       decoration: BoxDecoration(
-        color: active ? PravaColors.accentPrimary : inactive,
+        color: active ? tokens.brandPrimary : inactive,
         borderRadius: BorderRadius.circular(999),
       ),
     );
@@ -741,12 +699,12 @@ class _LuxeInput extends StatelessWidget {
               : PravaColors.lightTextTertiary,
         ),
         filled: true,
-        fillColor: isDark
-            ? PravaColors.darkSurface
-            : PravaColors.lightSurface,
+        fillColor: isDark ? PravaColors.darkSurface : PravaColors.lightSurface,
         suffixIcon: suffixIcon,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 18,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,

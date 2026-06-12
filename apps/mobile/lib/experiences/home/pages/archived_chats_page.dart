@@ -1,14 +1,18 @@
 import 'dart:ui';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../navigation/prava_navigator.dart';
+import '../../../services/chat_service.dart';
 import '../../../ui-system/background.dart';
 import '../../../ui-system/colors.dart';
-import '../../../ui-system/typography.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
+import '../../../ui-system/typography.dart';
+import '../tabs/chats/chat_thread_page.dart';
+import '../tabs/chats/chats_page.dart';
 
 class ArchivedChatsPage extends StatefulWidget {
   const ArchivedChatsPage({super.key});
@@ -18,11 +22,12 @@ class ArchivedChatsPage extends StatefulWidget {
 }
 
 class _ArchivedChatsPageState extends State<ArchivedChatsPage> {
+  final ChatService _chatService = ChatService();
   final TextEditingController _searchController = TextEditingController();
 
-  final List<_ArchivedChat> _archived =
-      List<_ArchivedChat>.from(_seedArchivedChats);
-  bool _keepArchived = true;
+  List<ConversationSummary> _archived = const [];
+  bool _loading = true;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -30,6 +35,7 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage> {
     _searchController.addListener(() {
       if (mounted) setState(() {});
     });
+    _loadArchived();
   }
 
   @override
@@ -38,21 +44,57 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage> {
     super.dispose();
   }
 
-  List<_ArchivedChat> get _visibleChats {
-    final query = _searchController.text.trim().toLowerCase();
-    if (query.isEmpty) return _archived;
-    return _archived
-        .where(
-          (chat) =>
-              chat.name.toLowerCase().contains(query) ||
-              chat.lastMessage.toLowerCase().contains(query),
-        )
-        .toList();
+  Future<void> _loadArchived() async {
+    if (mounted) setState(() => _loading = true);
+    try {
+      final chats = await _chatService.listConversations(archived: true);
+      if (mounted) setState(() => _archived = chats);
+    } catch (_) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: 'Could not load archived chats',
+        type: PravaToastType.error,
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
-  void _unarchive(_ArchivedChat chat) {
+  List<ConversationSummary> get _visibleChats {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _archived;
+    return _archived.where((chat) {
+      return chat.title.toLowerCase().contains(query) ||
+          chat.lastMessageBody.toLowerCase().contains(query);
+    }).toList();
+  }
+
+  Future<void> _unarchive(ConversationSummary chat) async {
     HapticFeedback.selectionClick();
-    setState(() => _archived.removeWhere((item) => item.id == chat.id));
+    final previous = _archived;
+    setState(() {
+      _archived = _archived.where((item) => item.id != chat.id).toList();
+    });
+
+    final ok = await _chatService.updatePreferences(
+      conversationId: chat.id,
+      isFavorite: chat.isFavorite,
+      isStarred: chat.isStarred,
+      isMuted: chat.isMuted,
+      isArchived: false,
+    );
+    if (!ok && mounted) {
+      setState(() => _archived = previous);
+      PravaToast.show(
+        context,
+        message: 'Could not restore chat',
+        type: PravaToastType.error,
+      );
+      return;
+    }
+
+    if (!mounted) return;
     PravaToast.show(
       context,
       message: 'Chat restored',
@@ -60,38 +102,117 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage> {
     );
   }
 
-  void _restoreAll() {
-    if (_archived.isEmpty) return;
+  Future<void> _restoreAll() async {
+    if (_archived.isEmpty || _saving) return;
     HapticFeedback.selectionClick();
-    setState(() => _archived.clear());
+    setState(() => _saving = true);
+    final chats = List<ConversationSummary>.from(_archived);
+    var failed = false;
+
+    for (final chat in chats) {
+      final ok = await _chatService.updatePreferences(
+        conversationId: chat.id,
+        isFavorite: chat.isFavorite,
+        isStarred: chat.isStarred,
+        isMuted: chat.isMuted,
+        isArchived: false,
+      );
+      failed = failed || !ok;
+    }
+
+    if (!mounted) return;
+    setState(() => _saving = false);
+    await _loadArchived();
+    if (!mounted) return;
     PravaToast.show(
       context,
-      message: 'All archived chats restored',
-      type: PravaToastType.success,
+      message: failed
+          ? 'Some chats could not be restored'
+          : 'All chats restored',
+      type: failed ? PravaToastType.warning : PravaToastType.success,
     );
+  }
+
+  void _openChat(ConversationSummary chat) {
+    HapticFeedback.selectionClick();
+    Navigator.of(context, rootNavigator: true)
+        .push(
+          PravaNavigator.route(
+            ChatThreadPage(chat: _toPreview(chat)),
+            fullscreenDialog: true,
+          ),
+        )
+        .then((_) => _loadArchived());
+  }
+
+  ChatPreview _toPreview(ConversationSummary chat) {
+    return ChatPreview(
+      id: chat.id,
+      name: chat.title.trim().isEmpty ? 'Conversation' : chat.title.trim(),
+      lastMessage: _preview(chat),
+      time: _formatTime(chat.lastMessageAt ?? chat.updatedAt),
+      unreadCount: chat.unreadCount,
+      isGroup: chat.type == 'group',
+      isOnline: false,
+      isMuted: chat.isMuted,
+      isPinned: chat.isStarred,
+      isFavorite: chat.isFavorite,
+      isStarred: chat.isStarred,
+      isTyping: false,
+      peerUserId: chat.peerUserId,
+      avatarUrl: chat.peerAvatarUrl,
+      peerLastSeenAt: chat.peerLastSeenAt,
+      lastMessageFromMe: false,
+      delivery: MessageDeliveryState.sent,
+      lastMessageId: chat.lastMessageId,
+      lastMessageSeq: chat.lastMessageSeq,
+      lastMessageType: chat.lastMessageType,
+      lastMessageDeletedForAllAt: chat.lastMessageDeletedForAllAt,
+    );
+  }
+
+  String _preview(ConversationSummary chat) {
+    if (chat.lastMessageDeletedForAllAt != null) return 'Message deleted';
+    if (chat.lastMessageType == ChatMessageType.media) return 'Media message';
+    final text = chat.lastMessageBody.trim();
+    return text.isEmpty ? 'No messages yet' : text;
+  }
+
+  String _formatTime(DateTime? value) {
+    if (value == null) return '';
+    final now = DateTime.now();
+    final local = value.toLocal();
+    final diff = now.difference(local);
+    if (diff.inMinutes < 1) return 'Now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    if (diff.inDays < 7) return '${diff.inDays}d';
+    return '${local.day}/${local.month}/${local.year}';
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
     final chats = _visibleChats;
 
     return Scaffold(
       body: Stack(
         children: [
-          _PageBackdrop(isDark: isDark),
+          PravaBackground(isDark: isDark),
           SafeArea(
             child: Column(
               children: [
                 _TopBar(
-                  title: 'Archived',
+                  saving: _saving,
                   onBack: () => Navigator.of(context).pop(),
                   onRestore: _restoreAll,
                 ),
@@ -103,47 +224,42 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage> {
                     isDark: isDark,
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: _KeepArchivedCard(
-                    value: _keepArchived,
-                    onChanged: (value) {
-                      HapticFeedback.selectionClick();
-                      setState(() => _keepArchived = value);
-                    },
-                    primary: primary,
-                    secondary: secondary,
-                    border: border,
-                    isDark: isDark,
-                  ),
-                ),
                 Expanded(
-                  child: chats.isEmpty
+                  child: _loading
+                      ? const Center(child: CupertinoActivityIndicator())
+                      : chats.isEmpty
                       ? _EmptyState(
-                          hasQuery:
-                              _searchController.text.trim().isNotEmpty,
+                          hasQuery: _searchController.text.trim().isNotEmpty,
                           primary: primary,
                           secondary: secondary,
                         )
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                          physics: const BouncingScrollPhysics(
-                            parent: AlwaysScrollableScrollPhysics(),
+                      : RefreshIndicator.adaptive(
+                          onRefresh: _loadArchived,
+                          child: ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            physics: const BouncingScrollPhysics(
+                              parent: AlwaysScrollableScrollPhysics(),
+                            ),
+                            itemCount: chats.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final chat = chats[index];
+                              return _ConversationCard(
+                                chat: chat,
+                                preview: _preview(chat),
+                                time: _formatTime(
+                                  chat.lastMessageAt ?? chat.updatedAt,
+                                ),
+                                isDark: isDark,
+                                primary: primary,
+                                secondary: secondary,
+                                border: border,
+                                onTap: () => _openChat(chat),
+                                onAction: () => _unarchive(chat),
+                              );
+                            },
                           ),
-                          itemCount: chats.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final chat = chats[index];
-                            return _ArchivedChatCard(
-                              chat: chat,
-                              isDark: isDark,
-                              primary: primary,
-                              secondary: secondary,
-                              border: border,
-                              onUnarchive: () => _unarchive(chat),
-                            );
-                          },
                         ),
                 ),
               ],
@@ -157,24 +273,27 @@ class _ArchivedChatsPageState extends State<ArchivedChatsPage> {
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
-    required this.title,
+    required this.saving,
     required this.onBack,
     required this.onRestore,
   });
 
-  final String title;
+  final bool saving;
   final VoidCallback onBack;
   final VoidCallback onRestore;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final surface =
-        isDark ? Colors.black.withValues(alpha: 0.45) : Colors.white.withValues(alpha: 0.8);
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final surface = isDark
+        ? Colors.black.withValues(alpha: 0.45)
+        : Colors.white.withValues(alpha: 0.8);
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
@@ -191,14 +310,11 @@ class _TopBar extends StatelessWidget {
             ),
             child: Row(
               children: [
-                _IconPill(
-                  icon: CupertinoIcons.back,
-                  onTap: onBack,
-                ),
+                _IconPill(icon: CupertinoIcons.back, onTap: onBack),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    title,
+                    'Archived',
                     style: PravaTypography.h3.copyWith(
                       color: primary,
                       fontWeight: FontWeight.w700,
@@ -206,9 +322,9 @@ class _TopBar extends StatelessWidget {
                   ),
                 ),
                 TextButton(
-                  onPressed: onRestore,
+                  onPressed: saving ? null : onRestore,
                   child: Text(
-                    'Restore all',
+                    saving ? 'Restoring' : 'Restore all',
                     style: PravaTypography.button.copyWith(
                       color: PravaColors.accentPrimary,
                     ),
@@ -242,7 +358,9 @@ class _SearchField extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
         child: Container(
           decoration: BoxDecoration(
-            color: isDark ? Colors.white10 : Colors.white.withValues(alpha: 0.8),
+            color: isDark
+                ? Colors.white10
+                : Colors.white.withValues(alpha: 0.8),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: border),
           ),
@@ -257,96 +375,130 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-class _KeepArchivedCard extends StatelessWidget {
-  const _KeepArchivedCard({
-    required this.value,
-    required this.onChanged,
+class _ConversationCard extends StatelessWidget {
+  const _ConversationCard({
+    required this.chat,
+    required this.preview,
+    required this.time,
+    required this.isDark,
     required this.primary,
     required this.secondary,
     required this.border,
-    required this.isDark,
+    required this.onTap,
+    required this.onAction,
   });
 
-  final bool value;
-  final ValueChanged<bool> onChanged;
+  final ConversationSummary chat;
+  final String preview;
+  final String time;
+  final bool isDark;
   final Color primary;
   final Color secondary;
   final Color border;
-  final bool isDark;
+  final VoidCallback onTap;
+  final VoidCallback onAction;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white10 : Colors.white.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: PravaColors.accentPrimary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
+    final accent = _avatarColor(chat.title);
+    final avatarUrl = chat.peerAvatarUrl.trim();
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.white.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: border),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: accent.withValues(alpha: 0.18),
+              backgroundImage: avatarUrl.isEmpty
+                  ? null
+                  : NetworkImage(avatarUrl),
+              child: avatarUrl.isNotEmpty
+                  ? null
+                  : Icon(
+                      chat.type == 'group'
+                          ? CupertinoIcons.person_2_fill
+                          : CupertinoIcons.person_fill,
+                      color: accent,
+                    ),
             ),
-            child: const Icon(
-              CupertinoIcons.archivebox_fill,
-              size: 18,
-              color: PravaColors.accentPrimary,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          chat.title.trim().isEmpty
+                              ? 'Conversation'
+                              : chat.title.trim(),
+                          style: PravaTypography.body.copyWith(
+                            color: primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        time,
+                        style: PravaTypography.caption.copyWith(
+                          color: secondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    preview,
+                    style: PravaTypography.caption.copyWith(color: secondary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Keep chats archived',
-                  style: PravaTypography.body.copyWith(
-                    color: primary,
-                    fontWeight: FontWeight.w600,
+            if (chat.unreadCount > 0) ...[
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: PravaColors.accentPrimary,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  chat.unreadCount.toString(),
+                  style: PravaTypography.caption.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Stay archived when new messages arrive',
-                  style: PravaTypography.caption.copyWith(color: secondary),
-                ),
-              ],
+              ),
+            ],
+            IconButton(
+              onPressed: onAction,
+              icon: const Icon(CupertinoIcons.arrow_up_circle),
+              color: PravaColors.accentPrimary,
             ),
-          ),
-          Switch.adaptive(
-            value: value,
-            onChanged: onChanged,
-            activeColor: PravaColors.accentPrimary,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
-}
 
-class _ArchivedChatCard extends StatelessWidget {
-  const _ArchivedChatCard({
-    required this.chat,
-    required this.isDark,
-    required this.primary,
-    required this.secondary,
-    required this.border,
-    required this.onUnarchive,
-  });
-
-  final _ArchivedChat chat;
-  final bool isDark;
-  final Color primary;
-  final Color secondary;
-  final Color border;
-  final VoidCallback onUnarchive;
-
-  Color _avatarColor(String name) {
+  Color _avatarColor(String value) {
     const palette = [
       Color(0xFF5B8CFF),
       Color(0xFF2EC4B6),
@@ -354,101 +506,8 @@ class _ArchivedChatCard extends StatelessWidget {
       Color(0xFFFF6B6B),
       Color(0xFF845EC2),
     ];
-    final hash = name.codeUnits.fold<int>(0, (acc, c) => acc + c);
+    final hash = value.codeUnits.fold<int>(0, (acc, code) => acc + code);
     return palette[hash % palette.length];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = _avatarColor(chat.name);
-    final baseColor = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.white.withValues(alpha: 0.9);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: baseColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: accent.withValues(alpha: 0.18),
-            child: chat.isGroup
-                ? Icon(
-                    CupertinoIcons.person_2_fill,
-                    color: accent,
-                  )
-                : Text(
-                    chat.initials,
-                    style: PravaTypography.h3.copyWith(
-                      color: accent,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        chat.name,
-                        style: PravaTypography.body.copyWith(
-                          color: primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Text(
-                      chat.time,
-                      style: PravaTypography.caption.copyWith(color: secondary),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  chat.lastMessage,
-                  style: PravaTypography.caption.copyWith(color: secondary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          if (chat.unreadCount > 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: PravaColors.accentPrimary,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                chat.unreadCount.toString(),
-                style: PravaTypography.caption.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          const SizedBox(width: 8),
-          IconButton(
-            onPressed: onUnarchive,
-            icon: const Icon(CupertinoIcons.arrow_up_circle),
-            color: PravaColors.accentPrimary,
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -470,11 +529,7 @@ class _EmptyState extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
       children: [
         Center(
-          child: Icon(
-            CupertinoIcons.archivebox,
-            size: 40,
-            color: secondary,
-          ),
+          child: Icon(CupertinoIcons.archivebox, size: 40, color: secondary),
         ),
         const SizedBox(height: 12),
         Center(
@@ -519,86 +574,8 @@ class _IconPill extends StatelessWidget {
           color: isDark ? Colors.white10 : Colors.black12,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: PravaColors.accentPrimary,
-        ),
+        child: Icon(icon, size: 18, color: PravaColors.accentPrimary),
       ),
     );
   }
 }
-
-class _PageBackdrop extends StatelessWidget {
-  const _PageBackdrop({required this.isDark});
-
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    return PravaBackground(isDark: isDark);
-  }
-}
-
-class _ArchivedChat {
-  const _ArchivedChat({
-    required this.id,
-    required this.name,
-    required this.lastMessage,
-    required this.time,
-    required this.unreadCount,
-    required this.isGroup,
-  });
-
-  final String id;
-  final String name;
-  final String lastMessage;
-  final String time;
-  final int unreadCount;
-  final bool isGroup;
-
-  String get initials {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty || parts.first.isEmpty) return '?';
-    if (parts.length == 1) {
-      return parts.first.substring(0, 1).toUpperCase();
-    }
-    return (parts[0].substring(0, 1) + parts[1].substring(0, 1))
-        .toUpperCase();
-  }
-}
-
-const List<_ArchivedChat> _seedArchivedChats = [
-  _ArchivedChat(
-    id: 'a1',
-    name: 'Prava Core',
-    lastMessage: 'Shipped the realtime sync patch.',
-    time: 'Today',
-    unreadCount: 2,
-    isGroup: true,
-  ),
-  _ArchivedChat(
-    id: 'a2',
-    name: 'Meera Patel',
-    lastMessage: 'Thanks! Will review the UI draft.',
-    time: 'Yesterday',
-    unreadCount: 0,
-    isGroup: false,
-  ),
-  _ArchivedChat(
-    id: 'a3',
-    name: 'Creator Lab',
-    lastMessage: 'Upload the teaser clips by 6 PM.',
-    time: 'Sat',
-    unreadCount: 1,
-    isGroup: true,
-  ),
-  _ArchivedChat(
-    id: 'a4',
-    name: 'Aarav Sharma',
-    lastMessage: 'Lets sync after the standup.',
-    time: 'Fri',
-    unreadCount: 0,
-    isGroup: false,
-  ),
-];

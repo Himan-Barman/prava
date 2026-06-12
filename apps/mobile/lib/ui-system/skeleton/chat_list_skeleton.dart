@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../colors.dart';
+
 class ChatListSkeleton extends StatelessWidget {
   const ChatListSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseColor = isDark ? Colors.white10 : Colors.black12;
+    final baseColor = context.pravaColors.skeletonBase;
 
     return ListView.builder(
       physics: const NeverScrollableScrollPhysics(),

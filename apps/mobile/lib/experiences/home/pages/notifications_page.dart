@@ -224,15 +224,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+    final border = tokens.borderSubtle;
 
     final items = _visibleItems;
 
@@ -268,14 +263,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                 _MarkAllReadButton(
                                   marking: _markingAll,
                                   border: border,
-                                  isDark: isDark,
                                   onTap: _markingAll ? null : _markAllRead,
                                 ),
                             ],
                           ),
                           if (count > 0) ...[
                             const SizedBox(height: 8),
-                            _UnreadPill(count: count, isDark: isDark),
+                            _UnreadPill(count: count),
                           ],
                         ],
                       );
@@ -327,7 +321,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                 item: item,
                                 primary: primary,
                                 secondary: secondary,
-                                isDark: isDark,
                                 timeLabel: _formatTime(item.createdAt),
                                 onTap: () {
                                   _markRead(item);
@@ -351,17 +344,16 @@ class _MarkAllReadButton extends StatelessWidget {
   const _MarkAllReadButton({
     required this.marking,
     required this.border,
-    required this.isDark,
     required this.onTap,
   });
 
   final bool marking;
   final Color border;
-  final bool isDark;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -370,16 +362,16 @@ class _MarkAllReadButton extends StatelessWidget {
         height: 38,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isDark ? Colors.white10 : Colors.white.withValues(alpha: 0.9),
+          color: tokens.backgroundSurface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: border),
         ),
         child: marking
             ? const CupertinoActivityIndicator(radius: 8)
-            : const Icon(
+            : Icon(
                 Icons.done_all_rounded,
                 size: 23,
-                color: PravaColors.accentPrimary,
+                color: tokens.brandContent,
               ),
       ),
     );
@@ -437,13 +429,7 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final inactiveText = isDark
-        ? PravaColors.darkTextTertiary
-        : PravaColors.lightTextTertiary;
-    final inactiveFill = isDark
-        ? Colors.white10
-        : Colors.black.withValues(alpha: 0.04);
+    final tokens = context.pravaColors;
 
     return GestureDetector(
       onTap: onTap,
@@ -452,17 +438,17 @@ class _FilterChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: active
-              ? PravaColors.accentPrimary.withValues(alpha: 0.2)
-              : inactiveFill,
+              ? tokens.brandContainer
+              : tokens.backgroundSurfaceSubtle,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: active ? PravaColors.accentPrimary : Colors.transparent,
+            color: active ? tokens.brandPrimary : Colors.transparent,
           ),
         ),
         child: Text(
           label,
           style: PravaTypography.caption.copyWith(
-            color: active ? PravaColors.accentPrimary : inactiveText,
+            color: active ? tokens.brandContent : tokens.textTertiary,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -472,17 +458,15 @@ class _FilterChip extends StatelessWidget {
 }
 
 class _UnreadPill extends StatelessWidget {
-  const _UnreadPill({required this.count, required this.isDark});
+  const _UnreadPill({required this.count});
 
   final int count;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final label = count == 0 ? 'All caught up' : '$count unread';
-    final color = count == 0
-        ? (isDark ? Colors.white24 : Colors.black26)
-        : PravaColors.accentPrimary;
+    final color = count == 0 ? tokens.textTertiary : tokens.brandContent;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -495,16 +479,13 @@ class _UnreadPill extends StatelessWidget {
           Container(
             width: 6,
             height: 6,
-            decoration: BoxDecoration(
-              color: count == 0 ? color : PravaColors.accentPrimary,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 6),
           Text(
             label,
             style: PravaTypography.caption.copyWith(
-              color: count == 0 ? color : PravaColors.accentPrimary,
+              color: color,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -519,7 +500,6 @@ class _NotificationCard extends StatelessWidget {
     required this.item,
     required this.primary,
     required this.secondary,
-    required this.isDark,
     required this.timeLabel,
     required this.onTap,
   });
@@ -527,24 +507,23 @@ class _NotificationCard extends StatelessWidget {
   final NotificationItem item;
   final Color primary;
   final Color secondary;
-  final bool isDark;
   final String timeLabel;
   final VoidCallback onTap;
 
-  Color _accentForType(String type) {
+  Color _accentForType(String type, PravaThemeColors tokens) {
     switch (type) {
       case 'follow':
-        return const Color(0xFF5B8CFF);
+        return tokens.brandContent;
       case 'comment':
-        return const Color(0xFF2EC4B6);
+        return tokens.statusSuccess;
       case 'share':
-        return const Color(0xFFFFB703);
+        return tokens.premiumContent;
       case 'mention':
-        return const Color(0xFF845EC2);
+        return tokens.linkDefault;
       case 'like':
-        return const Color(0xFFFF6B6B);
+        return tokens.socialLikeActive;
       default:
-        return PravaColors.accentPrimary;
+        return tokens.statusInfo;
     }
   }
 
@@ -567,13 +546,12 @@ class _NotificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseColor = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.white.withValues(alpha: 0.95);
-    final border = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : Colors.black.withValues(alpha: 0.06);
-    final accent = _accentForType(item.type);
+    final tokens = context.pravaColors;
+    final baseColor = item.isUnread
+        ? tokens.notificationUnread
+        : tokens.notificationRead;
+    final border = tokens.borderSubtle;
+    final accent = _accentForType(item.type, tokens);
     final actor = item.actor;
     final avatarLabel = actor?.displayName.isNotEmpty == true
         ? actor!.displayName.substring(0, 1).toUpperCase()
@@ -622,7 +600,7 @@ class _NotificationCard extends StatelessWidget {
                       right: -2,
                       child: CircleAvatar(
                         radius: 10,
-                        backgroundColor: isDark ? Colors.black : Colors.white,
+                        backgroundColor: tokens.backgroundSurface,
                         child: CircleAvatar(
                           radius: 8,
                           backgroundColor: accent.withValues(alpha: 0.2),
@@ -656,8 +634,8 @@ class _NotificationCard extends StatelessWidget {
                           Container(
                             width: 8,
                             height: 8,
-                            decoration: const BoxDecoration(
-                              color: PravaColors.accentPrimary,
+                            decoration: BoxDecoration(
+                              color: tokens.brandPrimary,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -682,7 +660,7 @@ class _NotificationCard extends StatelessWidget {
                       Text(
                         '@${actor.username}',
                         style: PravaTypography.caption.copyWith(
-                          color: PravaColors.accentPrimary,
+                          color: tokens.linkDefault,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

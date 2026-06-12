@@ -17,10 +17,7 @@ import '../home/home_shell.dart';
 import 'auth_step_progress.dart';
 import 'set_password_screen.dart';
 
-enum EmailOtpFlow {
-  signup,
-  verify,
-}
+enum EmailOtpFlow { signup, verify }
 
 class EmailOtpScreen extends StatefulWidget {
   final String email;
@@ -39,8 +36,10 @@ class EmailOtpScreen extends StatefulWidget {
 }
 
 class _EmailOtpScreenState extends State<EmailOtpScreen> {
-  final List<TextEditingController> _controllers =
-      List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> _controllers = List.generate(
+    6,
+    (_) => TextEditingController(),
+  );
   final List<FocusNode> _nodes = List.generate(6, (_) => FocusNode());
 
   bool _loading = false;
@@ -112,8 +111,7 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
 
   String get _otp => _controllers.map((c) => c.text).join();
 
-  bool get _complete =>
-      _controllers.every((c) => c.text.isNotEmpty);
+  bool get _complete => _controllers.every((c) => c.text.isNotEmpty);
 
   void _fillOtp(String code) {
     for (int i = 0; i < 6; i++) {
@@ -150,10 +148,7 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
     setState(() => _loading = true);
 
     try {
-      await _auth.verifyEmailOtp(
-        email: widget.email,
-        code: _otp,
-      );
+      await _auth.verifyEmailOtp(email: widget.email, code: _otp);
 
       if (!mounted) return;
 
@@ -168,10 +163,7 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
       if (widget.flow == EmailOtpFlow.signup) {
         PravaNavigator.pushReplacement(
           context,
-          SetPasswordScreen(
-            email: widget.email,
-            username: widget.username,
-          ),
+          SetPasswordScreen(email: widget.email, username: widget.username),
         );
         return;
       }
@@ -190,11 +182,7 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
           ? err.message
           : 'Invalid or expired code';
 
-      PravaToast.show(
-        context,
-        message: message,
-        type: PravaToastType.error,
-      );
+      PravaToast.show(context, message: message, type: PravaToastType.error);
 
       for (final c in _controllers) {
         c.clear();
@@ -229,23 +217,17 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
       final message = err is ApiException
           ? err.message
           : 'Unable to resend code';
-      PravaToast.show(
-        context,
-        message: message,
-        type: PravaToastType.error,
-      );
+      PravaToast.show(context, message: message, type: PravaToastType.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryText =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondaryText =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final tertiaryText =
-        isDark ? PravaColors.darkTextTertiary : PravaColors.lightTextTertiary;
+    final tokens = context.pravaColors;
+    final primaryText = tokens.textPrimary;
+    final secondaryText = tokens.textSecondary;
+    final tertiaryText = tokens.textTertiary;
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
@@ -290,19 +272,19 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
                                           children: [
                                             Text(
                                               'Verify your email',
-                                              style:
-                                                  PravaTypography.h1.copyWith(
-                                                letterSpacing: -0.6,
-                                                color: primaryText,
-                                              ),
+                                              style: PravaTypography.h1
+                                                  .copyWith(
+                                                    letterSpacing: -0.6,
+                                                    color: primaryText,
+                                                  ),
                                             ),
                                             const SizedBox(height: 8),
                                             Text(
                                               'Enter the 6-digit code sent to ${widget.email}.',
-                                              style:
-                                                  PravaTypography.body.copyWith(
-                                                color: secondaryText,
-                                              ),
+                                              style: PravaTypography.body
+                                                  .copyWith(
+                                                    color: secondaryText,
+                                                  ),
                                             ),
                                           ],
                                         ),
@@ -330,11 +312,11 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
                                       onTap: () => Navigator.pop(context),
                                       child: Text(
                                         'Change email',
-                                        style:
-                                            PravaTypography.bodySmall.copyWith(
-                                          color: PravaColors.accentPrimary,
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                                        style: PravaTypography.bodySmall
+                                            .copyWith(
+                                              color: tokens.brandContent,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                       ),
                                     ),
                                   ),
@@ -361,15 +343,10 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
     required Color secondaryText,
     required Color tertiaryText,
   }) {
-    final cardColor = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.white.withValues(alpha: 0.9);
-    final cardBorder = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : Colors.black.withValues(alpha: 0.08);
-    final shadowColor = isDark
-        ? Colors.black.withValues(alpha: 0.4)
-        : Colors.black.withValues(alpha: 0.08);
+    final tokens = context.pravaColors;
+    final cardColor = tokens.backgroundSurface.withValues(alpha: 0.94);
+    final cardBorder = tokens.borderSubtle;
+    final shadowColor = tokens.shadowMedium;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -394,10 +371,10 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.mark_email_read_outlined,
                     size: 18,
-                    color: PravaColors.accentPrimary,
+                    color: tokens.brandContent,
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -421,9 +398,7 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(6, (index) {
                       return Padding(
-                        padding: EdgeInsets.only(
-                          right: index == 5 ? 0 : gap,
-                        ),
+                        padding: EdgeInsets.only(right: index == 5 ? 0 : gap),
                         child: _OtpBox(
                           width: boxWidth,
                           controller: _controllers[index],
@@ -463,16 +438,16 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           else
-                            const Icon(
+                            Icon(
                               Icons.refresh,
                               size: 14,
-                              color: PravaColors.accentPrimary,
+                              color: tokens.brandContent,
                             ),
                           const SizedBox(width: 6),
                           Text(
                             'Resend',
                             style: PravaTypography.caption.copyWith(
-                              color: PravaColors.accentPrimary,
+                              color: tokens.brandContent,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -502,8 +477,8 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: isDark
-                            ? Colors.white.withValues(alpha: 0.06)
-                            : Colors.white.withValues(alpha: 0.7),
+                            ? tokens.backgroundSurfaceSubtle
+                            : tokens.backgroundSurface,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: cardBorder),
                       ),
@@ -557,13 +532,10 @@ class _OtpBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fill = isDark ? PravaColors.darkSurface : PravaColors.lightSurface;
-    final border = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : Colors.black.withValues(alpha: 0.08);
-
-    final textColor =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
+    final tokens = context.pravaColors;
+    final fill = tokens.backgroundSurfaceSubtle;
+    final border = tokens.borderSubtle;
+    final textColor = tokens.textPrimary;
 
     return SizedBox(
       width: width,
@@ -593,7 +565,7 @@ class _OtpBox extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: PravaColors.accentPrimary),
+            borderSide: BorderSide(color: tokens.focusBorder),
           ),
         ),
         onChanged: onChanged,

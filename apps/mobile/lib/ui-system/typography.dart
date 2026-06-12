@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 /// Prava Typography System
 /// All text styles must come from here.
 /// No TextStyle inline definitions allowed.

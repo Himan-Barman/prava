@@ -9,13 +9,11 @@ class PravaBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final useDark =
-        isDark ?? Theme.of(context).brightness == Brightness.dark;
-    final color =
-        useDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
+    final useDark = isDark ?? Theme.of(context).brightness == Brightness.dark;
+    final color = useDark
+        ? PravaThemeColors.dark.backgroundCanvas
+        : PravaThemeColors.light.backgroundCanvas;
 
-    return SizedBox.expand(
-      child: ColoredBox(color: color),
-    );
+    return SizedBox.expand(child: ColoredBox(color: color));
   }
 }

@@ -217,16 +217,10 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     if (_loading) return const ProfileSkeleton();
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+    final border = tokens.borderSubtle;
     final profile = _profile;
 
     if (profile == null) {
@@ -241,7 +235,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final displayName = _displayName(user);
 
     return RefreshIndicator(
-      color: PravaColors.accentPrimary,
+      color: tokens.brandPrimary,
       onRefresh: _loadProfile,
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(
@@ -449,8 +443,8 @@ class _ProfileHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain;
+    final tokens = context.pravaColors;
+    final surface = tokens.backgroundCanvas;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
@@ -487,9 +481,9 @@ class _ProfileHero extends StatelessWidget {
                         ),
                         if (verified) ...[
                           const SizedBox(width: 6),
-                          const Icon(
+                          Icon(
                             CupertinoIcons.check_mark_circled_solid,
-                            color: PravaColors.accentPrimary,
+                            color: tokens.brandPrimary,
                             size: 17,
                           ),
                         ],
@@ -610,6 +604,7 @@ class _ProfileTabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -617,19 +612,15 @@ class _ProfileTabButton extends StatelessWidget {
           duration: const Duration(milliseconds: 180),
           height: 40,
           decoration: BoxDecoration(
-            color: selected
-                ? PravaColors.accentPrimary.withValues(alpha: 0.16)
-                : Colors.transparent,
-            border: Border.all(
-              color: selected ? PravaColors.accentPrimary : border,
-            ),
+            color: selected ? tokens.brandContainer : Colors.transparent,
+            border: Border.all(color: selected ? tokens.brandPrimary : border),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Center(
             child: Text(
               label,
               style: PravaTypography.button.copyWith(
-                color: selected ? PravaColors.accentPrimary : secondary,
+                color: selected ? tokens.brandContent : secondary,
                 letterSpacing: 0,
                 fontWeight: FontWeight.w800,
               ),
@@ -723,6 +714,7 @@ class _ProfilePostRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final body = post.body.trim().isEmpty ? 'Text post' : post.body.trim();
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -732,7 +724,7 @@ class _ProfilePostRow extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
-          color: PravaColors.accentPrimary.withValues(alpha: 0.08),
+          color: tokens.brandContainer.withValues(alpha: 0.62),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: border),
         ),
@@ -744,12 +736,12 @@ class _ProfilePostRow extends StatelessWidget {
               height: 34,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                color: tokens.brandContainer,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 CupertinoIcons.at,
-                color: PravaColors.accentPrimary,
+                color: tokens.brandContent,
                 size: 19,
               ),
             ),
@@ -778,10 +770,10 @@ class _ProfilePostRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            const Icon(
+            Icon(
               CupertinoIcons.chevron_right,
               size: 16,
-              color: PravaColors.accentPrimary,
+              color: tokens.brandContent,
             ),
           ],
         ),
@@ -805,6 +797,7 @@ class _ProfileAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     return Container(
       width: size,
       height: size,
@@ -815,12 +808,12 @@ class _ProfileAvatar extends StatelessWidget {
       child: ClipOval(
         child: url.trim().isEmpty
             ? Container(
-                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                color: tokens.brandContainer,
                 child: Center(
                   child: Text(
                     initials,
                     style: PravaTypography.h2.copyWith(
-                      color: PravaColors.accentPrimary,
+                      color: tokens.brandContent,
                       letterSpacing: 0,
                       fontWeight: FontWeight.w800,
                     ),

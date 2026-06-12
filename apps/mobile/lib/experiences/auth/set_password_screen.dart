@@ -20,11 +20,7 @@ class SetPasswordScreen extends StatefulWidget {
   final String email;
   final String? username;
 
-  const SetPasswordScreen({
-    super.key,
-    required this.email,
-    this.username,
-  });
+  const SetPasswordScreen({super.key, required this.email, this.username});
 
   @override
   State<SetPasswordScreen> createState() => _SetPasswordScreenState();
@@ -82,11 +78,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
   }
 
   bool get _valid =>
-      _hasLength &&
-      _hasUpper &&
-      _hasNumber &&
-      _hasSymbol &&
-      _matches;
+      _hasLength && _hasUpper && _hasNumber && _hasSymbol && _matches;
 
   bool _shouldAutoLoginAfterRegisterError(ApiException error) {
     if (error.statusCode >= 500) {
@@ -130,13 +122,9 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
         type: PravaToastType.success,
       );
 
-      PravaNavigator.pushReplacement(
-        context,
-        const SetDetailsScreen(),
-      );
+      PravaNavigator.pushReplacement(context, const SetDetailsScreen());
     } catch (err) {
-      if (err is ApiException &&
-          _shouldAutoLoginAfterRegisterError(err)) {
+      if (err is ApiException && _shouldAutoLoginAfterRegisterError(err)) {
         try {
           await _auth.login(
             email: widget.email,
@@ -150,10 +138,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
             message: 'Account created successfully',
             type: PravaToastType.success,
           );
-          PravaNavigator.pushReplacement(
-            context,
-            const SetDetailsScreen(),
-          );
+          PravaNavigator.pushReplacement(context, const SetDetailsScreen());
           return;
         } catch (_) {
           // Fall through to default error rendering.
@@ -168,21 +153,16 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
           ? err.message
           : 'Failed to set password';
 
-      PravaToast.show(
-        context,
-        message: message,
-        type: PravaToastType.error,
-      );
+      PravaToast.show(context, message: message, type: PravaToastType.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryText =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondaryText =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final tokens = context.pravaColors;
+    final primaryText = tokens.textPrimary;
+    final secondaryText = tokens.textSecondary;
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
@@ -213,8 +193,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                             children: [
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       'Secure your account',
@@ -265,15 +244,10 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
     required bool isDark,
     required Color primaryText,
   }) {
-    final cardColor = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.white.withValues(alpha: 0.9);
-    final cardBorder = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : Colors.black.withValues(alpha: 0.08);
-    final shadowColor = isDark
-        ? Colors.black.withValues(alpha: 0.4)
-        : Colors.black.withValues(alpha: 0.08);
+    final tokens = context.pravaColors;
+    final cardColor = tokens.backgroundSurface.withValues(alpha: 0.94);
+    final cardBorder = tokens.borderSubtle;
+    final shadowColor = tokens.shadowMedium;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -298,10 +272,10 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.lock_outline,
                     size: 18,
-                    color: PravaColors.accentPrimary,
+                    color: tokens.brandContent,
                   ),
                   const SizedBox(width: 8),
                   Text(

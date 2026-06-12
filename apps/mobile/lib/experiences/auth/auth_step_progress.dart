@@ -19,12 +19,9 @@ class AuthStepBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final border = isDark
-        ? Colors.white.withValues(alpha: 0.16)
-        : Colors.black.withValues(alpha: 0.08);
-    final background = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.black.withValues(alpha: 0.04);
+    final tokens = context.pravaColors;
+    final border = tokens.borderSubtle;
+    final background = tokens.backgroundSurfaceSubtle;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -59,9 +56,7 @@ class AuthStepIndicator extends StatelessWidget {
     return Row(
       children: List.generate(totalSteps, (index) {
         return Padding(
-          padding: EdgeInsets.only(
-            right: index == totalSteps - 1 ? 0 : 6,
-          ),
+          padding: EdgeInsets.only(right: index == totalSteps - 1 ? 0 : 6),
           child: _AuthStepPill(active: index < currentStep),
         );
       }),
@@ -76,10 +71,8 @@ class _AuthStepPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final inactive = isDark
-        ? Colors.white.withValues(alpha: 0.16)
-        : Colors.black.withValues(alpha: 0.12);
+    final tokens = context.pravaColors;
+    final inactive = tokens.backgroundPressed;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
@@ -87,7 +80,7 @@ class _AuthStepPill extends StatelessWidget {
       width: active ? 36 : 18,
       height: 6,
       decoration: BoxDecoration(
-        color: active ? PravaColors.accentPrimary : inactive,
+        color: active ? tokens.brandPrimary : inactive,
         borderRadius: BorderRadius.circular(999),
       ),
     );

@@ -57,8 +57,10 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   late final ChatService _chatService = ChatService(store: _store);
   late final ChatRealtime _realtime = ChatRealtime(store: _store);
   late final E2eeService _e2ee = E2eeService(store: _store);
-  late final GroupE2eeService _groupE2ee =
-      GroupE2eeService(store: _store, e2ee: _e2ee);
+  late final GroupE2eeService _groupE2ee = GroupE2eeService(
+    store: _store,
+    e2ee: _e2ee,
+  );
   late final DeviceIdStore _deviceIdStore = DeviceIdStore(_store);
 
   List<ChatMessage> _messages = <ChatMessage>[];
@@ -113,10 +115,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     _typingTimer?.cancel();
     _peerTypingTimer?.cancel();
     if (_isTyping) {
-      _realtime.sendTyping(
-        conversationId: widget.chat.id,
-        isTyping: false,
-      );
+      _realtime.sendTyping(conversationId: widget.chat.id, isTyping: false);
     }
     _realtime.disconnect();
     _scrollController.removeListener(_handleScroll);
@@ -223,8 +222,9 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       }
 
       if (!mounted) return;
-      final pending =
-          _messages.where((message) => message.seq == null).toList();
+      final pending = _messages
+          .where((message) => message.seq == null)
+          .toList();
       final merged = [...decrypted, ...pending]..sort(_compareMessages);
       setState(() {
         _messages = merged;
@@ -244,9 +244,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     });
   }
 
-  Future<List<ChatMessage>> _decryptMessages(
-    List<ChatMessage> messages,
-  ) async {
+  Future<List<ChatMessage>> _decryptMessages(List<ChatMessage> messages) async {
     if (!_isEncryptedChat) return messages;
     final resolved = <ChatMessage>[];
     for (final message in messages) {
@@ -255,19 +253,14 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     return resolved;
   }
 
-  Future<ChatMessage> _decryptMessageIfNeeded(
-    ChatMessage message,
-  ) async {
+  Future<ChatMessage> _decryptMessageIfNeeded(ChatMessage message) async {
     if (!_isEncryptedChat) return message;
     final body = message.body;
 
     if (_isDmChat) {
       if (!E2eeService.isEncrypted(body)) return message;
       if (!_e2eeReady) {
-        return message.copyWith(
-          body: 'Encrypted message',
-          encryptedBody: body,
-        );
+        return message.copyWith(body: 'Encrypted message', encryptedBody: body);
       }
       try {
         final plaintext = await _e2ee.decryptBody(
@@ -334,10 +327,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
             encryptedBody: body,
           );
         }
-        return message.copyWith(
-          body: 'Encrypted message',
-          encryptedBody: body,
-        );
+        return message.copyWith(body: 'Encrypted message', encryptedBody: body);
       }
     }
 
@@ -386,8 +376,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
 
     final tempId = _generateTempId();
     final senderUserId = _userId ?? '';
-    final senderDeviceId =
-        _deviceId ?? await _deviceIdStore.getOrCreate();
+    final senderDeviceId = _deviceId ?? await _deviceIdStore.getOrCreate();
     _deviceId ??= senderDeviceId;
 
     final message = ChatMessage.localText(
@@ -440,16 +429,16 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   }
 
   void _applyServerMessage(String tempId, ChatMessage serverMessage) {
-    final index =
-        _messages.indexWhere((m) => m.clientTempId == tempId || m.id == tempId);
+    final index = _messages.indexWhere(
+      (m) => m.clientTempId == tempId || m.id == tempId,
+    );
     if (index == -1) return;
 
     final existing = _messages[index];
     final isEncrypted = _isEncryptedPayload(serverMessage.body);
     final updated = serverMessage.copyWith(
       body: isEncrypted ? existing.body : serverMessage.body,
-      encryptedBody:
-          isEncrypted ? serverMessage.body : existing.encryptedBody,
+      encryptedBody: isEncrypted ? serverMessage.body : existing.encryptedBody,
       deliveryState: MessageDeliveryState.sent,
       isOutgoing: true,
       clientTempId: tempId,
@@ -487,8 +476,10 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     String outboundBody = message.encryptedBody ?? message.body;
     if (_isGroupChat) {
       if (message.encryptedBody == null) {
-        final encrypted =
-            await _prepareGroupOutboundMessage(message.id, message.body);
+        final encrypted = await _prepareGroupOutboundMessage(
+          message.id,
+          message.body,
+        );
         if (encrypted == null || encrypted.isEmpty) {
           _markFailed(tempId);
           return;
@@ -514,8 +505,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         conversationId: widget.chat.id,
         body: outboundBody,
         tempId: tempId,
-        contentType:
-            message.type == ChatMessageType.media ? 'media' : 'text',
+        contentType: message.type == ChatMessageType.media ? 'media' : 'text',
         mediaAssetId: message.mediaAssetId,
         clientTimestamp: DateTime.now(),
       );
@@ -534,9 +524,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     String plaintext,
   ) async {
     await _ensureGroupReady();
-    final bundle = await _groupE2ee.ensureOwnSenderKey(
-      groupId: widget.chat.id,
-    );
+    final bundle = await _groupE2ee.ensureOwnSenderKey(groupId: widget.chat.id);
     if (bundle == null) return null;
 
     if (bundle.needsDistribution) {
@@ -549,10 +537,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     );
     if (result == null) return null;
 
-    _updateMessage(
-      messageId,
-      (m) => m.copyWith(encryptedBody: result.body),
-    );
+    _updateMessage(messageId, (m) => m.copyWith(encryptedBody: result.body));
 
     return result.body;
   }
@@ -582,10 +567,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         return plaintext;
       }
       _setPlaintextFallback(false);
-      _updateMessage(
-        messageId,
-        (m) => m.copyWith(encryptedBody: encrypted),
-      );
+      _updateMessage(messageId, (m) => m.copyWith(encryptedBody: encrypted));
       return encrypted;
     } catch (_) {
       _setPlaintextFallback(true);
@@ -602,9 +584,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     setState(() => _usingPlaintextFallback = value);
   }
 
-  Future<void> _sendSenderKeyDistribution({
-    SenderKeyState? senderKey,
-  }) async {
+  Future<void> _sendSenderKeyDistribution({SenderKeyState? senderKey}) async {
     if (!_isGroupChat) return;
     if (_groupMemberIds.isEmpty) {
       await _loadGroupMembers();
@@ -636,12 +616,13 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
 
   String _generateTempId() {
     final rand = Random.secure();
-    final bytes = List<int>.generate(8, (_) => rand.nextInt(256));
-    final buffer = StringBuffer();
-    for (final b in bytes) {
-      buffer.write(b.toRadixString(16).padLeft(2, '0'));
-    }
-    return '${DateTime.now().microsecondsSinceEpoch}_$buffer';
+    final bytes = List<int>.generate(16, (_) => rand.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
   }
 
   bool _isEncryptedPayload(String body) {
@@ -660,10 +641,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     String? encryptedBody;
 
     if (_isGroupChat) {
-      final encrypted = await _prepareGroupOutboundMessage(
-        message.id,
-        trimmed,
-      );
+      final encrypted = await _prepareGroupOutboundMessage(message.id, trimmed);
       if (encrypted == null || encrypted.isEmpty) return;
       outboundBody = encrypted;
       encryptedBody = encrypted;
@@ -706,6 +684,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       body: outboundBody,
     );
 
+    if (!mounted) return;
     FocusScope.of(context).unfocus();
   }
 
@@ -737,10 +716,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     final peerUserId = _peerUserId?.trim();
     if (!_isDmChat || peerUserId == null || peerUserId.isEmpty) return;
     HapticFeedback.selectionClick();
-    PravaNavigator.push(
-      context,
-      PublicProfilePage(userId: peerUserId),
-    );
+    PravaNavigator.push(context, PublicProfilePage(userId: peerUserId));
   }
 
   Future<void> _showThreadOptions() async {
@@ -757,7 +733,9 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
             ),
           CupertinoActionSheetAction(
             onPressed: () => Navigator.of(context).pop('mute'),
-            child: Text(_isMuted ? 'Unmute notifications' : 'Mute notifications'),
+            child: Text(
+              _isMuted ? 'Unmute notifications' : 'Mute notifications',
+            ),
           ),
           CupertinoActionSheetAction(
             onPressed: () => Navigator.of(context).pop('star'),
@@ -860,10 +838,8 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => _EmojiPickerSheet(
-        recent: _recentEmojis,
-        onSelect: _insertEmoji,
-      ),
+      builder: (context) =>
+          _EmojiPickerSheet(recent: _recentEmojis, onSelect: _insertEmoji),
     );
   }
 
@@ -892,13 +868,16 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   }
 
   void _showMessageActions(ChatMessage message) {
-    final canEdit = message.isOutgoing &&
+    final canEdit =
+        message.isOutgoing &&
         !message.isDeleted &&
         message.type == ChatMessageType.text &&
         message.seq != null;
-    final canRetry = message.isOutgoing &&
+    final canRetry =
+        message.isOutgoing &&
         message.deliveryState == MessageDeliveryState.failed;
-    final canCopy = !message.isDeleted &&
+    final canCopy =
+        !message.isDeleted &&
         message.type == ChatMessageType.text &&
         message.body.trim().isNotEmpty;
     final canDelete =
@@ -909,12 +888,13 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       backgroundColor: Colors.transparent,
       isScrollControlled: false,
       builder: (context) {
-        final isDark =
-            Theme.of(context).brightness == Brightness.dark;
-        final surface =
-            isDark ? PravaColors.darkBgElevated : PravaColors.lightBgElevated;
-        final border =
-            isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final surface = isDark
+            ? PravaColors.darkBgElevated
+            : PravaColors.lightBgElevated;
+        final border = isDark
+            ? PravaColors.darkBorderSubtle
+            : PravaColors.lightBorderSubtle;
         return SafeArea(
           child: Container(
             margin: const EdgeInsets.all(12),
@@ -948,9 +928,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                     icon: CupertinoIcons.doc_on_doc,
                     label: 'Copy',
                     onTap: () {
-                      Clipboard.setData(
-                        ClipboardData(text: message.body),
-                      );
+                      Clipboard.setData(ClipboardData(text: message.body));
                       Navigator.of(context).pop();
                     },
                   ),
@@ -1000,8 +978,9 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     final userId = _userId;
     if (userId == null || emoji.isEmpty) return;
 
-    final existingIndex =
-        message.reactions.indexWhere((r) => r.userId == userId);
+    final existingIndex = message.reactions.indexWhere(
+      (r) => r.userId == userId,
+    );
     final nextReactions = List<ChatReaction>.from(message.reactions);
 
     if (existingIndex != -1) {
@@ -1039,10 +1018,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       );
     }
 
-    _updateMessage(
-      message.id,
-      (m) => m.copyWith(reactions: nextReactions),
-    );
+    _updateMessage(message.id, (m) => m.copyWith(reactions: nextReactions));
   }
 
   void _handleTypingChanged(String value) {
@@ -1050,10 +1026,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
 
     if (hasText && !_isTyping) {
       _isTyping = true;
-      _realtime.sendTyping(
-        conversationId: widget.chat.id,
-        isTyping: true,
-      );
+      _realtime.sendTyping(conversationId: widget.chat.id, isTyping: true);
     }
 
     _typingTimer?.cancel();
@@ -1070,10 +1043,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   void _stopTyping() {
     if (!_isTyping) return;
     _isTyping = false;
-    _realtime.sendTyping(
-      conversationId: widget.chat.id,
-      isTyping: false,
-    );
+    _realtime.sendTyping(conversationId: widget.chat.id, isTyping: false);
   }
 
   void _handleRealtimeEvent(Map<String, dynamic> event) {
@@ -1118,22 +1088,20 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     final conversationId = payload['conversationId']?.toString();
     if (conversationId != widget.chat.id) return;
 
-    final message = ChatMessage.fromJson(
-      {
-        'id': payload['messageId'],
-        'conversationId': payload['conversationId'],
-        'senderUserId': payload['senderUserId'],
-        'senderDeviceId': payload['senderDeviceId'],
-        'seq': payload['seq'],
-        'contentType': payload['contentType'],
-        'body': payload['body'],
-        'mediaAssetId': payload['mediaAssetId'],
-        'editVersion': payload['editVersion'],
-        'deletedForAllAt': payload['deletedForAllAt'],
-        'createdAt': payload['createdAt'],
-      },
-      currentUserId: _userId,
-    );
+    final message = ChatMessage.fromJson({
+      'id': payload['messageId'],
+      'clientMessageId': payload['clientMessageId'],
+      'conversationId': payload['conversationId'],
+      'senderUserId': payload['senderUserId'],
+      'senderDeviceId': payload['senderDeviceId'],
+      'seq': payload['seq'],
+      'contentType': payload['contentType'],
+      'body': payload['body'],
+      'mediaAssetId': payload['mediaAssetId'],
+      'editVersion': payload['editVersion'],
+      'deletedForAllAt': payload['deletedForAllAt'],
+      'createdAt': payload['createdAt'],
+    }, currentUserId: _userId);
     _processIncomingMessage(message);
   }
 
@@ -1146,8 +1114,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     }
     var merged = resolved;
     if (resolved.isOutgoing && resolved.senderDeviceId == _deviceId) {
+      final clientMessageId = resolved.clientTempId;
       final existingIndex = _messages.indexWhere(
-        (m) => m.id == resolved.id || m.clientTempId == resolved.id,
+        (m) =>
+            m.id == resolved.id ||
+            m.clientTempId == resolved.id ||
+            (clientMessageId != null && m.clientTempId == clientMessageId),
       );
       if (existingIndex != -1) {
         final existing = _messages[existingIndex];
@@ -1183,7 +1155,9 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       _syncStore.updateLastDeliveredSeq(widget.chat.id, seq);
     }
 
-    final index = _messages.indexWhere((m) => m.clientTempId == tempId || m.id == tempId);
+    final index = _messages.indexWhere(
+      (m) => m.clientTempId == tempId || m.id == tempId,
+    );
     if (index == -1) return;
 
     final updated = _messages[index].copyWith(
@@ -1245,8 +1219,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
           encryptedBody = body;
         }
       }
-    } else if (_isGroupChat &&
-        GroupE2eeService.isGroupEncrypted(body)) {
+    } else if (_isGroupChat && GroupE2eeService.isGroupEncrypted(body)) {
       if (!_groupReady) {
         nextBody = 'Encrypted message';
         encryptedBody = body;
@@ -1302,10 +1275,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     final lastReadSeq = _parseInt(payload['lastReadSeq']);
     if (conversationId != widget.chat.id || lastReadSeq == null) return;
 
-    _updateDeliveryStates(
-      lastReadSeq,
-      MessageDeliveryState.read,
-    );
+    _updateDeliveryStates(lastReadSeq, MessageDeliveryState.read);
   }
 
   void _handleDeliveryUpdate(Map<String, dynamic> payload) {
@@ -1313,10 +1283,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     final lastDeliveredSeq = _parseInt(payload['lastDeliveredSeq']);
     if (conversationId != widget.chat.id || lastDeliveredSeq == null) return;
 
-    _updateDeliveryStates(
-      lastDeliveredSeq,
-      MessageDeliveryState.delivered,
-    );
+    _updateDeliveryStates(lastDeliveredSeq, MessageDeliveryState.delivered);
   }
 
   void _handleReactionUpdate(Map<String, dynamic> payload) {
@@ -1327,8 +1294,9 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     if (conversationId != widget.chat.id || messageId == null) return;
 
     _updateMessage(messageId, (message) {
-      final existingIndex =
-          message.reactions.indexWhere((r) => r.userId == userId);
+      final existingIndex = message.reactions.indexWhere(
+        (r) => r.userId == userId,
+      );
       final updatedAt = _parseDate(payload['updatedAt']);
       final nextReactions = List<ChatReaction>.from(message.reactions);
 
@@ -1346,8 +1314,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
           ),
         );
       } else {
-        nextReactions[existingIndex] =
-            nextReactions[existingIndex].copyWith(
+        nextReactions[existingIndex] = nextReactions[existingIndex].copyWith(
           emoji: emoji,
           updatedAt: updatedAt,
         );
@@ -1368,13 +1335,10 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     if (!mounted) return;
     setState(() => _peerTyping = isTyping);
     if (isTyping) {
-      _peerTypingTimer = Timer(
-        const Duration(seconds: 4),
-        () {
-          if (!mounted) return;
-          setState(() => _peerTyping = false);
-        },
-      );
+      _peerTypingTimer = Timer(const Duration(seconds: 4), () {
+        if (!mounted) return;
+        setState(() => _peerTyping = false);
+      });
     }
   }
 
@@ -1427,10 +1391,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     });
   }
 
-  void _updateDeliveryStates(
-    int lastSeq,
-    MessageDeliveryState state,
-  ) {
+  void _updateDeliveryStates(int lastSeq, MessageDeliveryState state) {
     if (!mounted) return;
     setState(() {
       _messages = _messages.map((message) {
@@ -1577,8 +1538,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
 
       if (!mounted) return;
       final existingIds = _messages.map((m) => m.id).toSet();
-      final filtered =
-          data.where((m) => !existingIds.contains(m.id)).toList();
+      final filtered = data.where((m) => !existingIds.contains(m.id)).toList();
       final decrypted = await _decryptMessages(filtered);
 
       setState(() {
@@ -1674,10 +1634,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
     final visibleMessages = _visibleMessages();
     final entries = _buildEntries(visibleMessages);
     final initial = widget.chat.name.isNotEmpty
@@ -1687,8 +1649,9 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      backgroundColor:
-          isDark ? PravaColors.darkBgMain : PravaColors.lightBgMain,
+      backgroundColor: isDark
+          ? PravaColors.darkBgMain
+          : PravaColors.lightBgMain,
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusScope.of(context).unfocus(),
@@ -1717,8 +1680,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                             )
                           : ListView.builder(
                               controller: _scrollController,
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                12,
+                                16,
+                                16,
+                              ),
                               physics: const BouncingScrollPhysics(
                                 parent: AlwaysScrollableScrollPhysics(),
                               ),
@@ -1728,8 +1695,9 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                                 switch (entry.type) {
                                   case _ChatEntryType.loading:
                                     return const Padding(
-                                      padding:
-                                          EdgeInsets.symmetric(vertical: 8),
+                                      padding: EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
                                       child: Center(
                                         child: SizedBox(
                                           width: 18,
@@ -1758,12 +1726,15 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                                         ? visibleMessages[messageIndex - 1]
                                         : null;
                                     final next =
-                                        messageIndex < visibleMessages.length - 1
-                                            ? visibleMessages[messageIndex + 1]
-                                            : null;
-                                    final isFirst = prev == null ||
+                                        messageIndex <
+                                            visibleMessages.length - 1
+                                        ? visibleMessages[messageIndex + 1]
+                                        : null;
+                                    final isFirst =
+                                        prev == null ||
                                         !_isSameBlock(prev, message);
-                                    final isLast = next == null ||
+                                    final isLast =
+                                        next == null ||
                                         !_isSameBlock(message, next);
                                     final showAvatar =
                                         !message.isOutgoing && isLast;
@@ -1772,8 +1743,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                                       isDark: isDark,
                                       primary: primary,
                                       secondary: secondary,
-                                      timeLabel:
-                                          _formatTime(message.createdAt),
+                                      timeLabel: _formatTime(message.createdAt),
                                       showAvatar: showAvatar,
                                       initial: initial,
                                       isFirst: isFirst,
@@ -1827,31 +1797,31 @@ enum _ChatEntryType { loading, banner, date, message, typing }
 
 class _ChatEntry {
   const _ChatEntry.loading()
-      : type = _ChatEntryType.loading,
-        date = null,
-        message = null,
-        messageIndex = null;
+    : type = _ChatEntryType.loading,
+      date = null,
+      message = null,
+      messageIndex = null;
 
   const _ChatEntry.banner()
-      : type = _ChatEntryType.banner,
-        date = null,
-        message = null,
-        messageIndex = null;
+    : type = _ChatEntryType.banner,
+      date = null,
+      message = null,
+      messageIndex = null;
 
   const _ChatEntry.date(this.date)
-      : type = _ChatEntryType.date,
-        message = null,
-        messageIndex = null;
+    : type = _ChatEntryType.date,
+      message = null,
+      messageIndex = null;
 
   const _ChatEntry.message(this.message, this.messageIndex)
-      : type = _ChatEntryType.message,
-        date = null;
+    : type = _ChatEntryType.message,
+      date = null;
 
   const _ChatEntry.typing()
-      : type = _ChatEntryType.typing,
-        date = null,
-        message = null,
-        messageIndex = null;
+    : type = _ChatEntryType.typing,
+      date = null,
+      message = null,
+      messageIndex = null;
 
   final _ChatEntryType type;
   final DateTime? date;
@@ -1890,12 +1860,15 @@ class _ChatHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -1913,8 +1886,9 @@ class _ChatHeader extends StatelessWidget {
                     child: avatarUrl.trim().isNotEmpty
                         ? Image.network(avatarUrl, fit: BoxFit.cover)
                         : Container(
-                            color: PravaColors.accentPrimary
-                                .withValues(alpha: 0.18),
+                            color: PravaColors.accentPrimary.withValues(
+                              alpha: 0.18,
+                            ),
                             child: Center(
                               child: Text(
                                 initial,
@@ -1965,10 +1939,7 @@ class _ChatHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Container(
-            height: 1,
-            color: border,
-          ),
+          Container(height: 1, color: border),
         ],
       ),
     );
@@ -1986,8 +1957,9 @@ class _EncryptionBanner extends StatelessWidget {
     final surface = isDark
         ? Colors.black.withValues(alpha: 0.22)
         : Colors.white.withValues(alpha: 0.75);
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -2004,17 +1976,13 @@ class _EncryptionBanner extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                CupertinoIcons.lock_fill,
-                size: 14,
-                color: secondary,
-              ),
+              Icon(CupertinoIcons.lock_fill, size: 14, color: secondary),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
                   fallback
                       ? 'Encryption will start when device keys are available'
-                      : 'Messages are end-to-end encrypted',
+                      : 'Secure message transport active',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: PravaTypography.caption.copyWith(color: secondary),
@@ -2036,10 +2004,12 @@ class _DateChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08);
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final surface = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.08);
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -2088,17 +2058,13 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isOutgoing = message.isOutgoing;
-    final alignment =
-        isOutgoing ? Alignment.centerRight : Alignment.centerLeft;
+    final alignment = isOutgoing ? Alignment.centerRight : Alignment.centerLeft;
     final bubbleColor = isOutgoing
         ? null
         : (isDark ? Colors.white10 : Colors.white);
     final gradient = isOutgoing
         ? const LinearGradient(
-            colors: [
-              PravaColors.accentPrimary,
-              PravaColors.accentMuted,
-            ],
+            colors: [PravaColors.accentPrimary, PravaColors.accentMuted],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           )
@@ -2106,21 +2072,18 @@ class _MessageBubble extends StatelessWidget {
     final displayBody = message.isDeleted
         ? 'Message deleted'
         : (message.type == ChatMessageType.media
-            ? 'Media message'
-            : (message.body.trim().isEmpty
-                ? 'Message unavailable'
-                : message.body));
+              ? 'Media message'
+              : (message.body.trim().isEmpty
+                    ? 'Message unavailable'
+                    : message.body));
     final isEdited = message.editVersion > 0 && !message.isDeleted;
-    final reactionSummary =
-        _summarizeReactions(message.reactions);
+    final reactionSummary = _summarizeReactions(message.reactions);
 
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(18),
       topRight: const Radius.circular(18),
-      bottomLeft:
-          Radius.circular(isOutgoing ? 18 : (isLast ? 6 : 18)),
-      bottomRight:
-          Radius.circular(isOutgoing ? (isLast ? 6 : 18) : 18),
+      bottomLeft: Radius.circular(isOutgoing ? 18 : (isLast ? 6 : 18)),
+      bottomRight: Radius.circular(isOutgoing ? (isLast ? 6 : 18) : 18),
     );
 
     final bubble = Container(
@@ -2192,10 +2155,7 @@ class _MessageBubble extends StatelessWidget {
     );
 
     return Padding(
-      padding: EdgeInsets.only(
-        top: isFirst ? 10 : 2,
-        bottom: isLast ? 6 : 2,
-      ),
+      padding: EdgeInsets.only(top: isFirst ? 10 : 2, bottom: isLast ? 6 : 2),
       child: Align(
         alignment: alignment,
         child: Row(
@@ -2208,8 +2168,9 @@ class _MessageBubble extends StatelessWidget {
               if (showAvatar)
                 CircleAvatar(
                   radius: 14,
-                  backgroundColor:
-                      PravaColors.accentPrimary.withValues(alpha: 0.18),
+                  backgroundColor: PravaColors.accentPrimary.withValues(
+                    alpha: 0.18,
+                  ),
                   child: Text(
                     initial,
                     style: PravaTypography.caption.copyWith(
@@ -2251,8 +2212,7 @@ class _MessageBubble extends StatelessWidget {
                                 child: Text(
                                   '${item.emoji} ${item.count}',
                                   style: PravaTypography.caption.copyWith(
-                                    color:
-                                        isOutgoing ? Colors.white : primary,
+                                    color: isOutgoing ? Colors.white : primary,
                                   ),
                                 ),
                               ),
@@ -2269,9 +2229,7 @@ class _MessageBubble extends StatelessWidget {
     );
   }
 
-  List<_ReactionSummary> _summarizeReactions(
-    List<ChatReaction> reactions,
-  ) {
+  List<_ReactionSummary> _summarizeReactions(List<ChatReaction> reactions) {
     final counts = <String, int>{};
     for (final reaction in reactions) {
       if (reaction.emoji.isEmpty) continue;
@@ -2330,12 +2288,15 @@ class _ComposerBar extends StatelessWidget {
     final surface = isDark
         ? Colors.black.withValues(alpha: 0.4)
         : Colors.white.withValues(alpha: 0.86);
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return Row(
       children: [
@@ -2353,10 +2314,7 @@ class _ComposerBar extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    _ComposerIcon(
-                      icon: CupertinoIcons.smiley,
-                      onTap: onEmoji,
-                    ),
+                    _ComposerIcon(icon: CupertinoIcons.smiley, onTap: onEmoji),
                     Expanded(
                       child: TextField(
                         controller: controller,
@@ -2369,8 +2327,9 @@ class _ComposerBar extends StatelessWidget {
                         style: PravaTypography.body.copyWith(color: primary),
                         decoration: InputDecoration(
                           hintText: 'Message',
-                          hintStyle:
-                              PravaTypography.body.copyWith(color: secondary),
+                          hintStyle: PravaTypography.body.copyWith(
+                            color: secondary,
+                          ),
                           border: InputBorder.none,
                           isDense: true,
                         ),
@@ -2407,8 +2366,9 @@ class _ComposerBar extends StatelessWidget {
                   boxShadow: hasText
                       ? [
                           BoxShadow(
-                            color: PravaColors.accentPrimary
-                                .withValues(alpha: 0.28),
+                            color: PravaColors.accentPrimary.withValues(
+                              alpha: 0.28,
+                            ),
                             blurRadius: 16,
                             offset: const Offset(0, 8),
                           ),
@@ -2464,10 +2424,12 @@ class _TypingBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06);
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final surface = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.06);
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 8),
@@ -2490,10 +2452,7 @@ class _TypingBubble extends StatelessWidget {
 }
 
 class _EditingBanner extends StatelessWidget {
-  const _EditingBanner({
-    required this.preview,
-    required this.onCancel,
-  });
+  const _EditingBanner({required this.preview, required this.onCancel});
 
   final String preview;
   final VoidCallback onCancel;
@@ -2501,10 +2460,12 @@ class _EditingBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06);
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final surface = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.06);
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -2567,10 +2528,7 @@ class _ReactionPicker extends StatelessWidget {
           .map(
             (emoji) => GestureDetector(
               onTap: () => onSelect(emoji),
-              child: Text(
-                emoji,
-                style: const TextStyle(fontSize: 22),
-              ),
+              child: Text(emoji, style: const TextStyle(fontSize: 22)),
             ),
           )
           .toList(),
@@ -2579,10 +2537,7 @@ class _ReactionPicker extends StatelessWidget {
 }
 
 class _EmojiPickerSheet extends StatefulWidget {
-  const _EmojiPickerSheet({
-    required this.recent,
-    required this.onSelect,
-  });
+  const _EmojiPickerSheet({required this.recent, required this.onSelect});
 
   final List<String> recent;
   final ValueChanged<String> onSelect;
@@ -2596,13 +2551,9 @@ class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
   int _selected = 0;
 
   List<_EmojiCategory> get _categories => [
-        _EmojiCategory(
-          label: 'Recent',
-          icon: Icons.access_time,
-          emojis: _recent,
-        ),
-        ..._emojiCategories,
-      ];
+    _EmojiCategory(label: 'Recent', icon: Icons.access_time, emojis: _recent),
+    ..._emojiCategories,
+  ];
 
   void _select(String emoji) {
     widget.onSelect(emoji);
@@ -2618,14 +2569,18 @@ class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface =
-        isDark ? PravaColors.darkBgElevated : PravaColors.lightBgElevated;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final surface = isDark
+        ? PravaColors.darkBgElevated
+        : PravaColors.lightBgElevated;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
     final categories = _categories;
     final selected = categories[_selected];
 
@@ -2676,9 +2631,7 @@ class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
                   ? Center(
                       child: Text(
                         'Recently used emojis appear here',
-                        style: PravaTypography.body.copyWith(
-                          color: secondary,
-                        ),
+                        style: PravaTypography.body.copyWith(color: secondary),
                       ),
                     )
                   : GridView.builder(
@@ -2686,10 +2639,10 @@ class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
                       physics: const BouncingScrollPhysics(),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 8,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                      ),
+                            crossAxisCount: 8,
+                            mainAxisSpacing: 8,
+                            crossAxisSpacing: 8,
+                          ),
                       itemCount: selected.emojis.length,
                       itemBuilder: (context, index) {
                         final emoji = selected.emojis[index];
@@ -2699,10 +2652,7 @@ class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
                           child: Center(
                             child: Text(
                               emoji,
-                              style: TextStyle(
-                                fontSize: 26,
-                                color: primary,
-                              ),
+                              style: TextStyle(fontSize: 26, color: primary),
                             ),
                           ),
                         );
@@ -2733,139 +2683,772 @@ const _emojiCategories = <_EmojiCategory>[
     label: 'Smileys',
     icon: Icons.emoji_emotions_outlined,
     emojis: [
-      '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣',
-      '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰',
-      '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜',
-      '🤪', '🤨', '🧐', '🤓', '😎', '🥳', '😏', '😒',
-      '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖',
-      '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡',
-      '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰',
-      '😥', '😓', '🤗', '🤔', '🫡', '🤭', '🫢', '🫣',
-      '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯',
-      '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪',
-      '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒',
-      '🤕', '🤑', '🤠', '😈', '👿', '👻', '💀', '☠️',
-      '💩', '🤡', '👹', '👺', '❤️', '🧡', '💛', '💚',
-      '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕',
-      '💞', '💓', '💗', '💖', '💘', '💝', '💟',
+      '😀',
+      '😃',
+      '😄',
+      '😁',
+      '😆',
+      '😅',
+      '😂',
+      '🤣',
+      '😊',
+      '😇',
+      '🙂',
+      '🙃',
+      '😉',
+      '😌',
+      '😍',
+      '🥰',
+      '😘',
+      '😗',
+      '😙',
+      '😚',
+      '😋',
+      '😛',
+      '😝',
+      '😜',
+      '🤪',
+      '🤨',
+      '🧐',
+      '🤓',
+      '😎',
+      '🥳',
+      '😏',
+      '😒',
+      '😞',
+      '😔',
+      '😟',
+      '😕',
+      '🙁',
+      '☹️',
+      '😣',
+      '😖',
+      '😫',
+      '😩',
+      '🥺',
+      '😢',
+      '😭',
+      '😤',
+      '😠',
+      '😡',
+      '🤬',
+      '🤯',
+      '😳',
+      '🥵',
+      '🥶',
+      '😱',
+      '😨',
+      '😰',
+      '😥',
+      '😓',
+      '🤗',
+      '🤔',
+      '🫡',
+      '🤭',
+      '🫢',
+      '🫣',
+      '🤫',
+      '🤥',
+      '😶',
+      '😐',
+      '😑',
+      '😬',
+      '🙄',
+      '😯',
+      '😦',
+      '😧',
+      '😮',
+      '😲',
+      '🥱',
+      '😴',
+      '🤤',
+      '😪',
+      '😵',
+      '🤐',
+      '🥴',
+      '🤢',
+      '🤮',
+      '🤧',
+      '😷',
+      '🤒',
+      '🤕',
+      '🤑',
+      '🤠',
+      '😈',
+      '👿',
+      '👻',
+      '💀',
+      '☠️',
+      '💩',
+      '🤡',
+      '👹',
+      '👺',
+      '❤️',
+      '🧡',
+      '💛',
+      '💚',
+      '💙',
+      '💜',
+      '🖤',
+      '🤍',
+      '🤎',
+      '💔',
+      '❣️',
+      '💕',
+      '💞',
+      '💓',
+      '💗',
+      '💖',
+      '💘',
+      '💝',
+      '💟',
     ],
   ),
   _EmojiCategory(
     label: 'People',
     icon: Icons.people_outline,
     emojis: [
-      '👍', '👎', '👌', '🤌', '🤏', '✌️', '🤞', '🫰',
-      '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️',
-      '✋', '🤚', '🖐️', '🖖', '👋', '🤝', '👏', '🙌',
-      '🫶', '👐', '🤲', '🙏', '✍️', '💅', '🤳', '💪',
-      '🦾', '🦵', '🦶', '👂', '🦻', '👃', '🧠', '🫀',
-      '🫁', '🦷', '👀', '👁️', '👅', '👄', '👶', '🧒',
-      '👦', '👧', '🧑', '👱', '👨', '🧔', '👩', '🧓',
-      '👴', '👵', '🙍', '🙎', '🙅', '🙆', '💁', '🙋',
-      '🧏', '🙇', '🤦', '🤷', '👮', '🕵️', '💂', '🥷',
-      '👷', '🫅', '🤴', '👸', '👳', '👲', '🧕', '🤵',
-      '👰', '🤰', '🫃', '🫄', '🤱', '👼', '🎅', '🧑‍🎄',
+      '👍',
+      '👎',
+      '👌',
+      '🤌',
+      '🤏',
+      '✌️',
+      '🤞',
+      '🫰',
+      '🤟',
+      '🤘',
+      '🤙',
+      '👈',
+      '👉',
+      '👆',
+      '👇',
+      '☝️',
+      '✋',
+      '🤚',
+      '🖐️',
+      '🖖',
+      '👋',
+      '🤝',
+      '👏',
+      '🙌',
+      '🫶',
+      '👐',
+      '🤲',
+      '🙏',
+      '✍️',
+      '💅',
+      '🤳',
+      '💪',
+      '🦾',
+      '🦵',
+      '🦶',
+      '👂',
+      '🦻',
+      '👃',
+      '🧠',
+      '🫀',
+      '🫁',
+      '🦷',
+      '👀',
+      '👁️',
+      '👅',
+      '👄',
+      '👶',
+      '🧒',
+      '👦',
+      '👧',
+      '🧑',
+      '👱',
+      '👨',
+      '🧔',
+      '👩',
+      '🧓',
+      '👴',
+      '👵',
+      '🙍',
+      '🙎',
+      '🙅',
+      '🙆',
+      '💁',
+      '🙋',
+      '🧏',
+      '🙇',
+      '🤦',
+      '🤷',
+      '👮',
+      '🕵️',
+      '💂',
+      '🥷',
+      '👷',
+      '🫅',
+      '🤴',
+      '👸',
+      '👳',
+      '👲',
+      '🧕',
+      '🤵',
+      '👰',
+      '🤰',
+      '🫃',
+      '🫄',
+      '🤱',
+      '👼',
+      '🎅',
+      '🧑‍🎄',
     ],
   ),
   _EmojiCategory(
     label: 'Nature',
     icon: Icons.eco_outlined,
     emojis: [
-      '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼',
-      '🐻‍❄️', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵',
-      '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤',
-      '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄',
-      '🐝', '🪱', '🐛', '🦋', '🐌', '🐞', '🐜', '🪰',
-      '🪲', '🪳', '🦟', '🦗', '🕷️', '🦂', '🐢', '🐍',
-      '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀',
-      '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊',
-      '🌵', '🎄', '🌲', '🌳', '🌴', '🪵', '🌱', '🌿',
-      '☘️', '🍀', '🎍', '🪴', '🎋', '🍃', '🍂', '🍁',
-      '🍄', '🐚', '🪨', '🌾', '💐', '🌷', '🌹', '🥀',
-      '🌺', '🌸', '🌼', '🌻', '🌞', '🌝', '🌛', '🌜',
+      '🐶',
+      '🐱',
+      '🐭',
+      '🐹',
+      '🐰',
+      '🦊',
+      '🐻',
+      '🐼',
+      '🐻‍❄️',
+      '🐨',
+      '🐯',
+      '🦁',
+      '🐮',
+      '🐷',
+      '🐸',
+      '🐵',
+      '🙈',
+      '🙉',
+      '🙊',
+      '🐒',
+      '🐔',
+      '🐧',
+      '🐦',
+      '🐤',
+      '🦆',
+      '🦅',
+      '🦉',
+      '🦇',
+      '🐺',
+      '🐗',
+      '🐴',
+      '🦄',
+      '🐝',
+      '🪱',
+      '🐛',
+      '🦋',
+      '🐌',
+      '🐞',
+      '🐜',
+      '🪰',
+      '🪲',
+      '🪳',
+      '🦟',
+      '🦗',
+      '🕷️',
+      '🦂',
+      '🐢',
+      '🐍',
+      '🦎',
+      '🦖',
+      '🦕',
+      '🐙',
+      '🦑',
+      '🦐',
+      '🦞',
+      '🦀',
+      '🐡',
+      '🐠',
+      '🐟',
+      '🐬',
+      '🐳',
+      '🐋',
+      '🦈',
+      '🐊',
+      '🌵',
+      '🎄',
+      '🌲',
+      '🌳',
+      '🌴',
+      '🪵',
+      '🌱',
+      '🌿',
+      '☘️',
+      '🍀',
+      '🎍',
+      '🪴',
+      '🎋',
+      '🍃',
+      '🍂',
+      '🍁',
+      '🍄',
+      '🐚',
+      '🪨',
+      '🌾',
+      '💐',
+      '🌷',
+      '🌹',
+      '🥀',
+      '🌺',
+      '🌸',
+      '🌼',
+      '🌻',
+      '🌞',
+      '🌝',
+      '🌛',
+      '🌜',
     ],
   ),
   _EmojiCategory(
     label: 'Food',
     icon: Icons.restaurant_outlined,
     emojis: [
-      '🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇',
-      '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥',
-      '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶️',
-      '🫑', '🌽', '🥕', '🫒', '🧄', '🧅', '🥔', '🍠',
-      '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳',
-      '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🌭',
-      '🍔', '🍟', '🍕', '🫓', '🥪', '🥙', '🧆', '🌮',
-      '🌯', '🫔', '🥗', '🥘', '🫕', '🍝', '🍜', '🍲',
-      '🍛', '🍣', '🍱', '🥟', '🦪', '🍤', '🍙', '🍚',
-      '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧', '🍨',
-      '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬',
-      '🍫', '🍿', '🍩', '🍪', '🥛', '☕', '🫖', '🍵',
+      '🍏',
+      '🍎',
+      '🍐',
+      '🍊',
+      '🍋',
+      '🍌',
+      '🍉',
+      '🍇',
+      '🍓',
+      '🫐',
+      '🍈',
+      '🍒',
+      '🍑',
+      '🥭',
+      '🍍',
+      '🥥',
+      '🥝',
+      '🍅',
+      '🍆',
+      '🥑',
+      '🥦',
+      '🥬',
+      '🥒',
+      '🌶️',
+      '🫑',
+      '🌽',
+      '🥕',
+      '🫒',
+      '🧄',
+      '🧅',
+      '🥔',
+      '🍠',
+      '🥐',
+      '🥯',
+      '🍞',
+      '🥖',
+      '🥨',
+      '🧀',
+      '🥚',
+      '🍳',
+      '🧈',
+      '🥞',
+      '🧇',
+      '🥓',
+      '🥩',
+      '🍗',
+      '🍖',
+      '🌭',
+      '🍔',
+      '🍟',
+      '🍕',
+      '🫓',
+      '🥪',
+      '🥙',
+      '🧆',
+      '🌮',
+      '🌯',
+      '🫔',
+      '🥗',
+      '🥘',
+      '🫕',
+      '🍝',
+      '🍜',
+      '🍲',
+      '🍛',
+      '🍣',
+      '🍱',
+      '🥟',
+      '🦪',
+      '🍤',
+      '🍙',
+      '🍚',
+      '🍘',
+      '🍥',
+      '🥠',
+      '🥮',
+      '🍢',
+      '🍡',
+      '🍧',
+      '🍨',
+      '🍦',
+      '🥧',
+      '🧁',
+      '🍰',
+      '🎂',
+      '🍮',
+      '🍭',
+      '🍬',
+      '🍫',
+      '🍿',
+      '🍩',
+      '🍪',
+      '🥛',
+      '☕',
+      '🫖',
+      '🍵',
     ],
   ),
   _EmojiCategory(
     label: 'Travel',
     icon: Icons.flight_takeoff,
     emojis: [
-      '🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑',
-      '🚒', '🚐', '🛻', '🚚', '🚛', '🚜', '🛵', '🏍️',
-      '🛺', '🚲', '🛴', '🛹', '🛼', '🚆', '🚇', '🚊',
-      '🚉', '✈️', '🛫', '🛬', '🛩️', '💺', '🚁', '🚀',
-      '🛸', '🚢', '⛵', '🚤', '🛥️', '🛳️', '⛴️', '⚓',
-      '⛽', '🚧', '🚦', '🚥', '🗺️', '🗿', '🗽', '🗼',
-      '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠', '⛲', '⛱️',
-      '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️', '🗻', '🏕️',
-      '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏭', '🏢', '🏬',
-      '🏣', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩',
+      '🚗',
+      '🚕',
+      '🚙',
+      '🚌',
+      '🚎',
+      '🏎️',
+      '🚓',
+      '🚑',
+      '🚒',
+      '🚐',
+      '🛻',
+      '🚚',
+      '🚛',
+      '🚜',
+      '🛵',
+      '🏍️',
+      '🛺',
+      '🚲',
+      '🛴',
+      '🛹',
+      '🛼',
+      '🚆',
+      '🚇',
+      '🚊',
+      '🚉',
+      '✈️',
+      '🛫',
+      '🛬',
+      '🛩️',
+      '💺',
+      '🚁',
+      '🚀',
+      '🛸',
+      '🚢',
+      '⛵',
+      '🚤',
+      '🛥️',
+      '🛳️',
+      '⛴️',
+      '⚓',
+      '⛽',
+      '🚧',
+      '🚦',
+      '🚥',
+      '🗺️',
+      '🗿',
+      '🗽',
+      '🗼',
+      '🏰',
+      '🏯',
+      '🏟️',
+      '🎡',
+      '🎢',
+      '🎠',
+      '⛲',
+      '⛱️',
+      '🏖️',
+      '🏝️',
+      '🏜️',
+      '🌋',
+      '⛰️',
+      '🏔️',
+      '🗻',
+      '🏕️',
+      '🏠',
+      '🏡',
+      '🏘️',
+      '🏚️',
+      '🏗️',
+      '🏭',
+      '🏢',
+      '🏬',
+      '🏣',
+      '🏤',
+      '🏥',
+      '🏦',
+      '🏨',
+      '🏪',
+      '🏫',
+      '🏩',
     ],
   ),
   _EmojiCategory(
     label: 'Activities',
     icon: Icons.sports_basketball_outlined,
     emojis: [
-      '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉',
-      '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍',
-      '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿',
-      '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌',
-      '🎿', '⛷️', '🏂', '🪂', '🏋️', '🤼', '🤸', '⛹️',
-      '🤺', '🤾', '🏌️', '🏇', '🧘', '🏄', '🏊', '🤽',
-      '🚣', '🧗', '🚵', '🚴', '🎯', '🎮', '🎲', '♟️',
-      '🎭', '🎨', '🧩', '🎪', '🎤', '🎧', '🎼', '🎹',
-      '🥁', '🪘', '🎷', '🎺', '🪗', '🎸', '🪕', '🎻',
-      '🎬', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🎗️',
+      '⚽',
+      '🏀',
+      '🏈',
+      '⚾',
+      '🥎',
+      '🎾',
+      '🏐',
+      '🏉',
+      '🥏',
+      '🎱',
+      '🪀',
+      '🏓',
+      '🏸',
+      '🏒',
+      '🏑',
+      '🥍',
+      '🏏',
+      '🪃',
+      '🥅',
+      '⛳',
+      '🪁',
+      '🏹',
+      '🎣',
+      '🤿',
+      '🥊',
+      '🥋',
+      '🎽',
+      '🛹',
+      '🛼',
+      '🛷',
+      '⛸️',
+      '🥌',
+      '🎿',
+      '⛷️',
+      '🏂',
+      '🪂',
+      '🏋️',
+      '🤼',
+      '🤸',
+      '⛹️',
+      '🤺',
+      '🤾',
+      '🏌️',
+      '🏇',
+      '🧘',
+      '🏄',
+      '🏊',
+      '🤽',
+      '🚣',
+      '🧗',
+      '🚵',
+      '🚴',
+      '🎯',
+      '🎮',
+      '🎲',
+      '♟️',
+      '🎭',
+      '🎨',
+      '🧩',
+      '🎪',
+      '🎤',
+      '🎧',
+      '🎼',
+      '🎹',
+      '🥁',
+      '🪘',
+      '🎷',
+      '🎺',
+      '🪗',
+      '🎸',
+      '🪕',
+      '🎻',
+      '🎬',
+      '🏆',
+      '🥇',
+      '🥈',
+      '🥉',
+      '🏅',
+      '🎖️',
+      '🎗️',
     ],
   ),
   _EmojiCategory(
     label: 'Objects',
     icon: Icons.lightbulb_outline,
     emojis: [
-      '⌚', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️',
-      '🖲️', '🕹️', '🗜️', '💽', '💾', '💿', '📀', '📼',
-      '📷', '📸', '📹', '🎥', '📽️', '🎞️', '📞', '☎️',
-      '📟', '📠', '📺', '📻', '🎙️', '🎚️', '🎛️', '🧭',
-      '⏱️', '⏲️', '⏰', '🕰️', '⌛', '⏳', '📡', '🔋',
-      '🪫', '🔌', '💡', '🔦', '🕯️', '🪔', '🧯', '🛢️',
-      '💸', '💵', '💴', '💶', '💷', '🪙', '💰', '💳',
-      '💎', '⚖️', '🪜', '🧰', '🪛', '🔧', '🔨', '⚒️',
-      '🛠️', '⛏️', '🪚', '🔩', '⚙️', '🪤', '🧱', '⛓️',
-      '🧲', '🔫', '💣', '🧨', '🪓', '🔪', '🗡️', '🛡️',
-      '🚬', '⚰️', '🪦', '⚱️', '🏺', '🔮', '📿', '🧿',
+      '⌚',
+      '📱',
+      '📲',
+      '💻',
+      '⌨️',
+      '🖥️',
+      '🖨️',
+      '🖱️',
+      '🖲️',
+      '🕹️',
+      '🗜️',
+      '💽',
+      '💾',
+      '💿',
+      '📀',
+      '📼',
+      '📷',
+      '📸',
+      '📹',
+      '🎥',
+      '📽️',
+      '🎞️',
+      '📞',
+      '☎️',
+      '📟',
+      '📠',
+      '📺',
+      '📻',
+      '🎙️',
+      '🎚️',
+      '🎛️',
+      '🧭',
+      '⏱️',
+      '⏲️',
+      '⏰',
+      '🕰️',
+      '⌛',
+      '⏳',
+      '📡',
+      '🔋',
+      '🪫',
+      '🔌',
+      '💡',
+      '🔦',
+      '🕯️',
+      '🪔',
+      '🧯',
+      '🛢️',
+      '💸',
+      '💵',
+      '💴',
+      '💶',
+      '💷',
+      '🪙',
+      '💰',
+      '💳',
+      '💎',
+      '⚖️',
+      '🪜',
+      '🧰',
+      '🪛',
+      '🔧',
+      '🔨',
+      '⚒️',
+      '🛠️',
+      '⛏️',
+      '🪚',
+      '🔩',
+      '⚙️',
+      '🪤',
+      '🧱',
+      '⛓️',
+      '🧲',
+      '🔫',
+      '💣',
+      '🧨',
+      '🪓',
+      '🔪',
+      '🗡️',
+      '🛡️',
+      '🚬',
+      '⚰️',
+      '🪦',
+      '⚱️',
+      '🏺',
+      '🔮',
+      '📿',
+      '🧿',
     ],
   ),
   _EmojiCategory(
     label: 'Symbols',
     icon: Icons.emoji_symbols_outlined,
     emojis: [
-      '✅', '☑️', '✔️', '❌', '❎', '➕', '➖', '➗',
-      '✖️', '♾️', '‼️', '⁉️', '❓', '❔', '❕', '❗',
-      '〰️', '💱', '💲', '⚕️', '♻️', '⚜️', '🔱', '📛',
-      '🔰', '⭕', '🟢', '🟡', '🟠', '🔴', '🟣', '🔵',
-      '⚫', '⚪', '🟤', '⬛', '⬜', '◼️', '◻️', '◾',
-      '◽', '▪️', '▫️', '🔶', '🔷', '🔸', '🔹', '🔺',
-      '🔻', '💠', '🔘', '🔳', '🔲', '🏁', '🚩', '🎌',
-      '🏴', '🏳️', '🏳️‍🌈', '🏳️‍⚧️', '🇮🇳', '🇺🇸', '🇬🇧', '🇯🇵',
-      '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣',
-      '8️⃣', '9️⃣', '🔟', '#️⃣', '*️⃣',
+      '✅',
+      '☑️',
+      '✔️',
+      '❌',
+      '❎',
+      '➕',
+      '➖',
+      '➗',
+      '✖️',
+      '♾️',
+      '‼️',
+      '⁉️',
+      '❓',
+      '❔',
+      '❕',
+      '❗',
+      '〰️',
+      '💱',
+      '💲',
+      '⚕️',
+      '♻️',
+      '⚜️',
+      '🔱',
+      '📛',
+      '🔰',
+      '⭕',
+      '🟢',
+      '🟡',
+      '🟠',
+      '🔴',
+      '🟣',
+      '🔵',
+      '⚫',
+      '⚪',
+      '🟤',
+      '⬛',
+      '⬜',
+      '◼️',
+      '◻️',
+      '◾',
+      '◽',
+      '▪️',
+      '▫️',
+      '🔶',
+      '🔷',
+      '🔸',
+      '🔹',
+      '🔺',
+      '🔻',
+      '💠',
+      '🔘',
+      '🔳',
+      '🔲',
+      '🏁',
+      '🚩',
+      '🎌',
+      '🏴',
+      '🏳️',
+      '🏳️‍🌈',
+      '🏳️‍⚧️',
+      '🇮🇳',
+      '🇺🇸',
+      '🇬🇧',
+      '🇯🇵',
+      '0️⃣',
+      '1️⃣',
+      '2️⃣',
+      '3️⃣',
+      '4️⃣',
+      '5️⃣',
+      '6️⃣',
+      '7️⃣',
+      '8️⃣',
+      '9️⃣',
+      '🔟',
+      '#️⃣',
+      '*️⃣',
     ],
   ),
 ];
@@ -2885,9 +3468,7 @@ class _SheetAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isDestructive
-        ? PravaColors.error
-        : PravaColors.accentPrimary;
+    final color = isDestructive ? PravaColors.error : PravaColors.accentPrimary;
 
     return ListTile(
       contentPadding: EdgeInsets.zero,

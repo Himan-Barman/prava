@@ -79,10 +79,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
 
     try {
-      final session = await _auth.login(
-        email: identifier,
-        password: password,
-      );
+      final session = await _auth.login(email: identifier, password: password);
 
       if (!mounted) return;
 
@@ -101,10 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         PravaNavigator.pushReplacement(
           context,
-          EmailOtpScreen(
-            email: session.email,
-            flow: EmailOtpFlow.verify,
-          ),
+          EmailOtpScreen(email: session.email, flow: EmailOtpFlow.verify),
         );
         return;
       }
@@ -128,34 +122,24 @@ class _LoginScreenState extends State<LoginScreen> {
           ? err.message
           : "Login failed, please try again";
 
-      PravaToast.show(
-        context,
-        message: message,
-        type: PravaToastType.error,
-      );
+      PravaToast.show(context, message: message, type: PravaToastType.error);
     }
   }
 
   void _devLogin() {
     HapticFeedback.selectionClick();
 
-    PravaNavigator.pushAndRemoveUntil(
-      context,
-      const HomeShell(),
-      (_) => false,
-    );
+    PravaNavigator.pushAndRemoveUntil(context, const HomeShell(), (_) => false);
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.pravaColors;
 
-    final primaryText =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondaryText =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final tertiaryText =
-        isDark ? PravaColors.darkTextTertiary : PravaColors.lightTextTertiary;
+    final primaryText = tokens.textPrimary;
+    final secondaryText = tokens.textSecondary;
+    final tertiaryText = tokens.textTertiary;
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
@@ -194,13 +178,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                     offset: _showHeader
                                         ? Offset.zero
                                         : const Offset(0, 0.05),
-                                    duration:
-                                        const Duration(milliseconds: 520),
+                                    duration: const Duration(milliseconds: 520),
                                     curve: Curves.easeOut,
                                     child: AnimatedOpacity(
                                       opacity: _showHeader ? 1 : 0,
-                                      duration:
-                                          const Duration(milliseconds: 520),
+                                      duration: const Duration(
+                                        milliseconds: 520,
+                                      ),
                                       curve: Curves.easeOut,
                                       child: Column(
                                         crossAxisAlignment:
@@ -208,8 +192,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         children: [
                                           Text(
                                             "Prava",
-                                            style:
-                                                PravaTypography.h1.copyWith(
+                                            style: PravaTypography.h1.copyWith(
                                               letterSpacing: -0.8,
                                               color: primaryText,
                                             ),
@@ -219,9 +202,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                             "Sign in to your private workspace",
                                             style: PravaTypography.bodyLarge
                                                 .copyWith(
-                                              color: secondaryText,
-                                              letterSpacing: 0.2,
-                                            ),
+                                                  color: secondaryText,
+                                                  letterSpacing: 0.2,
+                                                ),
                                           ),
                                           const SizedBox(height: 18),
                                         ],
@@ -233,13 +216,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                     offset: _showCard
                                         ? Offset.zero
                                         : const Offset(0, 0.06),
-                                    duration:
-                                        const Duration(milliseconds: 560),
+                                    duration: const Duration(milliseconds: 560),
                                     curve: Curves.easeOut,
                                     child: AnimatedOpacity(
                                       opacity: _showCard ? 1 : 0,
-                                      duration:
-                                          const Duration(milliseconds: 560),
+                                      duration: const Duration(
+                                        milliseconds: 560,
+                                      ),
                                       curve: Curves.easeOut,
                                       child: Column(
                                         crossAxisAlignment:
@@ -264,31 +247,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                               child: Container(
                                                 padding:
                                                     const EdgeInsets.symmetric(
-                                                  horizontal: 16,
-                                                  vertical: 12,
-                                                ),
+                                                      horizontal: 16,
+                                                      vertical: 12,
+                                                    ),
                                                 decoration: BoxDecoration(
-                                                  color: isDark
-                                                      ? Colors.white
-                                                          .withValues(
-                                                            alpha: 0.04,
-                                                          )
-                                                      : Colors.white
-                                                          .withValues(
-                                                            alpha: 0.75,
-                                                          ),
+                                                  color:
+                                                      tokens.backgroundSurface,
                                                   borderRadius:
                                                       BorderRadius.circular(18),
                                                   border: Border.all(
-                                                    color: isDark
-                                                        ? Colors.white
-                                                            .withValues(
-                                                              alpha: 0.1,
-                                                            )
-                                                        : Colors.black
-                                                            .withValues(
-                                                              alpha: 0.06,
-                                                            ),
+                                                    color: tokens.borderSubtle,
                                                   ),
                                                 ),
                                                 child: Row(
@@ -300,8 +268,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                                       style: PravaTypography
                                                           .bodySmall
                                                           .copyWith(
-                                                        color: secondaryText,
-                                                      ),
+                                                            color:
+                                                                secondaryText,
+                                                          ),
                                                     ),
                                                     const SizedBox(width: 6),
                                                     Text(
@@ -309,19 +278,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                                       style: PravaTypography
                                                           .bodySmall
                                                           .copyWith(
-                                                        color: PravaColors
-                                                            .accentPrimary,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                      ),
+                                                            color: tokens
+                                                                .brandContent,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                          ),
                                                     ),
                                                     const SizedBox(width: 4),
-                                                    const Icon(
+                                                    Icon(
                                                       Icons
                                                           .arrow_forward_rounded,
                                                       size: 16,
-                                                      color: PravaColors
-                                                          .accentPrimary,
+                                                      color:
+                                                          tokens.brandContent,
                                                     ),
                                                   ],
                                                 ),
@@ -337,10 +306,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                                   "Dev login (debug only)",
                                                   style: PravaTypography.caption
                                                       .copyWith(
-                                                    color: PravaColors
-                                                        .accentPrimary,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
+                                                        color:
+                                                            tokens.brandContent,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
                                                 ),
                                               ),
                                             ),
@@ -378,15 +348,10 @@ class _LoginScreenState extends State<LoginScreen> {
     required Color secondaryText,
     required Color tertiaryText,
   }) {
-    final cardColor = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.white.withValues(alpha: 0.9);
-    final cardBorder = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : Colors.black.withValues(alpha: 0.08);
-    final shadowColor = isDark
-        ? Colors.black.withValues(alpha: 0.4)
-        : Colors.black.withValues(alpha: 0.08);
+    final tokens = context.pravaColors;
+    final cardColor = tokens.backgroundSurface.withValues(alpha: 0.94);
+    final cardBorder = tokens.borderSubtle;
+    final shadowColor = tokens.shadowMedium;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -419,9 +384,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 6),
               Text(
                 "Use your Prava ID or email to continue.",
-                style: PravaTypography.body.copyWith(
-                  color: secondaryText,
-                ),
+                style: PravaTypography.body.copyWith(color: secondaryText),
               ),
               const SizedBox(height: 22),
               AutofillGroup(
@@ -456,7 +419,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Text(
                           "Forgot password?",
                           style: PravaTypography.caption.copyWith(
-                            color: PravaColors.accentPrimary,
+                            color: tokens.brandContent,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -478,7 +441,8 @@ class _LoginScreenState extends State<LoginScreen> {
     return AnimatedBuilder(
       animation: Listenable.merge([_emailController, _passwordController]),
       builder: (context, _) {
-        final canLogin = _emailController.text.trim().isNotEmpty &&
+        final canLogin =
+            _emailController.text.trim().isNotEmpty &&
             _passwordController.text.isNotEmpty;
         final enabled = canLogin && !_loading;
 
@@ -503,11 +467,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          Icons.lock_outline,
-          size: 16,
-          color: tertiaryText,
-        ),
+        Icon(Icons.lock_outline, size: 16, color: tertiaryText),
         const SizedBox(width: 6),
         Text(
           "End-to-end encrypted",

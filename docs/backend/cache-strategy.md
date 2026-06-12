@@ -1,4 +1,4 @@
-# Cache Strategy
+ # Cache Strategy
 
 Redis is an acceleration layer only. PostgreSQL remains the source of truth.
 

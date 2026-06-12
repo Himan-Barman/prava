@@ -25,7 +25,13 @@ class _PravaPasswordInputState extends State<PravaPasswordInput> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.pravaColors;
+    OutlineInputBorder border(Color color, [double width = 1]) {
+      return OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: color, width: width),
+      );
+    }
 
     return TextField(
       controller: widget.controller,
@@ -34,22 +40,13 @@ class _PravaPasswordInputState extends State<PravaPasswordInput> {
       enableSuggestions: false,
       autocorrect: false,
       keyboardType: TextInputType.visiblePassword,
-      style: PravaTypography.body.copyWith(
-        color: isDark
-            ? PravaColors.darkTextPrimary
-            : PravaColors.lightTextPrimary,
-      ),
+      style: PravaTypography.body.copyWith(color: tokens.textPrimary),
+      cursorColor: tokens.brandPrimary,
       decoration: InputDecoration(
         hintText: widget.hint,
-        hintStyle: PravaTypography.body.copyWith(
-          color: isDark
-              ? PravaColors.darkTextTertiary
-              : PravaColors.lightTextTertiary,
-        ),
+        hintStyle: PravaTypography.body.copyWith(color: tokens.textTertiary),
         filled: true,
-        fillColor: isDark
-            ? PravaColors.darkSurface
-            : PravaColors.lightSurface,
+        fillColor: tokens.backgroundSurfaceSubtle,
         suffixIcon: IconButton(
           splashRadius: 18,
           icon: Icon(
@@ -57,21 +54,22 @@ class _PravaPasswordInputState extends State<PravaPasswordInput> {
                 ? Icons.visibility_off_outlined
                 : Icons.visibility_outlined,
             size: 20,
-            color: isDark
-                ? PravaColors.darkTextSecondary
-                : PravaColors.lightTextSecondary,
+            color: tokens.iconSecondary,
           ),
           onPressed: () {
             HapticFeedback.selectionClick();
             setState(() => _obscure = !_obscure);
           },
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 18,
         ),
+        border: border(tokens.borderDefault),
+        enabledBorder: border(tokens.borderDefault),
+        focusedBorder: border(tokens.focusBorder, 1.4),
+        errorBorder: border(tokens.statusError),
+        focusedErrorBorder: border(tokens.statusError, 1.4),
       ),
     );
   }

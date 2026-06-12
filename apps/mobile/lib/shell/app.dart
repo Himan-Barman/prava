@@ -6,6 +6,7 @@ import '../experiences/auth/login_screen.dart';
 import '../experiences/home/home_shell.dart';
 import '../navigation/prava_navigator.dart';
 import '../services/backend_keepalive_service.dart';
+import '../ui-system/colors.dart';
 import '../ui-system/theme.dart';
 import 'deep_link_handler.dart';
 import 'settings_controller.dart';
@@ -20,8 +21,7 @@ class PravaApp extends StatefulWidget {
 }
 
 class _PravaAppState extends State<PravaApp> {
-  final GlobalKey<NavigatorState> _navigatorKey =
-      GlobalKey<NavigatorState>();
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   late final DeepLinkHandler _deepLinks;
   late final AuthState _authState;
   late final SecureStore _store;
@@ -130,12 +130,10 @@ class _AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF0C0C0C) : Colors.white;
-    final textColor = isDark ? Colors.white : const Color(0xFF0C0C0C);
+    final tokens = context.pravaColors;
 
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: tokens.backgroundCanvas,
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -146,7 +144,7 @@ class _AuthGate extends StatelessWidget {
                 fontFamily: 'Inter',
                 fontSize: 32,
                 fontWeight: FontWeight.w800,
-                color: textColor,
+                color: tokens.textPrimary,
                 letterSpacing: 1.2,
               ),
             ),
@@ -156,7 +154,7 @@ class _AuthGate extends StatelessWidget {
               height: 20,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: textColor.withValues(alpha: 0.3),
+                color: tokens.brandPrimary,
               ),
             ),
           ],

@@ -184,7 +184,11 @@ test("chat routes: dm create, send message, read + delivery + sync", async () =>
   assert.ok(dmCreate.data.conversationId);
   const conversationId = dmCreate.data.conversationId;
 
-  const sendMessage = await httpJson<{ message: { seq: number; messageId: string } }>(
+  const clientMessageId = "00000000-0000-4000-8000-000000000101";
+  const sendMessage = await httpJson<{
+    created: boolean;
+    message: { seq: number; messageId: string; clientMessageId?: string };
+  }>(
     baseUrl,
     `/api/conversations/${conversationId}/messages`,
     {
@@ -195,12 +199,38 @@ test("chat routes: dm create, send message, read + delivery + sync", async () =>
         contentType: "text",
         deviceId: "device-a",
         tempId: "tmp-route-1",
+        clientMessageId,
       },
     }
   );
   assert.equal(sendMessage.status, 200);
+  assert.equal(sendMessage.data.created, true);
   assert.ok(sendMessage.data.message.messageId);
   assert.equal(sendMessage.data.message.seq, 1);
+  assert.equal(sendMessage.data.message.clientMessageId, clientMessageId);
+
+  const duplicateSend = await httpJson<{
+    created: boolean;
+    message: { seq: number; messageId: string; clientMessageId?: string };
+  }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/messages`,
+    {
+      method: "POST",
+      token: userAToken,
+      body: {
+        body: "hello route integration",
+        contentType: "text",
+        deviceId: "device-a",
+        tempId: "tmp-route-1-retry",
+        clientMessageId,
+      },
+    }
+  );
+  assert.equal(duplicateSend.status, 200);
+  assert.equal(duplicateSend.data.created, false);
+  assert.equal(duplicateSend.data.message.messageId, sendMessage.data.message.messageId);
+  assert.equal(duplicateSend.data.message.seq, 1);
 
   const listForBBeforeAccept = await httpJson<Array<{ id: string; unreadCount: number }>>(
     baseUrl,

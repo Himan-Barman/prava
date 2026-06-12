@@ -189,6 +189,23 @@ function ensureConversationOpenForUser(conversation: any, userId: string) {
 export default async function chatService(app: any) {
   app.get("/", { preHandler: requireAuth }, async (request: any) => {
     const limit = parseLimit(request.query?.limit, 30, 1, 100);
+    const archivedOnly = String(request.query?.archived || "").toLowerCase() === "true";
+    const includeArchived = String(request.query?.includeArchived || "").toLowerCase() === "true";
+    const starredOnly = String(request.query?.starred || "").toLowerCase() === "true";
+    const favoriteOnly = String(request.query?.favorite || "").toLowerCase() === "true";
+
+    const preferenceFilters: string[] = [];
+    if (archivedOnly) {
+      preferenceFilters.push("COALESCE(cup.is_archived, FALSE) = TRUE");
+    } else if (!includeArchived) {
+      preferenceFilters.push("COALESCE(cup.is_archived, FALSE) = FALSE");
+    }
+    if (starredOnly) {
+      preferenceFilters.push("COALESCE(cup.is_starred, FALSE) = TRUE");
+    }
+    if (favoriteOnly) {
+      preferenceFilters.push("COALESCE(cup.is_favorite, FALSE) = TRUE");
+    }
 
     const rows = await queryMany(
       `SELECT c.*,
@@ -202,7 +219,7 @@ export default async function chatService(app: any) {
          ON cup.conversation_id = c.conversation_id
         AND cup.user_id = $1
        WHERE cm.user_id = $1 AND cm.left_at IS NULL
-         AND COALESCE(cup.is_archived, FALSE) = FALSE
+         ${preferenceFilters.length > 0 ? `AND ${preferenceFilters.join("\n         AND ")}` : ""}
          AND (
            c.type <> 'dm'
            OR c.dm_request_status = 'active'
@@ -1088,6 +1105,9 @@ export default async function chatService(app: any) {
     const contentType = normalizeString(request.body?.contentType || "text").toLowerCase();
     const deviceId = normalizeString(request.body?.deviceId);
     const tempId = normalizeString(request.body?.tempId);
+    const clientMessageId = normalizeString(
+      request.body?.clientMessageId || request.body?.client_message_id || tempId
+    );
     const mediaAssetId = normalizeString(request.body?.mediaAssetId);
     const replyToMessageId = normalizeString(request.body?.replyToMessageId);
 
@@ -1095,38 +1115,44 @@ export default async function chatService(app: any) {
     ensure(body.length > 0 && body.length <= 65535, 400, "Invalid body");
     ensure(deviceId.length >= 3 && deviceId.length <= 128, 400, "Invalid device");
 
-    const message = await createMessage(conversation, {
+    const result = await createMessage(conversation, {
       senderUserId: request.user.userId,
       senderDeviceId: deviceId,
       body,
       contentType,
       mediaAssetId: mediaAssetId || null,
       replyToMessageId: replyToMessageId || null,
+      clientMessageId: clientMessageId || null,
       clientTimestamp: request.body?.clientTimestamp,
     });
+    const message = result.message;
 
-    publishToConversation(memberIds, "MESSAGE_PUSH", toRealtimeMessagePayload(message));
-    await createChatNotifications({
-      conversationId,
-      conversation,
-      memberIds,
-      actorUserId: request.user.userId,
-      body,
-    });
+    if (result.created) {
+      publishToConversation(memberIds, "MESSAGE_PUSH", toRealtimeMessagePayload(message));
+      await createChatNotifications({
+        conversationId,
+        conversation,
+        memberIds,
+        actorUserId: request.user.userId,
+        body,
+      });
+    }
 
     if (tempId) {
       publishToUsers([request.user.userId], "MESSAGE_ACK", {
         conversationId,
         tempId,
+        clientMessageId: message.client_message_id || message.client_message_uuid || null,
         messageId: message.message_id,
         seq: Number(message.seq || 0),
         createdAt: toIso(message.created_at),
+        created: result.created,
       });
     }
 
     return {
       message: mapMessage(message),
-      created: true,
+      created: result.created,
     };
   });
 

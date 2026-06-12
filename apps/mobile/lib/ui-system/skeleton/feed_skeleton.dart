@@ -26,9 +26,7 @@ class FeedSkeleton extends StatelessWidget {
                       radius: BorderRadius.all(Radius.circular(22)),
                     ),
                     SizedBox(width: 12),
-                    Expanded(
-                      child: PravaSkeletonBlock(height: 14),
-                    ),
+                    Expanded(child: PravaSkeletonBlock(height: 14)),
                   ],
                 ),
 

@@ -6,8 +6,7 @@ class PravaSkeletonContainer extends StatefulWidget {
   const PravaSkeletonContainer({super.key, required this.child});
 
   @override
-  State<PravaSkeletonContainer> createState() =>
-      _PravaSkeletonContainerState();
+  State<PravaSkeletonContainer> createState() => _PravaSkeletonContainerState();
 }
 
 class _PravaSkeletonContainerState extends State<PravaSkeletonContainer>
@@ -23,9 +22,10 @@ class _PravaSkeletonContainerState extends State<PravaSkeletonContainer>
       duration: const Duration(milliseconds: 1600),
     )..repeat(reverse: true);
 
-    _opacity = Tween<double>(begin: 0.55, end: 0.85).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _opacity = Tween<double>(
+      begin: 0.55,
+      end: 0.85,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -36,9 +36,6 @@ class _PravaSkeletonContainerState extends State<PravaSkeletonContainer>
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _opacity,
-      child: widget.child,
-    );
+    return FadeTransition(opacity: _opacity, child: widget.child);
   }
 }

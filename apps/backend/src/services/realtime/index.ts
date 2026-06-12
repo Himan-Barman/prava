@@ -95,14 +95,20 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       return;
     }
 
-    const touchLastSeen = () => {
+    let lastSeenTouchedAt = 0;
+    const touchLastSeen = (force = false) => {
+      const current = Date.now();
+      if (!force && current - lastSeenTouchedAt < 60_000) {
+        return;
+      }
+      lastSeenTouchedAt = current;
       void query(
         `UPDATE users SET last_seen_at = NOW() WHERE user_id = $1`,
         [userId]
       ).catch(() => undefined);
     };
 
-    touchLastSeen();
+    touchLastSeen(true);
 
     const state = {
       socket,
@@ -121,7 +127,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
     });
 
     const cleanup = () => {
-      touchLastSeen();
+      touchLastSeen(true);
       unregisterConnection(state);
       for (const [conversationId, meta] of state.conversationMeta.entries()) {
         if (meta.type !== "dm") continue;
@@ -218,6 +224,9 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       const body = normalizeString(payload.body);
       const contentType = normalizeString(payload.contentType || "text").toLowerCase();
       const tempId = normalizeString(payload.tempId);
+      const clientMessageId = normalizeString(
+        payload.clientMessageId || payload.client_message_id || tempId
+      );
       const mediaAssetId = normalizeString(payload.mediaAssetId);
       const replyToMessageId = normalizeString(payload.replyToMessageId);
       const senderDeviceId = normalizeString(payload.deviceId || deviceId);
@@ -226,21 +235,25 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       ensure(body.length > 0 && body.length <= 65535, 400, "Invalid body");
       ensure(senderDeviceId.length >= 3 && senderDeviceId.length <= 128, 400, "Invalid device");
 
-      const message = await createMessage(conversation, {
+      const result = await createMessage(conversation, {
         senderUserId: userId,
         senderDeviceId,
         body,
         contentType,
         mediaAssetId: mediaAssetId || null,
         replyToMessageId: replyToMessageId || null,
+        clientMessageId: clientMessageId || null,
         clientTimestamp: payload.clientTimestamp ?? null,
       });
+      const message = result.message;
 
-      publishToConversation(
-        conversation.memberIds,
-        "MESSAGE_PUSH",
-        toRealtimeMessagePayload(message)
-      );
+      if (result.created) {
+        publishToConversation(
+          conversation.memberIds,
+          "MESSAGE_PUSH",
+          toRealtimeMessagePayload(message)
+        );
+      }
 
       if (tempId) {
         publishToUsers(
@@ -249,9 +262,11 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
           {
             conversationId,
             tempId,
+            clientMessageId: message.client_message_id || message.client_message_uuid || null,
             messageId: message.message_id,
             seq: Number(message.seq || 0),
             createdAt: toIso(message.created_at),
+            created: result.created,
           }
         );
       }

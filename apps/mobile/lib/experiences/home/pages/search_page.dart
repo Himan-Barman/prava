@@ -267,18 +267,11 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
-    final surface = isDark
-        ? PravaColors.darkBgSurface
-        : PravaColors.lightBgSurface;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+    final border = tokens.borderSubtle;
+    final surface = tokens.backgroundSurface;
     final hasQuery = _query.length >= 2;
 
     return Scaffold(
@@ -307,11 +300,7 @@ class _SearchPageState extends State<SearchPage> {
                         Row(
                           children: [
                             Expanded(
-                              child: _SearchField(
-                                controller: _controller,
-                                border: border,
-                                isDark: isDark,
-                              ),
+                              child: _SearchField(controller: _controller),
                             ),
                             if (_loading) ...[
                               const SizedBox(width: 10),
@@ -335,7 +324,6 @@ class _SearchPageState extends State<SearchPage> {
                               secondary: secondary,
                               border: border,
                               surface: surface,
-                              isDark: isDark,
                               isPending: _isPending,
                               onAccountTap: _openProfile,
                               onAccountAction: _handleAccountAction,
@@ -366,24 +354,19 @@ class _SearchPageState extends State<SearchPage> {
 }
 
 class _SearchField extends StatelessWidget {
-  const _SearchField({
-    required this.controller,
-    required this.border,
-    required this.isDark,
-  });
+  const _SearchField({required this.controller});
 
   final TextEditingController controller;
-  final Color border;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     return Container(
       height: 44,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-        color: isDark ? Colors.white10 : Colors.white,
+        border: Border.all(color: tokens.borderDefault),
+        color: tokens.backgroundSurfaceSubtle,
       ),
       child: ValueListenableBuilder<TextEditingValue>(
         valueListenable: controller,
@@ -391,11 +374,9 @@ class _SearchField extends StatelessWidget {
           return TextField(
             controller: controller,
             textInputAction: TextInputAction.search,
-            cursorColor: PravaColors.accentPrimary,
+            cursorColor: tokens.brandPrimary,
             style: PravaTypography.body.copyWith(
-              color: isDark
-                  ? PravaColors.darkTextPrimary
-                  : PravaColors.lightTextPrimary,
+              color: tokens.textPrimary,
               fontWeight: FontWeight.w600,
             ),
             decoration: InputDecoration(
@@ -403,9 +384,7 @@ class _SearchField extends StatelessWidget {
               border: InputBorder.none,
               hintText: 'Search Prava',
               hintStyle: PravaTypography.body.copyWith(
-                color: isDark
-                    ? PravaColors.darkTextTertiary
-                    : PravaColors.lightTextTertiary,
+                color: tokens.textTertiary,
               ),
               contentPadding: const EdgeInsets.fromLTRB(16, 11, 8, 11),
               suffixIcon: value.text.isEmpty
@@ -416,9 +395,7 @@ class _SearchField extends StatelessWidget {
                       icon: Icon(
                         Icons.close_rounded,
                         size: 20,
-                        color: isDark
-                            ? PravaColors.darkTextSecondary
-                            : PravaColors.lightTextSecondary,
+                        color: tokens.iconSecondary,
                       ),
                       onPressed: controller.clear,
                     ),
@@ -454,6 +431,7 @@ class _HistoryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     if (history.isEmpty) {
       return const SizedBox.expand();
     }
@@ -482,7 +460,7 @@ class _HistoryView extends StatelessWidget {
                 child: Text(
                   'Clear',
                   style: PravaTypography.caption.copyWith(
-                    color: PravaColors.accentPrimary,
+                    color: tokens.brandContent,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -532,7 +510,6 @@ class _SearchResultsView extends StatelessWidget {
     required this.secondary,
     required this.border,
     required this.surface,
-    required this.isDark,
     required this.isPending,
     required this.onAccountTap,
     required this.onAccountAction,
@@ -547,7 +524,6 @@ class _SearchResultsView extends StatelessWidget {
   final Color secondary;
   final Color border;
   final Color surface;
-  final bool isDark;
   final bool Function(String userId) isPending;
   final ValueChanged<UserSearchResult> onAccountTap;
   final ValueChanged<UserSearchResult> onAccountAction;
@@ -556,9 +532,10 @@ class _SearchResultsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     if (loading && result.isEmpty) {
-      return const Center(
-        child: CupertinoActivityIndicator(color: PravaColors.accentPrimary),
+      return Center(
+        child: CupertinoActivityIndicator(color: tokens.brandPrimary),
       );
     }
     if (result.isEmpty) {
@@ -660,6 +637,7 @@ class _CategoryStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final items = [
       ('Accounts', accounts, CupertinoIcons.person_2_fill),
       ('Hashtags', hashtags, CupertinoIcons.number_circle_fill),
@@ -681,7 +659,7 @@ class _CategoryStrip extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(item.$3, size: 15, color: PravaColors.accentPrimary),
+                Icon(item.$3, size: 15, color: tokens.brandContent),
                 const SizedBox(width: 6),
                 Text(
                   '${item.$1} ${item.$2}',
@@ -807,6 +785,7 @@ class _AccountResultRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final displayName = user.displayName.isNotEmpty
         ? user.displayName
         : user.username;
@@ -846,9 +825,9 @@ class _AccountResultRow extends StatelessWidget {
                         ),
                         if (user.isVerified) ...[
                           const SizedBox(width: 5),
-                          const Icon(
+                          Icon(
                             CupertinoIcons.check_mark_circled_solid,
-                            color: PravaColors.accentPrimary,
+                            color: tokens.brandPrimary,
                             size: 15,
                           ),
                         ],
@@ -888,6 +867,7 @@ class _AccountAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final initial =
         (user.displayName.isNotEmpty ? user.displayName : user.username).trim();
 
@@ -898,12 +878,12 @@ class _AccountAvatar extends StatelessWidget {
         child: user.avatarUrl.trim().isNotEmpty
             ? Image.network(user.avatarUrl, fit: BoxFit.cover)
             : Container(
-                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                color: tokens.brandContainer,
                 child: Center(
                   child: Text(
                     initial.isEmpty ? '?' : initial[0].toUpperCase(),
                     style: PravaTypography.h3.copyWith(
-                      color: PravaColors.accentPrimary,
+                      color: tokens.brandContent,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -929,6 +909,7 @@ class _AccountActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final disabled = !enabled;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -940,13 +921,9 @@ class _AccountActionButton extends StatelessWidget {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color: disabled
-              ? PravaColors.accentPrimary.withValues(alpha: 0.14)
-              : PravaColors.accentPrimary,
+          color: disabled ? tokens.brandContainer : tokens.brandPrimary,
           borderRadius: BorderRadius.circular(999),
-          border: disabled
-              ? Border.all(color: PravaColors.accentPrimary)
-              : null,
+          border: disabled ? Border.all(color: tokens.brandPrimary) : null,
         ),
         child: pending
             ? const CupertinoActivityIndicator(radius: 8)
@@ -955,7 +932,7 @@ class _AccountActionButton extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: PravaTypography.caption.copyWith(
-                  color: disabled ? PravaColors.accentPrimary : Colors.white,
+                  color: disabled ? tokens.brandContent : tokens.textInverse,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -983,6 +960,7 @@ class _HashtagCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -996,9 +974,9 @@ class _HashtagCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               CupertinoIcons.number_circle_fill,
-              color: PravaColors.accentPrimary,
+              color: tokens.brandContent,
               size: 26,
             ),
             const SizedBox(width: 10),
@@ -1051,6 +1029,7 @@ class _PostResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     return Container(
       width: 244,
       padding: const EdgeInsets.all(12),
@@ -1069,15 +1048,13 @@ class _PostResultCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 13,
-                  backgroundColor: PravaColors.accentPrimary.withValues(
-                    alpha: 0.14,
-                  ),
+                  backgroundColor: tokens.brandContainer,
                   child: Text(
                     post.author.username.isNotEmpty
                         ? post.author.username[0].toUpperCase()
                         : '@',
                     style: PravaTypography.caption.copyWith(
-                      color: PravaColors.accentPrimary,
+                      color: tokens.brandContent,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -1118,7 +1095,7 @@ class _PostResultCard extends StatelessWidget {
                   child: Text(
                     '#$tag',
                     style: PravaTypography.caption.copyWith(
-                      color: PravaColors.accentPrimary,
+                      color: tokens.linkDefault,
                       fontWeight: FontWeight.w700,
                     ),
                   ),

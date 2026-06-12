@@ -17,25 +17,16 @@ const _menuWidth = 232.0;
 
 class HomeOverflowMenu {
   static void show(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final tokens = context.pravaColors;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final size = overlay.size;
     final menuLeft = size.width - _menuWidth - 16;
-    final menuColor =
-        isDark ? PravaColors.darkBgElevated : PravaColors.lightBgElevated;
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.black.withValues(alpha: 0.06);
+    final menuColor = tokens.backgroundSurfaceRaised;
+    final borderColor = tokens.borderSubtle;
 
     showMenu<void>(
       context: context,
-      position: RelativeRect.fromLTRB(
-        menuLeft,
-        kToolbarHeight + 24,
-        16,
-        0,
-      ),
+      position: RelativeRect.fromLTRB(menuLeft, kToolbarHeight + 24, 16, 0),
       color: menuColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
@@ -104,19 +95,13 @@ class HomeOverflowMenu {
     VoidCallback? onTap,
     bool destructive = false,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.pravaColors;
     final iconBackground = destructive
-        ? PravaColors.error.withValues(alpha: 0.14)
-        : PravaColors.accentPrimary.withValues(alpha: 0.12);
-    final iconBorder = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.black.withValues(alpha: 0.08);
-    final labelColor = destructive
-        ? PravaColors.error
-        : (isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary);
-    final captionColor = isDark
-        ? PravaColors.darkTextTertiary
-        : PravaColors.lightTextTertiary;
+        ? tokens.statusErrorContainer
+        : tokens.brandContainer;
+    final iconBorder = tokens.borderSubtle;
+    final labelColor = destructive ? tokens.statusError : tokens.textPrimary;
+    final captionColor = tokens.textTertiary;
 
     final navigator = Navigator.of(context);
 
@@ -147,9 +132,7 @@ class HomeOverflowMenu {
               child: Icon(
                 icon,
                 size: 18,
-                color: destructive
-                    ? PravaColors.error
-                    : PravaColors.accentPrimary,
+                color: destructive ? tokens.statusError : tokens.brandContent,
               ),
             ),
             const SizedBox(width: 12),
@@ -162,11 +145,7 @@ class HomeOverflowMenu {
                 ),
               ),
             ),
-            Icon(
-              CupertinoIcons.chevron_right,
-              size: 14,
-              color: captionColor,
-            ),
+            Icon(CupertinoIcons.chevron_right, size: 14, color: captionColor),
           ],
         ),
       ),

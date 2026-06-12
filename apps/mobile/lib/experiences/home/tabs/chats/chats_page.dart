@@ -46,7 +46,14 @@ ChatMessageType _parseContentType(String? value) {
   }
 }
 
-enum _ChatListFilter { all, unread, favoriteGroups, groups, starred, broadcasts }
+enum _ChatListFilter {
+  all,
+  unread,
+  favoriteGroups,
+  groups,
+  starred,
+  broadcasts,
+}
 
 class ChatsPageController {
   VoidCallback? _openNewGroup;
@@ -254,10 +261,7 @@ class _ChatsPageState extends State<ChatsPage> {
   }
 
   Future<void> _openNewGroup() async {
-    final created = await PravaNavigator.push(
-      context,
-      const NewGroupPage(),
-    );
+    final created = await PravaNavigator.push(context, const NewGroupPage());
     if (created != null) {
       _loadChats(showLoading: false);
     }
@@ -324,9 +328,7 @@ class _ChatsPageState extends State<ChatsPage> {
       case _ChatListFilter.unread:
         return chats.where((chat) => chat.unreadCount > 0).toList();
       case _ChatListFilter.favoriteGroups:
-        return chats
-            .where((chat) => chat.isGroup && chat.isFavorite)
-            .toList();
+        return chats.where((chat) => chat.isGroup && chat.isFavorite).toList();
       case _ChatListFilter.groups:
         return chats.where((chat) => chat.isGroup).toList();
       case _ChatListFilter.starred:
@@ -437,8 +439,7 @@ class _ChatsPageState extends State<ChatsPage> {
     final messageId = payload['messageId']?.toString();
     final seq = _parseInt(payload['seq']);
 
-    final knownConversation =
-        _chats.any((chat) => chat.id == conversationId);
+    final knownConversation = _chats.any((chat) => chat.id == conversationId);
     if (!knownConversation) {
       _loadChats(showLoading: false);
       return;
@@ -661,6 +662,24 @@ class _ChatsPageState extends State<ChatsPage> {
     }
   }
 
+  Future<void> _archiveChat(ChatPreview chat) async {
+    final previous = List<ChatPreview>.from(_chats);
+    setState(() {
+      _chats = _chats.where((item) => item.id != chat.id).toList();
+    });
+
+    final ok = await _chatService.updatePreferences(
+      conversationId: chat.id,
+      isFavorite: chat.isFavorite,
+      isStarred: chat.isStarred,
+      isMuted: chat.isMuted,
+      isArchived: true,
+    );
+    if (!ok && mounted) {
+      setState(() => _chats = previous);
+    }
+  }
+
   Future<void> _showChatActions(ChatPreview chat) async {
     HapticFeedback.selectionClick();
     final action = await showCupertinoModalPopup<String>(
@@ -674,6 +693,10 @@ class _ChatsPageState extends State<ChatsPage> {
           CupertinoActionSheetAction(
             onPressed: () => Navigator.of(context).pop('mute'),
             child: Text(chat.isMuted ? 'Unmute' : 'Mute'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('archive'),
+            child: const Text('Archive chat'),
           ),
         ];
         if (chat.isGroup) {
@@ -708,6 +731,8 @@ class _ChatsPageState extends State<ChatsPage> {
       _updateChatPreferences(chat, isFavorite: !chat.isFavorite);
     } else if (action == 'mute') {
       _updateChatPreferences(chat, isMuted: !chat.isMuted);
+    } else if (action == 'archive') {
+      _archiveChat(chat);
     }
   }
 
@@ -758,9 +783,8 @@ class _ChatsPageState extends State<ChatsPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final border = tokens.borderSubtle;
     final query = _searchController.text.trim().toLowerCase();
     final searchedChats = query.isEmpty
         ? _chats
@@ -791,9 +815,9 @@ class _ChatsPageState extends State<ChatsPage> {
                       filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.white10
-                              : Colors.white.withValues(alpha: 0.75),
+                          color: tokens.backgroundSurface.withValues(
+                            alpha: 0.9,
+                          ),
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: border),
                         ),
@@ -801,6 +825,13 @@ class _ChatsPageState extends State<ChatsPage> {
                           controller: _searchController,
                           placeholder: 'Search chats',
                           backgroundColor: Colors.transparent,
+                          itemColor: tokens.iconSecondary,
+                          style: PravaTypography.body.copyWith(
+                            color: tokens.textPrimary,
+                          ),
+                          placeholderStyle: PravaTypography.body.copyWith(
+                            color: tokens.textTertiary,
+                          ),
                         ),
                       ),
                     ),
@@ -817,7 +848,8 @@ class _ChatsPageState extends State<ChatsPage> {
                     _FilterChip(
                       label: 'All',
                       selected: _filter == _ChatListFilter.all,
-                      onTap: () => setState(() => _filter = _ChatListFilter.all),
+                      onTap: () =>
+                          setState(() => _filter = _ChatListFilter.all),
                     ),
                     const SizedBox(width: 8),
                     _FilterChip(
@@ -851,7 +883,7 @@ class _ChatsPageState extends State<ChatsPage> {
                       ? const ChatListSkeleton()
                       : RefreshIndicator(
                           onRefresh: () => _loadChats(showLoading: false),
-                          color: PravaColors.accentPrimary,
+                          color: tokens.brandPrimary,
                           child: visibleChats.isEmpty
                               ? _EmptyChatsState(
                                   title: query.isEmpty
@@ -878,8 +910,7 @@ class _ChatsPageState extends State<ChatsPage> {
                                     final chat = visibleChats[index];
                                     return _ChatTile(
                                       chat: chat,
-                                      onLongPress: () =>
-                                          _showChatActions(chat),
+                                      onLongPress: () => _showChatActions(chat),
                                       onTap: () {
                                         HapticFeedback.selectionClick();
                                         _updateChat(
@@ -888,16 +919,18 @@ class _ChatsPageState extends State<ChatsPage> {
                                               current.copyWith(unreadCount: 0),
                                         );
                                         Navigator.of(
-                                          context,
-                                          rootNavigator: true,
-                                        ).push(
-                                          PravaNavigator.route(
-                                            ChatThreadPage(chat: chat),
-                                            fullscreenDialog: true,
-                                          ),
-                                        ).then((_) {
-                                          _loadChats(showLoading: false);
-                                        });
+                                              context,
+                                              rootNavigator: true,
+                                            )
+                                            .push(
+                                              PravaNavigator.route(
+                                                ChatThreadPage(chat: chat),
+                                                fullscreenDialog: true,
+                                              ),
+                                            )
+                                            .then((_) {
+                                              _loadChats(showLoading: false);
+                                            });
                                       },
                                     );
                                   },
@@ -926,13 +959,10 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
+    final tokens = context.pravaColors;
     final background = selected
-        ? PravaColors.accentPrimary
-        : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06));
+        ? tokens.brandPrimary
+        : tokens.backgroundSurfaceSubtle;
 
     return GestureDetector(
       onTap: onTap,
@@ -948,7 +978,7 @@ class _FilterChip extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: PravaTypography.caption.copyWith(
-            color: selected ? Colors.white : secondary,
+            color: selected ? tokens.textInverse : tokens.textSecondary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -979,13 +1009,13 @@ class _ChatTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
-  Color _avatarColor(String name) {
-    const palette = [
-      Color(0xFF5B8CFF),
-      Color(0xFF2EC4B6),
-      Color(0xFFFFB703),
-      Color(0xFFFF6B6B),
-      Color(0xFF845EC2),
+  Color _avatarColor(String name, PravaThemeColors tokens) {
+    final palette = [
+      tokens.brandContent,
+      tokens.statusSuccess,
+      tokens.premiumContent,
+      tokens.socialLikeActive,
+      tokens.statusInfo,
     ];
 
     final hash = name.codeUnits.fold(0, (acc, c) => acc + c);
@@ -994,26 +1024,20 @@ class _ChatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+    final border = tokens.borderSubtle;
 
     final isUnread = chat.unreadCount > 0;
-    final baseColor = isDark
-        ? (isUnread ? Colors.white12 : Colors.white10)
-        : (isUnread ? Colors.white : Colors.white.withValues(alpha: 0.9));
-    final accent = _avatarColor(chat.name);
+    final baseColor = isUnread
+        ? tokens.notificationUnread
+        : tokens.backgroundSurface;
+    final accent = _avatarColor(chat.name, tokens);
 
     final previewStyle = chat.isTyping
         ? PravaTypography.caption.copyWith(
-            color: PravaColors.accentPrimary,
+            color: tokens.brandContent,
             fontWeight: FontWeight.w600,
           )
         : PravaTypography.caption.copyWith(color: secondary);
@@ -1030,12 +1054,12 @@ class _ChatTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: isUnread
-                  ? PravaColors.accentPrimary.withValues(alpha: 0.35)
+                  ? tokens.brandPrimary.withValues(alpha: 0.35)
                   : border,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
+                color: tokens.shadowSoft,
                 blurRadius: 16,
                 offset: const Offset(0, 10),
               ),
@@ -1068,7 +1092,7 @@ class _ChatTile extends StatelessWidget {
                           width: 12,
                           height: 12,
                           decoration: BoxDecoration(
-                            color: PravaColors.success,
+                            color: tokens.statusSuccess,
                             shape: BoxShape.circle,
                             border: Border.all(color: baseColor, width: 2),
                           ),
@@ -1095,10 +1119,10 @@ class _ChatTile extends StatelessWidget {
                             ),
                           ),
                           if (chat.isPinned)
-                            const Icon(
+                            Icon(
                               CupertinoIcons.pin_fill,
                               size: 14,
-                              color: PravaColors.accentPrimary,
+                              color: tokens.brandContent,
                             ),
                         ],
                       ),
@@ -1130,7 +1154,7 @@ class _ChatTile extends StatelessWidget {
                     Text(
                       chat.time,
                       style: PravaTypography.caption.copyWith(
-                        color: isUnread ? PravaColors.accentPrimary : secondary,
+                        color: isUnread ? tokens.brandContent : secondary,
                         fontWeight: isUnread
                             ? FontWeight.w600
                             : FontWeight.w400,
@@ -1144,13 +1168,13 @@ class _ChatTile extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: PravaColors.accentPrimary,
+                          color: tokens.brandPrimary,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           chat.unreadCount.toString(),
                           style: PravaTypography.caption.copyWith(
-                            color: Colors.white,
+                            color: tokens.textInverse,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -1179,8 +1203,8 @@ class _DeliveryIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final muted = isDark ? Colors.white54 : Colors.black45;
+    final tokens = context.pravaColors;
+    final muted = tokens.iconSecondary;
 
     switch (state) {
       case MessageDeliveryState.sending:
@@ -1190,16 +1214,12 @@ class _DeliveryIcon extends StatelessWidget {
       case MessageDeliveryState.delivered:
         return Icon(Icons.done_all, size: 14, color: muted);
       case MessageDeliveryState.read:
-        return const Icon(
-          Icons.done_all,
-          size: 14,
-          color: PravaColors.accentPrimary,
-        );
+        return Icon(Icons.done_all, size: 14, color: tokens.brandContent);
       case MessageDeliveryState.failed:
-        return const Icon(
+        return Icon(
           CupertinoIcons.exclamationmark_circle,
           size: 14,
-          color: PravaColors.error,
+          color: tokens.statusError,
         );
     }
   }
@@ -1301,23 +1321,16 @@ class ChatPreview {
 }
 
 class _EmptyChatsState extends StatelessWidget {
-  const _EmptyChatsState({
-    required this.title,
-    required this.subtitle,
-  });
+  const _EmptyChatsState({required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),

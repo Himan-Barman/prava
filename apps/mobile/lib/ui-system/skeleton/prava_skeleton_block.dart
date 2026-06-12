@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../colors.dart';
+
 class PravaSkeletonBlock extends StatelessWidget {
   final double height;
   final double width;
@@ -14,13 +16,13 @@ class PravaSkeletonBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.pravaColors;
 
     return Container(
       height: height,
       width: width,
       decoration: BoxDecoration(
-        color: isDark ? Colors.white12 : Colors.black12,
+        color: tokens.skeletonBase,
         borderRadius: radius,
       ),
     );

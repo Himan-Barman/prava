@@ -1,6 +1,1 @@
-enum PravaToastType {
-  success,
-  warning,
-  error,
-  info,
-}
+enum PravaToastType { success, warning, error, info }

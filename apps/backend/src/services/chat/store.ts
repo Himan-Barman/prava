@@ -63,6 +63,7 @@ function mapConversationRow(row: any, members: any[] = []) {
 
   return {
     conversationId: row.conversation_id,
+    conversationUuid: row.id || row.conversation_uuid || null,
     type: row.type || "dm",
     title: row.title,
     memberHash: row.member_hash,
@@ -90,6 +91,14 @@ function mapConversationRow(row: any, members: any[] = []) {
     memberIds,
     adminIds,
   };
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizeUuid(value: unknown): string | null {
+  const id = normalizeString(value).toLowerCase();
+  return UUID_RE.test(id) ? id : null;
 }
 
 export function getGroupMeta(conversation: any) {
@@ -256,6 +265,7 @@ export function mapMessage(message: any, reactions: any[] = []) {
   return {
     id: message.message_id,
     messageId: message.message_id,
+    clientMessageId: message.client_message_id || message.client_message_uuid || null,
     conversationId: message.conversation_id,
     senderUserId: message.sender_user_id,
     senderDeviceId: message.sender_device_id || "",
@@ -275,6 +285,7 @@ export function toRealtimeMessagePayload(message: any) {
   return {
     conversationId: message.conversation_id,
     messageId: message.message_id,
+    clientMessageId: message.client_message_id || message.client_message_uuid || null,
     senderUserId: message.sender_user_id,
     senderDeviceId: message.sender_device_id || "",
     seq: Number(message.seq || 0),
@@ -286,6 +297,87 @@ export function toRealtimeMessagePayload(message: any) {
     deletedForAllAt: toIso(message.deleted_for_all_at),
     createdAt: toIso(message.created_at),
   };
+}
+
+async function ensureConversationUuid(
+  client: pg.PoolClient,
+  conversationId: string
+): Promise<string | null> {
+  const current = await client.query(
+    `SELECT id FROM conversations WHERE conversation_id = $1 LIMIT 1`,
+    [conversationId]
+  );
+  if (current.rows[0]?.id) {
+    return String(current.rows[0].id);
+  }
+
+  const generated = generateId();
+  const updated = await client.query(
+    `UPDATE conversations
+     SET id = $2
+     WHERE conversation_id = $1 AND id IS NULL
+     RETURNING id`,
+    [conversationId, generated]
+  );
+  if (updated.rows[0]?.id) {
+    return String(updated.rows[0].id);
+  }
+
+  const reloaded = await client.query(
+    `SELECT id FROM conversations WHERE conversation_id = $1 LIMIT 1`,
+    [conversationId]
+  );
+  return reloaded.rows[0]?.id ? String(reloaded.rows[0].id) : null;
+}
+
+async function ensureUserUuid(
+  client: pg.PoolClient,
+  userId: string
+): Promise<string | null> {
+  const current = await client.query(
+    `SELECT id FROM users WHERE user_id = $1 LIMIT 1`,
+    [userId]
+  );
+  if (current.rows[0]?.id) {
+    return String(current.rows[0].id);
+  }
+
+  const generated = generateId();
+  const updated = await client.query(
+    `UPDATE users
+     SET id = $2
+     WHERE user_id = $1 AND id IS NULL
+     RETURNING id`,
+    [userId, generated]
+  );
+  if (updated.rows[0]?.id) {
+    return String(updated.rows[0].id);
+  }
+
+  const reloaded = await client.query(
+    `SELECT id FROM users WHERE user_id = $1 LIMIT 1`,
+    [userId]
+  );
+  return reloaded.rows[0]?.id ? String(reloaded.rows[0].id) : null;
+}
+
+async function loadReplyMessageUuid(
+  client: pg.PoolClient,
+  conversationId: string,
+  messageId?: string | null
+): Promise<string | null> {
+  if (!messageId) {
+    return null;
+  }
+
+  const row = await client.query(
+    `SELECT message_uuid
+     FROM messages
+     WHERE conversation_id = $1 AND message_id = $2
+     LIMIT 1`,
+    [conversationId, messageId]
+  );
+  return row.rows[0]?.message_uuid ? String(row.rows[0].message_uuid) : null;
 }
 
 async function upsertReadStateWithClient(
@@ -353,12 +445,37 @@ export async function createMessage(
     contentType: string;
     mediaAssetId?: string | null;
     replyToMessageId?: string | null;
+    clientMessageId?: string | null;
     clientTimestamp?: unknown;
   }
-): Promise<any> {
+): Promise<{ message: any; created: boolean }> {
   const ts = now();
+  const clientMessageId = normalizeUuid(input.clientMessageId);
 
   return withTransaction(async (client) => {
+    if (clientMessageId) {
+      const existing = await client.query(
+        `SELECT *
+         FROM messages
+         WHERE conversation_id = $1
+           AND sender_user_id = $2
+           AND client_message_id = $3::uuid
+         LIMIT 1`,
+        [conversation.conversationId, input.senderUserId, clientMessageId]
+      );
+      if (existing.rows[0]) {
+        return { message: existing.rows[0], created: false };
+      }
+    }
+
+    const conversationUuid = await ensureConversationUuid(client, conversation.conversationId);
+    const senderUuid = await ensureUserUuid(client, input.senderUserId);
+    const replyToMessageUuid = await loadReplyMessageUuid(
+      client,
+      conversation.conversationId,
+      input.replyToMessageId || null
+    );
+
     const seqResult = await client.query(
       `UPDATE conversations
        SET seq_counter = seq_counter + 1, updated_at = $2
@@ -371,23 +488,43 @@ export async function createMessage(
     const messageId = generateId();
     const messageResult = await client.query(
       `INSERT INTO messages (
-         message_id, conversation_id, sender_user_id, sender_device_id, seq,
-         content_type, body, reply_to_message_id, media_asset_id, client_timestamp,
+         message_id, message_uuid, conversation_id, conversation_uuid,
+         sender_user_id, sender_uuid, sender_device_id, seq, sequence_id,
+         content_type, message_type, body, body_text, reply_to_message_id,
+         reply_to_message_uuid, media_asset_id, client_timestamp,
+         client_message_id, client_message_uuid, delivery_state, metadata,
          edit_version, deleted_for_all_at, created_at, updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, NULL, $11, $12)
+       VALUES (
+         $1, $2, $3, $4,
+         $5, $6, $7, $8, $9,
+         $10, $11, $12, $13, $14,
+         $15, $16, $17,
+         $18, $19, 'sent', $20,
+         0, NULL, $21, $22
+       )
        RETURNING *`,
       [
         messageId,
+        messageId,
         conversation.conversationId,
+        conversationUuid,
         input.senderUserId,
+        senderUuid,
         input.senderDeviceId,
         nextSeq,
+        nextSeq,
+        input.contentType,
         input.contentType,
         input.body,
+        input.body,
         input.replyToMessageId || null,
+        replyToMessageUuid,
         input.mediaAssetId || null,
         input.clientTimestamp == null ? null : String(input.clientTimestamp),
+        clientMessageId,
+        clientMessageId,
+        JSON.stringify({}),
         ts,
         ts,
       ]
@@ -427,7 +564,7 @@ export async function createMessage(
       ts
     );
 
-    return message;
+    return { message, created: true };
   });
 }
 

@@ -28,7 +28,13 @@ class PravaInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.pravaColors;
+    OutlineInputBorder border(Color color, [double width = 1]) {
+      return OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: color, width: width),
+      );
+    }
 
     return TextField(
       controller: controller,
@@ -37,29 +43,23 @@ class PravaInput extends StatelessWidget {
       keyboardType: keyboardType,
       autofillHints: autofillHints, // ?. PASS TO TEXTFIELD
       inputFormatters: inputFormatters,
-      style: PravaTypography.body.copyWith(
-        color: isDark
-            ? PravaColors.darkTextPrimary
-            : PravaColors.lightTextPrimary,
-      ),
+      style: PravaTypography.body.copyWith(color: tokens.textPrimary),
+      cursorColor: tokens.brandPrimary,
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: PravaTypography.body.copyWith(
-          color: isDark
-              ? PravaColors.darkTextTertiary
-              : PravaColors.lightTextTertiary,
-        ),
+        hintStyle: PravaTypography.body.copyWith(color: tokens.textTertiary),
         filled: true,
-        fillColor: isDark
-            ? PravaColors.darkSurface
-            : PravaColors.lightSurface,
+        fillColor: tokens.backgroundSurfaceSubtle,
         suffixIcon: suffixIcon,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 18,
         ),
+        border: border(tokens.borderDefault),
+        enabledBorder: border(tokens.borderDefault),
+        focusedBorder: border(tokens.focusBorder, 1.4),
+        errorBorder: border(tokens.statusError),
+        focusedErrorBorder: border(tokens.statusError, 1.4),
       ),
     );
   }

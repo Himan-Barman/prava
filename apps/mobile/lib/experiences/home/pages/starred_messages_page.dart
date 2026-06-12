@@ -1,14 +1,18 @@
 import 'dart:ui';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../navigation/prava_navigator.dart';
+import '../../../services/chat_service.dart';
 import '../../../ui-system/background.dart';
 import '../../../ui-system/colors.dart';
-import '../../../ui-system/typography.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
+import '../../../ui-system/typography.dart';
+import '../tabs/chats/chat_thread_page.dart';
+import '../tabs/chats/chats_page.dart';
 
 class StarredMessagesPage extends StatefulWidget {
   const StarredMessagesPage({super.key});
@@ -18,10 +22,12 @@ class StarredMessagesPage extends StatefulWidget {
 }
 
 class _StarredMessagesPageState extends State<StarredMessagesPage> {
+  final ChatService _chatService = ChatService();
   final TextEditingController _searchController = TextEditingController();
 
-  _StarFilter _filter = _StarFilter.all;
-  final List<_StarredMessage> _messages = List<_StarredMessage>.from(_seedMessages);
+  List<ConversationSummary> _starred = const [];
+  bool _loading = true;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -29,6 +35,7 @@ class _StarredMessagesPageState extends State<StarredMessagesPage> {
     _searchController.addListener(() {
       if (mounted) setState(() {});
     });
+    _loadStarred();
   }
 
   @override
@@ -37,20 +44,57 @@ class _StarredMessagesPageState extends State<StarredMessagesPage> {
     super.dispose();
   }
 
-  void _clearAll() {
-    if (_messages.isEmpty) return;
-    HapticFeedback.selectionClick();
-    setState(() => _messages.clear());
-    PravaToast.show(
-      context,
-      message: 'Starred messages cleared',
-      type: PravaToastType.success,
-    );
+  Future<void> _loadStarred() async {
+    if (mounted) setState(() => _loading = true);
+    try {
+      final chats = await _chatService.listConversations(starred: true);
+      if (mounted) setState(() => _starred = chats);
+    } catch (_) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: 'Could not load starred chats',
+        type: PravaToastType.error,
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
-  void _unstar(_StarredMessage message) {
+  List<ConversationSummary> get _visibleChats {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _starred;
+    return _starred.where((chat) {
+      return chat.title.toLowerCase().contains(query) ||
+          chat.lastMessageBody.toLowerCase().contains(query);
+    }).toList();
+  }
+
+  Future<void> _unstar(ConversationSummary chat) async {
     HapticFeedback.selectionClick();
-    setState(() => _messages.removeWhere((item) => item.id == message.id));
+    final previous = _starred;
+    setState(() {
+      _starred = _starred.where((item) => item.id != chat.id).toList();
+    });
+
+    final ok = await _chatService.updatePreferences(
+      conversationId: chat.id,
+      isFavorite: chat.isFavorite,
+      isStarred: false,
+      isMuted: chat.isMuted,
+      isArchived: chat.isArchived,
+    );
+    if (!ok && mounted) {
+      setState(() => _starred = previous);
+      PravaToast.show(
+        context,
+        message: 'Could not remove star',
+        type: PravaToastType.error,
+      );
+      return;
+    }
+
+    if (!mounted) return;
     PravaToast.show(
       context,
       message: 'Removed from starred',
@@ -58,45 +102,117 @@ class _StarredMessagesPageState extends State<StarredMessagesPage> {
     );
   }
 
-  List<_StarredMessage> get _visibleMessages {
-    final query = _searchController.text.trim().toLowerCase();
-    final filtered = _filter == _StarFilter.all
-        ? _messages
-        : _messages
-            .where((item) => item.type == _filter.type)
-            .toList();
+  Future<void> _clearAll() async {
+    if (_starred.isEmpty || _saving) return;
+    HapticFeedback.selectionClick();
+    setState(() => _saving = true);
+    final chats = List<ConversationSummary>.from(_starred);
+    var failed = false;
 
-    if (query.isEmpty) return filtered;
-    return filtered
-        .where(
-          (item) =>
-              item.chatName.toLowerCase().contains(query) ||
-              item.body.toLowerCase().contains(query),
+    for (final chat in chats) {
+      final ok = await _chatService.updatePreferences(
+        conversationId: chat.id,
+        isFavorite: chat.isFavorite,
+        isStarred: false,
+        isMuted: chat.isMuted,
+        isArchived: chat.isArchived,
+      );
+      failed = failed || !ok;
+    }
+
+    if (!mounted) return;
+    setState(() => _saving = false);
+    await _loadStarred();
+    if (!mounted) return;
+    PravaToast.show(
+      context,
+      message: failed
+          ? 'Some chats could not be updated'
+          : 'Starred chats cleared',
+      type: failed ? PravaToastType.warning : PravaToastType.success,
+    );
+  }
+
+  void _openChat(ConversationSummary chat) {
+    HapticFeedback.selectionClick();
+    Navigator.of(context, rootNavigator: true)
+        .push(
+          PravaNavigator.route(
+            ChatThreadPage(chat: _toPreview(chat)),
+            fullscreenDialog: true,
+          ),
         )
-        .toList();
+        .then((_) => _loadStarred());
+  }
+
+  ChatPreview _toPreview(ConversationSummary chat) {
+    return ChatPreview(
+      id: chat.id,
+      name: chat.title.trim().isEmpty ? 'Conversation' : chat.title.trim(),
+      lastMessage: _preview(chat),
+      time: _formatTime(chat.lastMessageAt ?? chat.updatedAt),
+      unreadCount: chat.unreadCount,
+      isGroup: chat.type == 'group',
+      isOnline: false,
+      isMuted: chat.isMuted,
+      isPinned: chat.isStarred,
+      isFavorite: chat.isFavorite,
+      isStarred: chat.isStarred,
+      isTyping: false,
+      peerUserId: chat.peerUserId,
+      avatarUrl: chat.peerAvatarUrl,
+      peerLastSeenAt: chat.peerLastSeenAt,
+      lastMessageFromMe: false,
+      delivery: MessageDeliveryState.sent,
+      lastMessageId: chat.lastMessageId,
+      lastMessageSeq: chat.lastMessageSeq,
+      lastMessageType: chat.lastMessageType,
+      lastMessageDeletedForAllAt: chat.lastMessageDeletedForAllAt,
+    );
+  }
+
+  String _preview(ConversationSummary chat) {
+    if (chat.lastMessageDeletedForAllAt != null) return 'Message deleted';
+    if (chat.lastMessageType == ChatMessageType.media) return 'Media message';
+    final text = chat.lastMessageBody.trim();
+    return text.isEmpty ? 'No messages yet' : text;
+  }
+
+  String _formatTime(DateTime? value) {
+    if (value == null) return '';
+    final now = DateTime.now();
+    final local = value.toLocal();
+    final diff = now.difference(local);
+    if (diff.inMinutes < 1) return 'Now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    if (diff.inDays < 7) return '${diff.inDays}d';
+    return '${local.day}/${local.month}/${local.year}';
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
-
-    final messages = _visibleMessages;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final chats = _visibleChats;
 
     return Scaffold(
       body: Stack(
         children: [
-          _PageBackdrop(isDark: isDark),
+          PravaBackground(isDark: isDark),
           SafeArea(
             child: Column(
               children: [
                 _TopBar(
-                  title: 'Starred',
+                  saving: _saving,
                   onBack: () => Navigator.of(context).pop(),
                   onClear: _clearAll,
                 ),
@@ -108,41 +224,42 @@ class _StarredMessagesPageState extends State<StarredMessagesPage> {
                     isDark: isDark,
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: _FilterRow(
-                    filter: _filter,
-                    onChanged: (next) {
-                      HapticFeedback.selectionClick();
-                      setState(() => _filter = next);
-                    },
-                  ),
-                ),
                 Expanded(
-                  child: messages.isEmpty
+                  child: _loading
+                      ? const Center(child: CupertinoActivityIndicator())
+                      : chats.isEmpty
                       ? _EmptyState(
                           hasQuery: _searchController.text.trim().isNotEmpty,
                           primary: primary,
                           secondary: secondary,
                         )
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                          physics: const BouncingScrollPhysics(
-                            parent: AlwaysScrollableScrollPhysics(),
+                      : RefreshIndicator.adaptive(
+                          onRefresh: _loadStarred,
+                          child: ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            physics: const BouncingScrollPhysics(
+                              parent: AlwaysScrollableScrollPhysics(),
+                            ),
+                            itemCount: chats.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final chat = chats[index];
+                              return _ConversationCard(
+                                chat: chat,
+                                preview: _preview(chat),
+                                time: _formatTime(
+                                  chat.lastMessageAt ?? chat.updatedAt,
+                                ),
+                                isDark: isDark,
+                                primary: primary,
+                                secondary: secondary,
+                                border: border,
+                                onTap: () => _openChat(chat),
+                                onAction: () => _unstar(chat),
+                              );
+                            },
                           ),
-                          itemCount: messages.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final message = messages[index];
-                            return _StarredMessageCard(
-                              message: message,
-                              isDark: isDark,
-                              primary: primary,
-                              secondary: secondary,
-                              onUnstar: () => _unstar(message),
-                            );
-                          },
                         ),
                 ),
               ],
@@ -156,24 +273,27 @@ class _StarredMessagesPageState extends State<StarredMessagesPage> {
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
-    required this.title,
+    required this.saving,
     required this.onBack,
     required this.onClear,
   });
 
-  final String title;
+  final bool saving;
   final VoidCallback onBack;
   final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final surface =
-        isDark ? Colors.black.withValues(alpha: 0.45) : Colors.white.withValues(alpha: 0.8);
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final surface = isDark
+        ? Colors.black.withValues(alpha: 0.45)
+        : Colors.white.withValues(alpha: 0.8);
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
@@ -190,14 +310,11 @@ class _TopBar extends StatelessWidget {
             ),
             child: Row(
               children: [
-                _IconPill(
-                  icon: CupertinoIcons.back,
-                  onTap: onBack,
-                ),
+                _IconPill(icon: CupertinoIcons.back, onTap: onBack),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    title,
+                    'Starred',
                     style: PravaTypography.h3.copyWith(
                       color: primary,
                       fontWeight: FontWeight.w700,
@@ -205,10 +322,10 @@ class _TopBar extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  onPressed: onClear,
-                  icon: const Icon(CupertinoIcons.trash),
+                  onPressed: saving ? null : onClear,
+                  icon: const Icon(CupertinoIcons.star_slash),
                   color: PravaColors.accentPrimary,
-                  tooltip: 'Clear all',
+                  tooltip: 'Clear starred',
                 ),
               ],
             ),
@@ -238,13 +355,15 @@ class _SearchField extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
         child: Container(
           decoration: BoxDecoration(
-            color: isDark ? Colors.white10 : Colors.white.withValues(alpha: 0.8),
+            color: isDark
+                ? Colors.white10
+                : Colors.white.withValues(alpha: 0.8),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: border),
           ),
           child: CupertinoSearchTextField(
             controller: controller,
-            placeholder: 'Search starred messages',
+            placeholder: 'Search starred chats',
             backgroundColor: Colors.transparent,
           ),
         ),
@@ -253,61 +372,113 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-class _FilterRow extends StatelessWidget {
-  const _FilterRow({required this.filter, required this.onChanged});
-
-  final _StarFilter filter;
-  final ValueChanged<_StarFilter> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    const activeColor = PravaColors.accentPrimary;
-    final surface =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
-    final textColor =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-
-    return Row(
-      children: _StarFilter.values.map((item) {
-        final selected = filter == item;
-        return Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: ChoiceChip(
-            label: Text(
-              item.label,
-              style: PravaTypography.caption.copyWith(
-                color: selected ? Colors.white : textColor,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            selected: selected,
-            selectedColor: activeColor,
-            backgroundColor: surface,
-            onSelected: (_) => onChanged(item),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-class _StarredMessageCard extends StatelessWidget {
-  const _StarredMessageCard({
-    required this.message,
+class _ConversationCard extends StatelessWidget {
+  const _ConversationCard({
+    required this.chat,
+    required this.preview,
+    required this.time,
     required this.isDark,
     required this.primary,
     required this.secondary,
-    required this.onUnstar,
+    required this.border,
+    required this.onTap,
+    required this.onAction,
   });
 
-  final _StarredMessage message;
+  final ConversationSummary chat;
+  final String preview;
+  final String time;
   final bool isDark;
   final Color primary;
   final Color secondary;
-  final VoidCallback onUnstar;
+  final Color border;
+  final VoidCallback onTap;
+  final VoidCallback onAction;
 
-  Color _avatarColor(String name) {
+  @override
+  Widget build(BuildContext context) {
+    final accent = _avatarColor(chat.title);
+    final avatarUrl = chat.peerAvatarUrl.trim();
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.white.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: border),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: accent.withValues(alpha: 0.18),
+              backgroundImage: avatarUrl.isEmpty
+                  ? null
+                  : NetworkImage(avatarUrl),
+              child: avatarUrl.isNotEmpty
+                  ? null
+                  : Icon(
+                      chat.type == 'group'
+                          ? CupertinoIcons.person_2_fill
+                          : CupertinoIcons.person_fill,
+                      color: accent,
+                    ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          chat.title.trim().isEmpty
+                              ? 'Conversation'
+                              : chat.title.trim(),
+                          style: PravaTypography.body.copyWith(
+                            color: primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        time,
+                        style: PravaTypography.caption.copyWith(
+                          color: secondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    preview,
+                    style: PravaTypography.caption.copyWith(color: secondary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: onAction,
+              icon: const Icon(CupertinoIcons.star_slash),
+              color: secondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _avatarColor(String value) {
     const palette = [
       Color(0xFF5B8CFF),
       Color(0xFF2EC4B6),
@@ -315,121 +486,8 @@ class _StarredMessageCard extends StatelessWidget {
       Color(0xFFFF6B6B),
       Color(0xFF845EC2),
     ];
-    final hash = name.codeUnits.fold<int>(0, (acc, c) => acc + c);
+    final hash = value.codeUnits.fold<int>(0, (acc, code) => acc + code);
     return palette[hash % palette.length];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = _avatarColor(message.chatName);
-    final surface = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.white.withValues(alpha: 0.9);
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark
-              ? PravaColors.darkBorderSubtle
-              : PravaColors.lightBorderSubtle,
-        ),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: accent.withValues(alpha: 0.18),
-                child: Text(
-                  message.initials,
-                  style: PravaTypography.h3.copyWith(
-                    color: accent,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message.chatName,
-                      style: PravaTypography.body.copyWith(
-                        color: primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      message.timeLabel,
-                      style: PravaTypography.caption.copyWith(color: secondary),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: onUnstar,
-                icon: const Icon(CupertinoIcons.star_slash),
-                color: secondary,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              message.body,
-              style: PravaTypography.body.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          if (message.type != _StarType.text) ...[
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _TypeChip(type: message.type),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _TypeChip extends StatelessWidget {
-  const _TypeChip({required this.type});
-
-  final _StarType type;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = type == _StarType.link
-        ? 'Link'
-        : type == _StarType.media
-            ? 'Media'
-            : 'Note';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: PravaColors.accentPrimary.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: PravaTypography.caption.copyWith(
-          color: PravaColors.accentPrimary,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
   }
 }
 
@@ -450,17 +508,11 @@ class _EmptyState extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 80, 16, 16),
       children: [
-        Center(
-          child: Icon(
-            CupertinoIcons.star,
-            size: 40,
-            color: secondary,
-          ),
-        ),
+        Center(child: Icon(CupertinoIcons.star, size: 40, color: secondary)),
         const SizedBox(height: 12),
         Center(
           child: Text(
-            hasQuery ? 'No results' : 'No starred messages',
+            hasQuery ? 'No results' : 'No starred chats',
             style: PravaTypography.bodyLarge.copyWith(
               color: primary,
               fontWeight: FontWeight.w600,
@@ -472,7 +524,7 @@ class _EmptyState extends StatelessWidget {
           child: Text(
             hasQuery
                 ? 'Try another keyword.'
-                : 'Star messages to keep them here.',
+                : 'Starred chats will appear here.',
             textAlign: TextAlign.center,
             style: PravaTypography.body.copyWith(color: secondary),
           ),
@@ -500,94 +552,8 @@ class _IconPill extends StatelessWidget {
           color: isDark ? Colors.white10 : Colors.black12,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: PravaColors.accentPrimary,
-        ),
+        child: Icon(icon, size: 18, color: PravaColors.accentPrimary),
       ),
     );
   }
 }
-
-class _PageBackdrop extends StatelessWidget {
-  const _PageBackdrop({required this.isDark});
-
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    return PravaBackground(isDark: isDark);
-  }
-}
-
-enum _StarType { text, link, media }
-
-class _StarredMessage {
-  const _StarredMessage({
-    required this.id,
-    required this.chatName,
-    required this.body,
-    required this.timeLabel,
-    required this.type,
-  });
-
-  final String id;
-  final String chatName;
-  final String body;
-  final String timeLabel;
-  final _StarType type;
-
-  String get initials {
-    final parts = chatName.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty || parts.first.isEmpty) return '?';
-    if (parts.length == 1) {
-      return parts.first.substring(0, 1).toUpperCase();
-    }
-    return (parts[0].substring(0, 1) + parts[1].substring(0, 1))
-        .toUpperCase();
-  }
-}
-
-enum _StarFilter {
-  all('All', null),
-  text('Notes', _StarType.text),
-  links('Links', _StarType.link),
-  media('Media', _StarType.media);
-
-  const _StarFilter(this.label, this.type);
-
-  final String label;
-  final _StarType? type;
-}
-
-const List<_StarredMessage> _seedMessages = [
-  _StarredMessage(
-    id: 's1',
-    chatName: 'Prava Core',
-    body: 'Launch checklist: encryption, rate limits, push.',
-    timeLabel: 'Today, 9:18 AM',
-    type: _StarType.text,
-  ),
-  _StarredMessage(
-    id: 's2',
-    chatName: 'Design Sprint',
-    body: 'New moodboard: https://prava.app/design',
-    timeLabel: 'Yesterday',
-    type: _StarType.link,
-  ),
-  _StarredMessage(
-    id: 's3',
-    chatName: 'Creator Lab',
-    body: 'Save the teaser clip from the studio session.',
-    timeLabel: 'Mon',
-    type: _StarType.media,
-  ),
-  _StarredMessage(
-    id: 's4',
-    chatName: 'Security Guild',
-    body: 'Remember to rotate device keys this sprint.',
-    timeLabel: 'Sun',
-    type: _StarType.text,
-  ),
-];

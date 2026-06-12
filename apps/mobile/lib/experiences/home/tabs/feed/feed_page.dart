@@ -708,16 +708,10 @@ class _FeedPageState extends State<FeedPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final surface = isDark
-        ? PravaColors.darkBgSurface
-        : PravaColors.lightBgSurface;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+    final surface = tokens.backgroundSurfaceSubtle;
 
     final visiblePosts = _posts;
 
@@ -741,7 +735,7 @@ class _FeedPageState extends State<FeedPage> {
                       child: CupertinoSlidingSegmentedControl<int>(
                         groupValue: _segmentIndex,
                         backgroundColor: surface,
-                        thumbColor: PravaColors.accentPrimary,
+                        thumbColor: tokens.brandPrimary,
                         children: {
                           0: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -749,7 +743,7 @@ class _FeedPageState extends State<FeedPage> {
                               'For you',
                               style: PravaTypography.label.copyWith(
                                 color: _segmentIndex == 0
-                                    ? Colors.white
+                                    ? tokens.textInverse
                                     : secondary,
                               ),
                             ),
@@ -760,7 +754,7 @@ class _FeedPageState extends State<FeedPage> {
                               'Following',
                               style: PravaTypography.label.copyWith(
                                 color: _segmentIndex == 1
-                                    ? Colors.white
+                                    ? tokens.textInverse
                                     : secondary,
                               ),
                             ),
@@ -781,7 +775,7 @@ class _FeedPageState extends State<FeedPage> {
                   ? const FeedSkeleton()
                   : RefreshIndicator(
                       onRefresh: _refreshFeed,
-                      color: PravaColors.accentPrimary,
+                      color: tokens.brandPrimary,
                       child: CustomScrollView(
                         controller: _scrollController,
                         physics: const BouncingScrollPhysics(
@@ -838,7 +832,6 @@ class _FeedPageState extends State<FeedPage> {
                                   ),
                                   child: _PostCard(
                                     post: post,
-                                    isDark: isDark,
                                     primary: primary,
                                     secondary: secondary,
                                     onLike: () => _toggleLike(post),
@@ -858,7 +851,7 @@ class _FeedPageState extends State<FeedPage> {
                                         color: primary,
                                       ),
                                       PravaTypography.body.copyWith(
-                                        color: PravaColors.accentPrimary,
+                                        color: tokens.linkDefault,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -870,11 +863,14 @@ class _FeedPageState extends State<FeedPage> {
                             child: AnimatedOpacity(
                               opacity: _loadingMore ? 1 : 0,
                               duration: const Duration(milliseconds: 200),
-                              child: const Padding(
-                                padding: EdgeInsets.only(bottom: 96, top: 8),
+                              child: Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: 96,
+                                  top: 8,
+                                ),
                                 child: Center(
                                   child: CupertinoActivityIndicator(
-                                    color: PravaColors.accentPrimary,
+                                    color: tokens.brandPrimary,
                                   ),
                                 ),
                               ),
@@ -1229,19 +1225,11 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final background = isDark
-        ? PravaColors.darkBgMain
-        : PravaColors.lightBgMain;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+    final background = tokens.backgroundCanvas;
+    final border = tokens.borderSubtle;
 
     return Scaffold(
       backgroundColor: background,
@@ -1253,7 +1241,10 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: Icon(CupertinoIcons.chevron_left, color: primary),
+                    icon: Icon(
+                      CupertinoIcons.chevron_left,
+                      color: tokens.iconPrimary,
+                    ),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                   Expanded(
@@ -1288,7 +1279,7 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
               child: _loading
                   ? const FeedSkeleton()
                   : RefreshIndicator(
-                      color: PravaColors.accentPrimary,
+                      color: tokens.brandPrimary,
                       onRefresh: _refresh,
                       child: CustomScrollView(
                         controller: _scrollController,
@@ -1322,7 +1313,6 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
                                   ),
                                   child: _PostCard(
                                     post: post,
-                                    isDark: isDark,
                                     primary: primary,
                                     secondary: secondary,
                                     onLike: () => _toggleLike(post),
@@ -1342,7 +1332,7 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
                                         color: primary,
                                       ),
                                       PravaTypography.body.copyWith(
-                                        color: PravaColors.accentPrimary,
+                                        color: tokens.linkDefault,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -1354,11 +1344,13 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
                             child: AnimatedOpacity(
                               opacity: _loadingMore ? 1 : 0,
                               duration: const Duration(milliseconds: 200),
-                              child: const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 22),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 22,
+                                ),
                                 child: Center(
                                   child: CupertinoActivityIndicator(
-                                    color: PravaColors.accentPrimary,
+                                    color: tokens.brandPrimary,
                                   ),
                                 ),
                               ),
@@ -1579,6 +1571,7 @@ class _ComposerCardState extends State<_ComposerCard> {
   }
 
   Widget _buildSuggestions(Color primary, Color secondary, Color border) {
+    final tokens = context.pravaColors;
     final token = _activeToken;
     if (token == null) return const SizedBox.shrink();
     final showMentions = token.symbol == '@' && _mentionSuggestions.isNotEmpty;
@@ -1593,17 +1586,15 @@ class _ComposerCardState extends State<_ComposerCard> {
       margin: const EdgeInsets.only(top: 12),
       constraints: const BoxConstraints(maxHeight: 156),
       decoration: BoxDecoration(
-        color: PravaColors.accentPrimary.withValues(alpha: 0.08),
+        color: tokens.brandContainer,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: border),
       ),
       child: _suggesting
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 18),
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 18),
               child: Center(
-                child: CupertinoActivityIndicator(
-                  color: PravaColors.accentPrimary,
-                ),
+                child: CupertinoActivityIndicator(color: tokens.brandPrimary),
               ),
             )
           : ListView.separated(
@@ -1639,19 +1630,11 @@ class _ComposerCardState extends State<_ComposerCard> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark
-        ? PravaColors.darkBgSurface
-        : PravaColors.lightBgSurface;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
+    final tokens = context.pravaColors;
+    final surface = tokens.backgroundSurface;
+    final border = tokens.borderSubtle;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
@@ -1662,7 +1645,7 @@ class _ComposerCardState extends State<_ComposerCard> {
         border: Border.all(color: border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
+            color: tokens.shadowMedium,
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -1740,7 +1723,7 @@ class _ComposerCardState extends State<_ComposerCard> {
                       Text(
                         '$count/200',
                         style: PravaTypography.caption.copyWith(
-                          color: tooLong ? PravaColors.error : secondary,
+                          color: tooLong ? tokens.statusError : secondary,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -1750,20 +1733,22 @@ class _ComposerCardState extends State<_ComposerCard> {
                           vertical: 10,
                         ),
                         color: canPost
-                            ? PravaColors.accentPrimary
-                            : PravaColors.accentPrimary.withValues(alpha: 0.4),
+                            ? tokens.brandPrimary
+                            : tokens.backgroundPressed,
                         borderRadius: BorderRadius.circular(18),
                         onPressed: widget.isPosting || !canPost
                             ? null
                             : widget.onPost,
                         child: widget.isPosting
-                            ? const CupertinoActivityIndicator(
-                                color: Colors.white,
+                            ? CupertinoActivityIndicator(
+                                color: tokens.textInverse,
                               )
                             : Text(
                                 'Post',
                                 style: PravaTypography.button.copyWith(
-                                  color: Colors.white,
+                                  color: canPost
+                                      ? tokens.textInverse
+                                      : tokens.textDisabled,
                                 ),
                               ),
                       ),
@@ -1801,6 +1786,7 @@ class _ComposerAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final avatarUrl =
         (account?.avatarUrl.trim().isNotEmpty == true
                 ? account!.avatarUrl
@@ -1823,12 +1809,12 @@ class _ComposerAvatar extends StatelessWidget {
         child: avatarUrl.isNotEmpty
             ? Image.network(avatarUrl, fit: BoxFit.cover)
             : Container(
-                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                color: tokens.brandContainer,
                 child: Center(
                   child: Text(
                     name.isEmpty ? '@' : name[0].toUpperCase(),
                     style: PravaTypography.h3.copyWith(
-                      color: PravaColors.accentPrimary,
+                      color: tokens.brandContent,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -1854,6 +1840,7 @@ class _MentionSuggestionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final name = user.displayName.isNotEmpty ? user.displayName : user.username;
 
     return InkWell(
@@ -1869,14 +1856,12 @@ class _MentionSuggestionTile extends StatelessWidget {
                 child: user.avatarUrl.trim().isNotEmpty
                     ? Image.network(user.avatarUrl.trim(), fit: BoxFit.cover)
                     : Container(
-                        color: PravaColors.accentPrimary.withValues(
-                          alpha: 0.16,
-                        ),
+                        color: tokens.brandContainer,
                         child: Center(
                           child: Text(
                             name.isEmpty ? '@' : name[0].toUpperCase(),
                             style: PravaTypography.caption.copyWith(
-                              color: PravaColors.accentPrimary,
+                              color: tokens.brandContent,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -1910,9 +1895,9 @@ class _MentionSuggestionTile extends StatelessWidget {
               ),
             ),
             if (user.isVerified)
-              const Icon(
+              Icon(
                 CupertinoIcons.check_mark_circled_solid,
-                color: PravaColors.accentPrimary,
+                color: tokens.brandPrimary,
                 size: 16,
               ),
           ],
@@ -1937,6 +1922,7 @@ class _HashtagSuggestionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -1947,12 +1933,12 @@ class _HashtagSuggestionTile extends StatelessWidget {
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: PravaColors.accentPrimary.withValues(alpha: 0.16),
+                color: tokens.brandContainer,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 CupertinoIcons.number,
-                color: PravaColors.accentPrimary,
+                color: tokens.brandContent,
                 size: 18,
               ),
             ),
@@ -1995,10 +1981,7 @@ class _ComposerIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final background = isDark
-        ? Colors.white10
-        : Colors.black.withValues(alpha: 0.05);
+    final tokens = context.pravaColors;
 
     return InkWell(
       onTap: onTap,
@@ -2006,17 +1989,17 @@ class _ComposerIcon extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: background,
+          color: tokens.backgroundSurfaceSubtle,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 16, color: PravaColors.accentPrimary),
+            Icon(icon, size: 16, color: tokens.brandContent),
             const SizedBox(width: 6),
             Text(
               label,
               style: PravaTypography.caption.copyWith(
-                color: PravaColors.accentPrimary,
+                color: tokens.brandContent,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2034,6 +2017,7 @@ class _ComposeFab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -2042,13 +2026,13 @@ class _ComposeFab extends StatelessWidget {
         child: Container(
           width: 62,
           height: 62,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: PravaColors.accentPrimary,
+            color: tokens.brandPrimary,
           ),
-          child: const Icon(
+          child: Icon(
             Icons.edit_note_rounded,
-            color: Colors.white,
+            color: tokens.textInverse,
             size: 34,
           ),
         ),
@@ -2060,7 +2044,6 @@ class _ComposeFab extends StatelessWidget {
 class _PostCard extends StatelessWidget {
   const _PostCard({
     required this.post,
-    required this.isDark,
     required this.primary,
     required this.secondary,
     required this.onLike,
@@ -2075,7 +2058,6 @@ class _PostCard extends StatelessWidget {
   });
 
   final FeedPost post;
-  final bool isDark;
   final Color primary;
   final Color secondary;
   final VoidCallback onLike;
@@ -2090,12 +2072,9 @@ class _PostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surface = isDark
-        ? PravaColors.darkBgSurface
-        : PravaColors.lightBgSurface;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final surface = tokens.backgroundSurface;
+    final border = tokens.borderSubtle;
 
     return RepaintBoundary(
       child: Container(
@@ -2116,9 +2095,7 @@ class _PostCard extends StatelessWidget {
                   onTap: onAuthorTap,
                   child: CircleAvatar(
                     radius: 22,
-                    backgroundColor: PravaColors.accentPrimary.withValues(
-                      alpha: 0.16,
-                    ),
+                    backgroundColor: tokens.brandContainer,
                     backgroundImage: post.author.avatarUrl.trim().isNotEmpty
                         ? NetworkImage(post.author.avatarUrl.trim())
                         : null,
@@ -2129,7 +2106,7 @@ class _PostCard extends StatelessWidget {
                                 ? post.author.displayName[0].toUpperCase()
                                 : '@',
                             style: PravaTypography.h3.copyWith(
-                              color: PravaColors.accentPrimary,
+                              color: tokens.brandContent,
                             ),
                           ),
                   ),
@@ -2191,24 +2168,28 @@ class _PostCard extends StatelessWidget {
                       : CupertinoIcons.heart,
                   label: post.likeCount.toString(),
                   active: post.liked,
+                  activeColor: tokens.socialLikeActive,
                   onTap: onLike,
                 ),
                 _ActionButton(
                   icon: CupertinoIcons.chat_bubble_2,
                   label: post.commentCount.toString(),
                   active: false,
+                  activeColor: tokens.brandContent,
                   onTap: onComment,
                 ),
                 _ActionButton(
                   icon: CupertinoIcons.arrowshape_turn_up_right,
                   label: post.shareCount.toString(),
                   active: false,
+                  activeColor: tokens.brandContent,
                   onTap: onShare,
                 ),
                 _ActionButton(
                   icon: CupertinoIcons.eye,
                   label: post.readCount.toString(),
                   active: false,
+                  activeColor: tokens.brandContent,
                   onTap: () {},
                 ),
               ],
@@ -2225,17 +2206,20 @@ class _ActionButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.active,
+    required this.activeColor,
     required this.onTap,
   });
 
   final IconData icon;
   final String label;
   final bool active;
+  final Color activeColor;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? PravaColors.accentPrimary : Colors.grey;
+    final tokens = context.pravaColors;
+    final color = active ? activeColor : tokens.iconSecondary;
 
     return CupertinoButton(
       minimumSize: const Size(40, 40),
@@ -2275,10 +2259,8 @@ class _FollowButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
+    final tokens = context.pravaColors;
+    final border = tokens.borderSubtle;
 
     return GestureDetector(
       onTap: pending ? null : onTap,
@@ -2286,18 +2268,18 @@ class _FollowButton extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: following ? Colors.transparent : PravaColors.accentPrimary,
+          color: following ? Colors.transparent : tokens.brandPrimary,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: following ? border : Colors.transparent),
         ),
         child: pending
             ? CupertinoActivityIndicator(
-                color: following ? PravaColors.accentPrimary : Colors.white,
+                color: following ? tokens.brandPrimary : tokens.textInverse,
               )
             : Text(
                 following ? 'Following' : 'Follow',
                 style: PravaTypography.caption.copyWith(
-                  color: following ? border : Colors.white,
+                  color: following ? tokens.textTertiary : tokens.textInverse,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -2523,16 +2505,10 @@ class _CommentSheetState extends State<_CommentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark
-        ? PravaColors.darkBgElevated
-        : PravaColors.lightBgElevated;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
+    final tokens = context.pravaColors;
+    final surface = tokens.backgroundSurfaceRaised;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
 
     return AnimatedPadding(
       duration: const Duration(milliseconds: 120),
@@ -2609,7 +2585,7 @@ class _CommentSheetState extends State<_CommentSheet> {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: PravaColors.accentPrimary.withValues(alpha: 0.12),
+                    color: tokens.brandContainer,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Row(
@@ -2620,7 +2596,7 @@ class _CommentSheetState extends State<_CommentSheet> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: PravaTypography.caption.copyWith(
-                            color: PravaColors.accentPrimary,
+                            color: tokens.brandContent,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -2628,12 +2604,12 @@ class _CommentSheetState extends State<_CommentSheet> {
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () => setState(() => _replyingTo = null),
-                        child: const Padding(
-                          padding: EdgeInsets.all(4),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
                           child: Icon(
                             CupertinoIcons.xmark,
                             size: 14,
-                            color: PravaColors.accentPrimary,
+                            color: tokens.brandContent,
                           ),
                         ),
                       ),
@@ -2659,7 +2635,7 @@ class _CommentSheetState extends State<_CommentSheet> {
                           color: secondary,
                         ),
                         filled: true,
-                        fillColor: isDark ? Colors.white10 : Colors.black12,
+                        fillColor: tokens.backgroundSurfaceSubtle,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 10,
@@ -2674,14 +2650,14 @@ class _CommentSheetState extends State<_CommentSheet> {
                   const SizedBox(width: 10),
                   CupertinoButton(
                     padding: const EdgeInsets.all(12),
-                    color: PravaColors.accentPrimary,
+                    color: tokens.brandPrimary,
                     borderRadius: BorderRadius.circular(16),
                     onPressed: _sending ? null : _sendComment,
                     child: _sending
-                        ? const CupertinoActivityIndicator(color: Colors.white)
-                        : const Icon(
+                        ? CupertinoActivityIndicator(color: tokens.textInverse)
+                        : Icon(
                             CupertinoIcons.arrow_up_circle_fill,
-                            color: Colors.white,
+                            color: tokens.textInverse,
                           ),
                   ),
                 ],
@@ -2721,6 +2697,7 @@ class _CommentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final indent = depth > 2 ? 56.0 : depth * 24.0;
     return Padding(
       padding: EdgeInsets.only(left: indent, bottom: 14),
@@ -2732,9 +2709,7 @@ class _CommentTile extends StatelessWidget {
             onTap: onAuthorTap,
             child: CircleAvatar(
               radius: 16,
-              backgroundColor: PravaColors.accentPrimary.withValues(
-                alpha: 0.16,
-              ),
+              backgroundColor: tokens.brandContainer,
               backgroundImage: comment.author.avatarUrl.trim().isNotEmpty
                   ? NetworkImage(comment.author.avatarUrl.trim())
                   : null,
@@ -2745,7 +2720,7 @@ class _CommentTile extends StatelessWidget {
                           ? comment.author.username[0].toUpperCase()
                           : '@',
                       style: PravaTypography.caption.copyWith(
-                        color: PravaColors.accentPrimary,
+                        color: tokens.brandContent,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -2809,7 +2784,7 @@ class _CommentTile extends StatelessWidget {
                                   : CupertinoIcons.heart,
                               size: 15,
                               color: comment.liked
-                                  ? PravaColors.accentPrimary
+                                  ? tokens.socialLikeActive
                                   : secondary,
                             ),
                             const SizedBox(width: 4),
@@ -2817,7 +2792,7 @@ class _CommentTile extends StatelessWidget {
                               comment.likeCount.toString(),
                               style: PravaTypography.caption.copyWith(
                                 color: comment.liked
-                                    ? PravaColors.accentPrimary
+                                    ? tokens.socialLikeActive
                                     : secondary,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -2904,6 +2879,7 @@ class _CommentBodyState extends State<_CommentBody> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final author = widget.replyToAuthor;
     final body = widget.body.trim();
     if (author == null) {
@@ -2920,7 +2896,7 @@ class _CommentBodyState extends State<_CommentBody> {
             text: '@${author.username} ',
             recognizer: _mentionRecognizer,
             style: PravaTypography.body.copyWith(
-              color: PravaColors.accentPrimary,
+              color: tokens.linkDefault,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -3035,16 +3011,10 @@ class _ShareSheetState extends State<_ShareSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark
-        ? PravaColors.darkBgElevated
-        : PravaColors.lightBgElevated;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
+    final tokens = context.pravaColors;
+    final surface = tokens.backgroundSurfaceRaised;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
 
     return SafeArea(
       top: false,
@@ -3075,9 +3045,9 @@ class _ShareSheetState extends State<_ShareSheet> {
                   style: PravaTypography.h3.copyWith(color: primary),
                 ),
                 const Spacer(),
-                const Icon(
+                Icon(
                   CupertinoIcons.paperplane_fill,
-                  color: PravaColors.accentPrimary,
+                  color: tokens.brandContent,
                   size: 18,
                 ),
               ],
@@ -3089,14 +3059,14 @@ class _ShareSheetState extends State<_ShareSheet> {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.white10 : Colors.black12,
+                  color: tokens.backgroundSurfaceSubtle,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       CupertinoIcons.square_arrow_up,
-                      color: PravaColors.accentPrimary,
+                      color: tokens.brandContent,
                       size: 20,
                     ),
                     const SizedBox(width: 12),
@@ -3158,21 +3128,20 @@ class _ShareSheetState extends State<_ShareSheet> {
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: isDark ? Colors.white10 : Colors.black12,
+                          color: tokens.backgroundSurfaceSubtle,
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Row(
                           children: [
                             CircleAvatar(
                               radius: 18,
-                              backgroundColor: PravaColors.accentPrimary
-                                  .withValues(alpha: 0.16),
+                              backgroundColor: tokens.brandContainer,
                               child: Text(
                                 convo.title.isNotEmpty
                                     ? convo.title[0].toUpperCase()
                                     : 'C',
                                 style: PravaTypography.caption.copyWith(
-                                  color: PravaColors.accentPrimary,
+                                  color: tokens.brandContent,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),

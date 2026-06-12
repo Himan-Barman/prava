@@ -29,11 +29,7 @@ class HomeTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     NotificationCenter.instance.ensureInitialized();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final primaryText = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
+    final tokens = context.pravaColors;
 
     final title = tabIndex >= 0 && tabIndex < _tabTitles.length
         ? _tabTitles[tabIndex]
@@ -75,7 +71,7 @@ class HomeTopBar extends StatelessWidget {
                       style: PravaTypography.h2.copyWith(
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,
-                        color: primaryText,
+                        color: tokens.textPrimary,
                       ),
                     ),
                   ),
@@ -192,7 +188,7 @@ class _TopIconButton extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       constraints: const BoxConstraints.tightFor(width: 40, height: 40),
       padding: EdgeInsets.zero,
-      icon: Icon(icon, size: 27),
+      icon: Icon(icon, size: 27, color: context.pravaColors.iconPrimary),
       onPressed: onPressed,
     );
   }
@@ -205,46 +201,47 @@ class _ChatTopMenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final surface = isDark
-        ? PravaColors.darkBgElevated
-        : PravaColors.lightBgElevated;
+    final tokens = context.pravaColors;
 
     return PopupMenuButton<ChatTopMenuAction>(
       onSelected: (action) {
         HapticFeedback.selectionClick();
         onSelected?.call(action);
       },
-      color: surface,
-      elevation: 10,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      color: tokens.backgroundSurfaceRaised,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: tokens.borderSubtle),
+      ),
       itemBuilder: (context) => [
         _menuItem(
           value: ChatTopMenuAction.newGroup,
           icon: CupertinoIcons.person_2_fill,
           label: 'New group',
-          primary: primary,
+          primary: tokens.textPrimary,
+          accent: tokens.brandContent,
         ),
         _menuItem(
           value: ChatTopMenuAction.broadcasts,
           icon: CupertinoIcons.speaker_2_fill,
           label: 'Broadcasts',
-          primary: primary,
+          primary: tokens.textPrimary,
+          accent: tokens.brandContent,
         ),
         _menuItem(
           value: ChatTopMenuAction.starred,
           icon: CupertinoIcons.star_fill,
           label: 'Starred',
-          primary: primary,
+          primary: tokens.textPrimary,
+          accent: tokens.premiumContent,
         ),
         _menuItem(
           value: ChatTopMenuAction.messageRequests,
           icon: CupertinoIcons.tray_full_fill,
           label: 'Message requests',
-          primary: primary,
+          primary: tokens.textPrimary,
+          accent: tokens.brandContent,
         ),
       ],
       child: SizedBox(
@@ -253,7 +250,9 @@ class _ChatTopMenuButton extends StatelessWidget {
         child: Stack(
           alignment: Alignment.center,
           clipBehavior: Clip.none,
-          children: [Icon(Icons.more_vert_rounded, size: 27, color: primary)],
+          children: [
+            Icon(Icons.more_vert_rounded, size: 27, color: tokens.iconPrimary),
+          ],
         ),
       ),
     );
@@ -264,12 +263,13 @@ class _ChatTopMenuButton extends StatelessWidget {
     required IconData icon,
     required String label,
     required Color primary,
+    required Color accent,
   }) {
     return PopupMenuItem(
       value: value,
       child: Row(
         children: [
-          Icon(icon, size: 18, color: PravaColors.accentPrimary),
+          Icon(icon, size: 18, color: accent),
           const SizedBox(width: 10),
           Text(label, style: PravaTypography.body.copyWith(color: primary)),
         ],
@@ -289,6 +289,7 @@ class _NotificationBell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final display = count > 9 ? '9+' : count.toString();
+    final tokens = context.pravaColors;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -297,7 +298,11 @@ class _NotificationBell extends StatelessWidget {
           visualDensity: VisualDensity.compact,
           constraints: const BoxConstraints.tightFor(width: 40, height: 40),
           padding: EdgeInsets.zero,
-          icon: const Icon(Icons.notifications_rounded, size: 27),
+          icon: Icon(
+            Icons.notifications_rounded,
+            size: 27,
+            color: tokens.iconPrimary,
+          ),
           onPressed: onTap,
         ),
         if (count > 0)
@@ -307,7 +312,7 @@ class _NotificationBell extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: PravaColors.accentPrimary,
+                color: tokens.brandPrimary,
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(

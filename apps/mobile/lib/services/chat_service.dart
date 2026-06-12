@@ -181,7 +181,9 @@ class ChatMessage {
       seq: _parseInt(json['seq']),
       type: _parseContentType(json['contentType']?.toString()),
       body: json['body']?.toString() ?? '',
-      clientTempId: json['clientTempId']?.toString(),
+      clientTempId:
+          json['clientTempId']?.toString() ??
+          json['clientMessageId']?.toString(),
       mediaAssetId: json['mediaAssetId']?.toString(),
       editVersion: _parseInt(json['editVersion']) ?? 0,
       createdAt: createdAt,
@@ -335,8 +337,25 @@ class ChatService {
   final DeviceIdStore _deviceIdStore;
   final ApiClient _client;
 
-  Future<List<ConversationSummary>> listConversations() async {
-    final data = await _client.get('/conversations', auth: true);
+  Future<List<ConversationSummary>> listConversations({
+    bool archived = false,
+    bool includeArchived = false,
+    bool starred = false,
+    bool favorite = false,
+    int? limit,
+  }) async {
+    final query = <String, String>{};
+    if (archived) query['archived'] = 'true';
+    if (includeArchived) query['includeArchived'] = 'true';
+    if (starred) query['starred'] = 'true';
+    if (favorite) query['favorite'] = 'true';
+    if (limit != null) query['limit'] = limit.toString();
+
+    final data = await _client.get(
+      '/conversations',
+      auth: true,
+      query: query.isEmpty ? null : query,
+    );
     if (data is! List) return [];
 
     return data
@@ -397,6 +416,7 @@ class ChatService {
     required String body,
     String contentType = 'text',
     String? tempId,
+    String? clientMessageId,
     String? mediaAssetId,
     DateTime? clientTimestamp,
   }) async {
@@ -409,6 +429,8 @@ class ChatService {
         'deviceId': deviceId,
         'contentType': contentType,
         if (tempId != null) 'tempId': tempId,
+        if (clientMessageId != null || tempId != null)
+          'clientMessageId': clientMessageId ?? tempId,
         if (mediaAssetId != null) 'mediaAssetId': mediaAssetId,
         if (clientTimestamp != null)
           'clientTimestamp': clientTimestamp.toIso8601String(),

@@ -86,12 +86,10 @@ class _SignupScreenState extends State<SignupScreen> {
     return RegExp(r'^[a-z0-9_]{3,32}$').hasMatch(value);
   }
 
-  bool get _usernameValid =>
-      _isUsernameValid(_usernameValue.toLowerCase());
+  bool get _usernameValid => _isUsernameValid(_usernameValue.toLowerCase());
 
   bool get _emailValid {
-    return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-        .hasMatch(_emailValue);
+    return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(_emailValue);
   }
 
   bool get _canSendOtp =>
@@ -233,10 +231,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
       PravaNavigator.push(
         context,
-        EmailOtpScreen(
-          email: email,
-          username: username,
-        ),
+        EmailOtpScreen(email: email, username: username),
       );
     } catch (err) {
       if (!mounted) return;
@@ -244,27 +239,18 @@ class _SignupScreenState extends State<SignupScreen> {
       final message = err is ApiException
           ? err.message
           : "Unable to send verification code";
-      PravaToast.show(
-        context,
-        message: message,
-        type: PravaToastType.error,
-      );
+      PravaToast.show(context, message: message, type: PravaToastType.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.pravaColors;
 
-    final primaryText = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondaryText = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
-    final tertiaryText = isDark
-        ? PravaColors.darkTextTertiary
-        : PravaColors.lightTextTertiary;
+    final primaryText = tokens.textPrimary;
+    final secondaryText = tokens.textSecondary;
+    final tertiaryText = tokens.textTertiary;
 
     final status = _buildUsernameStatus(isDark, secondaryText);
 
@@ -273,7 +259,7 @@ class _SignupScreenState extends State<SignupScreen> {
         : Icon(
             _emailValid ? Icons.check_circle_outline : Icons.error_outline,
             size: 18,
-            color: _emailValid ? PravaColors.success : PravaColors.error,
+            color: _emailValid ? tokens.statusSuccess : tokens.statusError,
           );
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
@@ -320,19 +306,19 @@ class _SignupScreenState extends State<SignupScreen> {
                                           children: [
                                             Text(
                                               "Create your account",
-                                              style:
-                                                  PravaTypography.h1.copyWith(
-                                                letterSpacing: -0.6,
-                                                color: primaryText,
-                                              ),
+                                              style: PravaTypography.h1
+                                                  .copyWith(
+                                                    letterSpacing: -0.6,
+                                                    color: primaryText,
+                                                  ),
                                             ),
                                             const SizedBox(height: 8),
                                             Text(
                                               "Secure signup with verified email and device-bound sessions.",
-                                              style:
-                                                  PravaTypography.body.copyWith(
-                                                color: secondaryText,
-                                              ),
+                                              style: PravaTypography.body
+                                                  .copyWith(
+                                                    color: secondaryText,
+                                                  ),
                                             ),
                                           ],
                                         ),
@@ -361,11 +347,11 @@ class _SignupScreenState extends State<SignupScreen> {
                                       onTap: () => Navigator.pop(context),
                                       child: Text(
                                         "Back to sign in",
-                                        style:
-                                            PravaTypography.bodySmall.copyWith(
-                                          color: PravaColors.accentPrimary,
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                                        style: PravaTypography.bodySmall
+                                            .copyWith(
+                                              color: tokens.brandContent,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                       ),
                                     ),
                                   ),
@@ -393,15 +379,10 @@ class _SignupScreenState extends State<SignupScreen> {
     required Widget? emailSuffix,
     required Widget? usernameStatus,
   }) {
-    final cardColor = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.white.withValues(alpha: 0.9);
-    final cardBorder = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : Colors.black.withValues(alpha: 0.08);
-    final shadowColor = isDark
-        ? Colors.black.withValues(alpha: 0.4)
-        : Colors.black.withValues(alpha: 0.08);
+    final tokens = context.pravaColors;
+    final cardColor = tokens.backgroundSurface.withValues(alpha: 0.94);
+    final cardBorder = tokens.borderSubtle;
+    final shadowColor = tokens.shadowMedium;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -482,9 +463,8 @@ class _SignupScreenState extends State<SignupScreen> {
   Widget? _buildUsernameStatus(bool isDark, Color secondaryText) {
     if (_usernameValue.isEmpty) return null;
 
-    final background = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.black.withValues(alpha: 0.05);
+    final tokens = context.pravaColors;
+    final background = tokens.backgroundSurfaceSubtle;
 
     if (_checkingUsername) {
       return Container(
@@ -520,7 +500,7 @@ class _SignupScreenState extends State<SignupScreen> {
     if (!_usernameValid) {
       return _StatusPill(
         label: "Invalid",
-        color: PravaColors.error,
+        color: tokens.statusError,
         background: background,
       );
     }
@@ -528,7 +508,7 @@ class _SignupScreenState extends State<SignupScreen> {
     if (_usernameCheckFailed) {
       return _StatusPill(
         label: "Retry",
-        color: PravaColors.warning,
+        color: tokens.statusWarning,
         background: background,
       );
     }
@@ -536,7 +516,7 @@ class _SignupScreenState extends State<SignupScreen> {
     if (_usernameChecked && _usernameAvailable) {
       return _StatusPill(
         label: "Available",
-        color: PravaColors.success,
+        color: tokens.statusSuccess,
         background: background,
       );
     }
@@ -544,7 +524,7 @@ class _SignupScreenState extends State<SignupScreen> {
     if (_usernameChecked && !_usernameAvailable) {
       return _StatusPill(
         label: "Taken",
-        color: PravaColors.error,
+        color: tokens.statusError,
         background: background,
       );
     }
@@ -580,13 +560,10 @@ class _UsernameField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fill = isDark ? PravaColors.darkSurface : PravaColors.lightSurface;
-    final border = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : Colors.black.withValues(alpha: 0.08);
-    final hint = isDark
-        ? PravaColors.darkTextTertiary
-        : PravaColors.lightTextTertiary;
+    final tokens = context.pravaColors;
+    final fill = tokens.backgroundSurfaceSubtle;
+    final border = tokens.borderSubtle;
+    final hint = tokens.textTertiary;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -605,11 +582,7 @@ class _UsernameField extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Container(
-            width: 1,
-            height: 22,
-            color: border,
-          ),
+          Container(width: 1, height: 22, color: border),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
@@ -621,27 +594,19 @@ class _UsernameField extends StatelessWidget {
               enableSuggestions: false,
               autocorrect: false,
               autofillHints: const [AutofillHints.username],
-              style: PravaTypography.body.copyWith(
-                color: primaryText,
-              ),
-              cursorColor: PravaColors.accentPrimary,
+              style: PravaTypography.body.copyWith(color: primaryText),
+              cursorColor: tokens.brandPrimary,
               decoration: InputDecoration(
                 hintText: "username",
-                hintStyle: PravaTypography.body.copyWith(
-                  color: hint,
-                ),
+                hintStyle: PravaTypography.body.copyWith(color: hint),
                 border: InputBorder.none,
                 isCollapsed: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(vertical: 18),
+                contentPadding: const EdgeInsets.symmetric(vertical: 18),
               ),
               onSubmitted: (_) => onSubmitted(),
             ),
           ),
-          if (status != null) ...[
-            const SizedBox(width: 10),
-            status!,
-          ],
+          if (status != null) ...[const SizedBox(width: 10), status!],
         ],
       ),
     );
@@ -677,7 +642,6 @@ class _StatusPill extends StatelessWidget {
     );
   }
 }
-
 
 class _LowercaseTextFormatter extends TextInputFormatter {
   @override
