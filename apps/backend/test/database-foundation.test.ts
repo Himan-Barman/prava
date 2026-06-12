@@ -206,6 +206,56 @@ test("foundation rerun repairs partially marked foundation tables", async () => 
   assert.equal(names.has("search_vector"), true);
 });
 
+test("foundation rerun repairs missing content label moderation tables", async () => {
+  const pgLib = await import("../src/lib/pg.js");
+  const { runDatabaseFoundationMigrations } = await import("../src/lib/database-foundation.js");
+
+  await pgLib.query(`
+    DROP TABLE IF EXISTS post_content_labels;
+    DROP TABLE IF EXISTS content_labels;
+    DROP TABLE IF EXISTS spam_signals;
+    DROP TABLE IF EXISTS user_restrictions;
+    DROP TABLE IF EXISTS moderation_actions;
+    DROP TABLE IF EXISTS moderation_case_notes;
+    DROP TABLE IF EXISTS moderation_case_reports;
+
+    DROP INDEX IF EXISTS post_content_labels_pkey;
+    DROP INDEX IF EXISTS content_labels_pkey;
+    DROP INDEX IF EXISTS content_labels_label_key_key;
+    DROP INDEX IF EXISTS spam_signals_pkey;
+    DROP INDEX IF EXISTS user_restrictions_pkey;
+    DROP INDEX IF EXISTS moderation_actions_pkey;
+    DROP INDEX IF EXISTS moderation_case_notes_pkey;
+    DROP INDEX IF EXISTS moderation_case_reports_pkey;
+    DROP INDEX IF EXISTS idx_spam_signals_entity_created;
+    DROP INDEX IF EXISTS idx_user_restrictions_active;
+    DROP INDEX IF EXISTS idx_moderation_actions_target_created;
+  `);
+
+  await runDatabaseFoundationMigrations(pgLib.getPool());
+
+  const labels = await pgLib.queryMany<{ label_key: string }>(
+    "SELECT label_key FROM content_labels ORDER BY label_key"
+  );
+  assert.deepEqual(
+    labels.map((row) => row.label_key),
+    ["harassment", "misinformation", "sensitive", "spam"]
+  );
+
+  const moderationTables = await pgLib.queryMany<{ table_name: string }>(
+    `SELECT table_name
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name IN (
+        'moderation_actions',
+        'user_restrictions',
+        'post_content_labels',
+        'spam_signals'
+       )`
+  );
+  assert.equal(new Set(moderationTables.map((row) => row.table_name)).size, 4);
+});
+
 test("foundation refresh restores follow uuid columns before domain indexes", async () => {
   const pgLib = await import("../src/lib/pg.js");
   const { runDatabaseFoundationMigrations } = await import("../src/lib/database-foundation.js");

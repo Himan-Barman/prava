@@ -1388,10 +1388,11 @@ async function ensureFoundationPrerequisiteTables(pool: pg.Pool): Promise<void> 
   await createTableIfMissing(pool, "reports", `
     CREATE TABLE reports (
       id UUID PRIMARY KEY,
-      reporter_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reporter_id UUID REFERENCES users(id) ON DELETE SET NULL,
       target_type VARCHAR(32) NOT NULL,
       target_uuid UUID NOT NULL,
-      reason VARCHAR(96) NOT NULL,
+      reason VARCHAR(64) NOT NULL,
+      details TEXT,
       status VARCHAR(24) NOT NULL DEFAULT 'open',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       resolved_at TIMESTAMPTZ
@@ -1405,9 +1406,113 @@ async function ensureFoundationPrerequisiteTables(pool: pg.Pool): Promise<void> 
       target_uuid UUID NOT NULL,
       status VARCHAR(24) NOT NULL DEFAULT 'open',
       priority INTEGER NOT NULL DEFAULT 0,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      assigned_to UUID REFERENCES users(id) ON DELETE SET NULL,
+      opened_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      closed_at TIMESTAMPTZ,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb
     )
+  `);
+
+  await createTableIfMissing(pool, "moderation_case_reports", `
+    CREATE TABLE moderation_case_reports (
+      case_id UUID NOT NULL REFERENCES moderation_cases(id) ON DELETE CASCADE,
+      report_id UUID NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (case_id, report_id)
+    )
+  `);
+
+  await createTableIfMissing(pool, "moderation_case_notes", `
+    CREATE TABLE moderation_case_notes (
+      id BIGSERIAL PRIMARY KEY,
+      case_id UUID NOT NULL REFERENCES moderation_cases(id) ON DELETE CASCADE,
+      author_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      note TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "moderation_actions", `
+    CREATE TABLE moderation_actions (
+      id UUID PRIMARY KEY,
+      case_id UUID REFERENCES moderation_cases(id) ON DELETE SET NULL,
+      actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      action_type VARCHAR(64) NOT NULL,
+      target_type VARCHAR(32) NOT NULL,
+      target_uuid UUID NOT NULL,
+      reason TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await createTableIfMissing(pool, "user_restrictions", `
+    CREATE TABLE user_restrictions (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      restriction_type VARCHAR(64) NOT NULL,
+      starts_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ,
+      reason TEXT,
+      created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+      lifted_at TIMESTAMPTZ
+    )
+  `);
+
+  await createTableIfMissing(pool, "content_labels", `
+    CREATE TABLE content_labels (
+      id UUID PRIMARY KEY,
+      label_key VARCHAR(64) NOT NULL UNIQUE,
+      display_name VARCHAR(120) NOT NULL,
+      severity INTEGER NOT NULL DEFAULT 0,
+      is_active BOOLEAN NOT NULL DEFAULT true
+    )
+  `);
+
+  await createTableIfMissing(pool, "post_content_labels", `
+    CREATE TABLE post_content_labels (
+      post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+      label_id UUID NOT NULL REFERENCES content_labels(id) ON DELETE CASCADE,
+      source VARCHAR(32) NOT NULL DEFAULT 'system',
+      confidence REAL NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (post_id, label_id, source)
+    )
+  `);
+
+  await createTableIfMissing(pool, "spam_signals", `
+    CREATE TABLE spam_signals (
+      id BIGSERIAL PRIMARY KEY,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      entity_type VARCHAR(32) NOT NULL,
+      entity_uuid UUID,
+      signal_key VARCHAR(64) NOT NULL,
+      signal_value DOUBLE PRECISION NOT NULL DEFAULT 1,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await pool.query(`
+    ALTER TABLE reports ADD COLUMN IF NOT EXISTS details TEXT;
+    ALTER TABLE moderation_cases ADD COLUMN IF NOT EXISTS assigned_to UUID REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE moderation_cases ADD COLUMN IF NOT EXISTS opened_at TIMESTAMPTZ NOT NULL DEFAULT now();
+    ALTER TABLE moderation_cases ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
+    ALTER TABLE moderation_cases ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+    CREATE INDEX IF NOT EXISTS idx_reports_target_status
+      ON reports (target_type, target_uuid, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_reports_reporter_created
+      ON reports (reporter_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_moderation_cases_status_priority
+      ON moderation_cases (status, priority DESC, opened_at ASC);
+    CREATE INDEX IF NOT EXISTS idx_moderation_actions_target_created
+      ON moderation_actions (target_type, target_uuid, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_user_restrictions_active
+      ON user_restrictions (user_id, restriction_type, expires_at)
+      WHERE lifted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_spam_signals_entity_created
+      ON spam_signals (entity_type, entity_uuid, created_at DESC);
   `);
 
   await createTableIfMissing(pool, "media_objects", `
