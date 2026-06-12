@@ -586,6 +586,51 @@ async function isDomainExpansionApplied(pool: pg.Pool): Promise<boolean> {
 
 async function refreshDomainReferences(pool: pg.Pool): Promise<void> {
   await pool.query(`
+    ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS display_name VARCHAR(100);
+    ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS banner_media_id UUID;
+    ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS birth_date DATE;
+    ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS search_vector TEXT;
+
+    ALTER TABLE user_stats ADD COLUMN IF NOT EXISTS replies_count BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE user_stats ADD COLUMN IF NOT EXISTS likes_received BIGINT NOT NULL DEFAULT 0;
+
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS user_uuid UUID;
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS language_code VARCHAR(10) NOT NULL DEFAULT 'en';
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS timezone_name VARCHAR(100);
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS theme VARCHAR(20);
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS show_online_status BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS show_read_receipts BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS autoplay_enabled BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS content_language_preferences JSONB NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+    ALTER TABLE user_privacy_settings ADD COLUMN IF NOT EXISTS dm_policy VARCHAR(30) NOT NULL DEFAULT 'friends';
+    ALTER TABLE user_privacy_settings ADD COLUMN IF NOT EXISTS group_invite_policy VARCHAR(30) NOT NULL DEFAULT 'friends';
+    ALTER TABLE user_privacy_settings ADD COLUMN IF NOT EXISTS followers_visibility VARCHAR(30) NOT NULL DEFAULT 'public';
+    ALTER TABLE user_privacy_settings ADD COLUMN IF NOT EXISTS following_visibility VARCHAR(30) NOT NULL DEFAULT 'public';
+    ALTER TABLE user_privacy_settings ADD COLUMN IF NOT EXISTS friends_visibility VARCHAR(30) NOT NULL DEFAULT 'friends';
+    ALTER TABLE user_privacy_settings ADD COLUMN IF NOT EXISTS birth_date_visibility VARCHAR(30) NOT NULL DEFAULT 'only_me';
+    ALTER TABLE user_privacy_settings ADD COLUMN IF NOT EXISTS location_visibility VARCHAR(30) NOT NULL DEFAULT 'public';
+    ALTER TABLE user_privacy_settings ADD COLUMN IF NOT EXISTS allow_profile_discovery BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE user_privacy_settings ADD COLUMN IF NOT EXISTS allow_search_indexing BOOLEAN NOT NULL DEFAULT true;
+
+    ALTER TABLE user_emails ADD COLUMN IF NOT EXISTS email_normalized VARCHAR(320);
+    ALTER TABLE user_emails ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+    ALTER TABLE user_credentials ADD COLUMN IF NOT EXISTS password_algorithm VARCHAR(30) NOT NULL DEFAULT 'argon2id';
+    ALTER TABLE user_credentials ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ NOT NULL DEFAULT now();
+    ALTER TABLE user_credentials ADD COLUMN IF NOT EXISTS failed_login_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE user_credentials ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+    ALTER TABLE user_credentials ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+    ALTER TABLE user_credentials ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+    ALTER TABLE feature_flags ADD COLUMN IF NOT EXISTS flag_key VARCHAR(120);
+    ALTER TABLE roles ADD COLUMN IF NOT EXISTS role_key VARCHAR(50);
+    ALTER TABLE permissions ADD COLUMN IF NOT EXISTS permission_key VARCHAR(100);
+
+    CREATE INDEX IF NOT EXISTS idx_user_profiles_display_name ON user_profiles (display_name);
+    CREATE INDEX IF NOT EXISTS idx_user_emails_user_created ON user_emails (user_id, created_at DESC);
+
     UPDATE user_settings SET user_uuid = users.id FROM users WHERE user_settings.user_id = users.user_id AND user_settings.user_uuid IS NULL;
     UPDATE user_emails SET email_normalized = lower(email::text) WHERE email_normalized IS NULL;
     UPDATE feature_flags SET flag_key = key WHERE flag_key IS NULL;

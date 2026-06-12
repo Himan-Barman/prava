@@ -75,6 +75,78 @@ test("domain expansion creates required high-level tables", async () => {
   assert.equal(tables.length, 22, JSON.stringify(tables));
 });
 
+test("domain refresh repairs partially applied auth profile columns", async () => {
+  const { runDatabaseFoundationMigrations } = await import("../src/lib/database-foundation.js");
+  const user = await pgLib.queryOne<{ id: string }>(
+    "SELECT id::text AS id FROM users WHERE user_id = $1",
+    [userA]
+  );
+  assert.ok(user?.id);
+
+  await pgLib.query(
+    `INSERT INTO user_settings (user_id, settings, updated_at)
+     VALUES ($1, '{}'::jsonb, now())
+     ON CONFLICT (user_id) DO UPDATE SET settings = EXCLUDED.settings`,
+    [userA]
+  );
+  await pgLib.query(
+    `INSERT INTO user_emails (id, user_id, email, is_primary, is_verified, created_at)
+     VALUES ('60000000-0000-0000-0000-000000000001', $1, $2, true, true, now())
+     ON CONFLICT DO NOTHING`,
+    [user.id, `${userA}@example.com`]
+  );
+
+  await pgLib.query(`
+    DROP INDEX IF EXISTS idx_user_settings_uuid_unique;
+    DROP INDEX IF EXISTS idx_user_emails_normalized_active;
+    DROP INDEX IF EXISTS idx_user_emails_user_created;
+    DROP INDEX IF EXISTS idx_roles_role_key_unique;
+    DROP INDEX IF EXISTS idx_permissions_key_unique;
+    DROP INDEX IF EXISTS idx_feature_flags_flag_key_unique;
+
+    ALTER TABLE user_settings DROP COLUMN IF EXISTS user_uuid;
+    ALTER TABLE user_settings DROP COLUMN IF EXISTS language_code;
+    ALTER TABLE user_settings DROP COLUMN IF EXISTS content_language_preferences;
+    ALTER TABLE user_emails DROP COLUMN IF EXISTS email_normalized;
+    ALTER TABLE user_emails DROP COLUMN IF EXISTS updated_at;
+    ALTER TABLE user_credentials DROP COLUMN IF EXISTS password_algorithm;
+    ALTER TABLE user_credentials DROP COLUMN IF EXISTS password_changed_at;
+    ALTER TABLE feature_flags DROP COLUMN IF EXISTS flag_key;
+    ALTER TABLE roles DROP COLUMN IF EXISTS role_key;
+    ALTER TABLE permissions DROP COLUMN IF EXISTS permission_key;
+  `);
+
+  await runDatabaseFoundationMigrations(pgLib.getPool());
+
+  const row = await pgLib.queryOne<{
+    user_uuid: string;
+    email_normalized: string;
+  }>(
+    `SELECT
+       us.user_uuid::text AS user_uuid,
+       ue.email_normalized AS email_normalized
+     FROM user_settings us
+     JOIN user_emails ue ON ue.user_id = $2
+     WHERE us.user_id = $1
+     LIMIT 1`,
+    [userA, user.id]
+  );
+  const flag = await pgLib.queryOne<{ flag_key: string }>(
+    "SELECT flag_key FROM feature_flags WHERE key = 'feed.personalized.v1'"
+  );
+  const role = await pgLib.queryOne<{ role_key: string }>(
+    "SELECT role_key FROM roles WHERE name = 'user'"
+  );
+  const permission = await pgLib.queryOne<{ permission_key: string }>(
+    "SELECT permission_key FROM permissions WHERE name = 'post:create'"
+  );
+  assert.equal(row?.user_uuid, user.id);
+  assert.equal(row?.email_normalized, `${userA}@example.com`);
+  assert.equal(flag?.flag_key, "feed.personalized.v1");
+  assert.equal(role?.role_key, "user");
+  assert.equal(permission?.permission_key, "post:create");
+});
+
 test("post domain supports reply/repost fields and prevents duplicate reposts", async () => {
   const author = await pgLib.queryOne<{ id: string }>(
     "SELECT id::text AS id FROM users WHERE user_id = $1",
