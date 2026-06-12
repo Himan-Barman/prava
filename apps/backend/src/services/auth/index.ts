@@ -102,7 +102,7 @@ async function ensureMobileUserDatabaseRows(userId: string, passwordHash?: strin
       `UPDATE user_settings
        SET user_uuid = COALESCE(user_uuid, $2),
            language_code = CASE
-             WHEN language_code IS NULL OR language_code = '' THEN $3
+             WHEN language_code IS NULL OR language_code = '' THEN $3::varchar(10)
              ELSE language_code
            END,
            updated_at = NOW()
