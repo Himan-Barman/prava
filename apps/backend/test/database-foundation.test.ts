@@ -261,6 +261,50 @@ test("foundation refresh restores follow uuid columns before domain indexes", as
   assert.ok(row?.following_uuid, JSON.stringify(row));
 });
 
+test("foundation refresh restores baseline columns used by domain indexes", async () => {
+  const pgLib = await import("../src/lib/pg.js");
+  const { runDatabaseFoundationMigrations } = await import("../src/lib/database-foundation.js");
+
+  await pgLib.query(`
+    DROP INDEX IF EXISTS idx_users_active_visible;
+    DROP INDEX IF EXISTS idx_users_account_status;
+    DROP INDEX IF EXISTS idx_posts_visibility_status_created;
+    DROP INDEX IF EXISTS idx_posts_public_active_cursor;
+    DROP INDEX IF EXISTS idx_conversations_type_status_last;
+    DROP INDEX IF EXISTS idx_messages_conversation_sequence;
+
+    ALTER TABLE users DROP COLUMN IF EXISTS account_status;
+    ALTER TABLE posts DROP COLUMN IF EXISTS visibility;
+    ALTER TABLE conversations DROP COLUMN IF EXISTS conversation_type;
+    ALTER TABLE conversations DROP COLUMN IF EXISTS last_message_at;
+    ALTER TABLE messages DROP COLUMN IF EXISTS sequence_id;
+    ALTER TABLE notifications DROP COLUMN IF EXISTS notification_type;
+  `);
+
+  await runDatabaseFoundationMigrations(pgLib.getPool());
+
+  const columns = await pgLib.queryMany<{ table_name: string; column_name: string }>(
+    `SELECT table_name, column_name
+     FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND (
+         (table_name = 'users' AND column_name = 'account_status')
+         OR (table_name = 'posts' AND column_name = 'visibility')
+         OR (table_name = 'conversations' AND column_name IN ('conversation_type', 'last_message_at'))
+         OR (table_name = 'messages' AND column_name = 'sequence_id')
+         OR (table_name = 'notifications' AND column_name = 'notification_type')
+       )`
+  );
+
+  const found = new Set(columns.map((row) => `${row.table_name}.${row.column_name}`));
+  assert.equal(found.has("users.account_status"), true);
+  assert.equal(found.has("posts.visibility"), true);
+  assert.equal(found.has("conversations.conversation_type"), true);
+  assert.equal(found.has("conversations.last_message_at"), true);
+  assert.equal(found.has("messages.sequence_id"), true);
+  assert.equal(found.has("notifications.notification_type"), true);
+});
+
 test("foundation enforces identity and reliability uniqueness", async () => {
   const pgLib = await import("../src/lib/pg.js");
   const stamp = Date.now();

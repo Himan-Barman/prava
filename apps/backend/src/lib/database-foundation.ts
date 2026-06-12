@@ -44,7 +44,7 @@ export async function runDatabaseFoundationMigrations(pool: pg.Pool): Promise<vo
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS id UUID;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS handle VARCHAR(30);
-    UPDATE users SET handle = username WHERE handle IS NULL;
+    UPDATE users SET handle = substring(username from 1 for 30) WHERE handle IS NULL;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS handle_normalized VARCHAR(30);
     UPDATE users SET handle_normalized = lower(handle) WHERE handle_normalized IS NULL AND handle IS NOT NULL;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(80);
@@ -1571,21 +1571,53 @@ async function refreshFoundationBackfills(pool: pg.Pool): Promise<void> {
 async function ensureBackfillColumns(pool: pg.Pool): Promise<void> {
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS id UUID;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS handle VARCHAR(30);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS handle_normalized VARCHAR(30);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(80);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status VARCHAR(24) NOT NULL DEFAULT 'active';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_private BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(32) NOT NULL DEFAULT 'user';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS language_code VARCHAR(12) NOT NULL DEFAULT 'en';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
     ALTER TABLE posts ADD COLUMN IF NOT EXISTS id UUID;
     ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_uuid UUID;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS visibility VARCHAR(24) NOT NULL DEFAULT 'public';
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS status VARCHAR(24) NOT NULL DEFAULT 'published';
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS language_code VARCHAR(12);
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS moderation_state VARCHAR(24) NOT NULL DEFAULT 'clean';
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS last_engagement_at TIMESTAMPTZ;
 
     ALTER TABLE conversations ADD COLUMN IF NOT EXISTS id UUID;
     ALTER TABLE conversations ADD COLUMN IF NOT EXISTS created_by_uuid UUID;
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS conversation_type VARCHAR(24) NOT NULL DEFAULT 'direct';
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_message_at TIMESTAMPTZ;
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS member_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_uuid UUID;
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_uuid UUID;
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS sender_uuid UUID;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS client_message_uuid UUID;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS message_type VARCHAR(24) NOT NULL DEFAULT 'text';
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS body_text TEXT;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS sequence_id BIGINT;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS notification_uuid UUID;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_uuid UUID;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actor_uuid UUID;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS notification_type VARCHAR(48);
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_type VARCHAR(48);
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_uuid UUID;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS clicked_at TIMESTAMPTZ;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 
     ALTER TABLE follows ADD COLUMN IF NOT EXISTS follower_uuid UUID;
     ALTER TABLE follows ADD COLUMN IF NOT EXISTS following_uuid UUID;
@@ -1617,6 +1649,7 @@ async function ensureBackfillColumns(pool: pg.Pool): Promise<void> {
     ALTER TABLE feed_events ADD COLUMN IF NOT EXISTS user_uuid UUID;
     ALTER TABLE feed_events ADD COLUMN IF NOT EXISTS post_uuid UUID;
     ALTER TABLE feed_events ADD COLUMN IF NOT EXISTS entity_type VARCHAR(32) NOT NULL DEFAULT 'post';
+    ALTER TABLE feed_events ADD COLUMN IF NOT EXISTS dwell_ms INTEGER;
     ALTER TABLE feed_events ADD COLUMN IF NOT EXISTS weight REAL NOT NULL DEFAULT 1;
 
     ALTER TABLE feed_served_history ADD COLUMN IF NOT EXISTS user_uuid UUID;
@@ -1625,15 +1658,23 @@ async function ensureBackfillColumns(pool: pg.Pool): Promise<void> {
     ALTER TABLE feed_served_history ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 
     ALTER TABLE user_topic_affinities ADD COLUMN IF NOT EXISTS user_uuid UUID;
+    ALTER TABLE user_topic_affinities ADD COLUMN IF NOT EXISTS topic_id UUID;
     ALTER TABLE user_topic_affinities ADD COLUMN IF NOT EXISTS affinity_score DOUBLE PRECISION NOT NULL DEFAULT 0;
+    ALTER TABLE user_topic_affinities ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
     ALTER TABLE user_author_affinities ADD COLUMN IF NOT EXISTS user_uuid UUID;
     ALTER TABLE user_author_affinities ADD COLUMN IF NOT EXISTS author_uuid UUID;
     ALTER TABLE user_author_affinities ADD COLUMN IF NOT EXISTS affinity_score DOUBLE PRECISION NOT NULL DEFAULT 0;
+    ALTER TABLE user_author_affinities ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
     ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS conversation_uuid UUID;
     ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS user_uuid UUID;
+    ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS member_role VARCHAR(24) NOT NULL DEFAULT 'member';
     ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS status VARCHAR(24) NOT NULL DEFAULT 'active';
+    ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS last_read_message_uuid UUID;
+    ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS last_read_sequence_id BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS muted_until TIMESTAMPTZ;
+    ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 
     ALTER TABLE comments ADD COLUMN IF NOT EXISTS id UUID;
     ALTER TABLE comments ADD COLUMN IF NOT EXISTS post_uuid UUID;
@@ -1718,12 +1759,16 @@ async function backfillUuidColumn(
 
 async function remapPrimaryUuidReferences(pool: pg.Pool): Promise<void> {
   await pool.query(`
+    UPDATE users SET handle = substring(username from 1 for 30) WHERE handle IS NULL;
+    UPDATE users SET handle_normalized = lower(handle) WHERE handle_normalized IS NULL AND handle IS NOT NULL;
     UPDATE posts SET author_uuid = users.id FROM users WHERE posts.author_id = users.user_id AND posts.author_uuid IS NULL;
     UPDATE conversations SET created_by_uuid = users.id FROM users WHERE conversations.owner_user_id = users.user_id AND conversations.created_by_uuid IS NULL;
     UPDATE messages SET conversation_uuid = conversations.id FROM conversations WHERE messages.conversation_id = conversations.conversation_id AND messages.conversation_uuid IS NULL;
     UPDATE messages SET sender_uuid = users.id FROM users WHERE messages.sender_user_id = users.user_id AND messages.sender_uuid IS NULL;
+    UPDATE messages SET body_text = body WHERE body_text IS NULL AND body IS NOT NULL;
     UPDATE notifications SET recipient_uuid = users.id FROM users WHERE notifications.user_id = users.user_id AND notifications.recipient_uuid IS NULL;
     UPDATE notifications SET actor_uuid = users.id FROM users WHERE notifications.actor_user_id = users.user_id AND notifications.actor_uuid IS NULL;
+    UPDATE notifications SET notification_type = type WHERE notification_type IS NULL AND type IS NOT NULL;
   `);
 }
 
