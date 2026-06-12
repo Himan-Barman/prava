@@ -1,11 +1,14 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useAuth } from '../context/auth-context';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+import { PageLoader } from '../components/PageLoader';
 
-// Landing Page
+// Landing Page — loaded eagerly (entry point)
 import { LandingPage } from '../experiences/landing';
 
-// Auth Pages
+// Auth Pages — loaded eagerly (critical path)
 import {
   LoginPage,
   SignupPage,
@@ -16,90 +19,64 @@ import {
   SetDetailsPage,
 } from '../experiences/auth';
 
-// Main Pages
-import {
-  FeedPage,
-  PostDetailPage,
-  ChatsPage,
-  ArchivedChatsPage,
-  StarredMessagesPage,
-  NewGroupPage,
-  FriendsPage,
-  SearchPage,
-  NotificationsPage,
-  ProfilePage,
-  BroadcastPage,
-  SettingsPage,
-  AccountInfoPage,
-  HandleLinksPage,
-  SecurityCenterPage,
-  DevicesPage,
-  BlockedAccountsPage,
-  MutedWordsPage,
-  LanguagePage,
-  DataExportPage,
-  LegalPage,
-  SupportPage,
-} from '../experiences';
+// ═══ Lazy-loaded app pages ═══
+const FeedPage = lazy(() => import('../experiences/feed/FeedPage'));
+const PostDetailPage = lazy(() => import('../experiences/feed/PostDetailPage'));
+const ChatsPage = lazy(() => import('../experiences/chats/ChatsPage'));
+const ArchivedChatsPage = lazy(() => import('../experiences/chats/ArchivedChatsPage'));
+const StarredMessagesPage = lazy(() => import('../experiences/chats/StarredMessagesPage'));
+const NewGroupPage = lazy(() => import('../experiences/chats/NewGroupPage'));
+const FriendsPage = lazy(() => import('../experiences/friends/FriendsPage'));
+const SearchPage = lazy(() => import('../experiences/search/SearchPage'));
+const NotificationsPage = lazy(() => import('../experiences/notifications/NotificationsPage'));
+const ProfilePage = lazy(() => import('../experiences/profile/ProfilePage'));
+const BroadcastPage = lazy(() => import('../experiences/broadcast/BroadcastPage'));
+const SettingsPage = lazy(() => import('../experiences/settings/SettingsPage'));
+const AccountInfoPage = lazy(() => import('../experiences/settings/AccountInfoPage'));
+const HandleLinksPage = lazy(() => import('../experiences/settings/HandleLinksPage'));
+const SecurityCenterPage = lazy(() => import('../experiences/settings/SecurityCenterPage'));
+const DevicesPage = lazy(() => import('../experiences/settings/DevicesPage'));
+const BlockedAccountsPage = lazy(() => import('../experiences/settings/BlockedAccountsPage'));
+const MutedWordsPage = lazy(() => import('../experiences/settings/MutedWordsPage'));
+const LanguagePage = lazy(() => import('../experiences/settings/LanguagePage'));
+const DataExportPage = lazy(() => import('../experiences/settings/DataExportPage'));
+const LegalPage = lazy(() => import('../experiences/settings/LegalPage'));
+const SupportPage = lazy(() => import('../experiences/support/SupportPage'));
 
-// Protected Route wrapper
+// ═══ Route Guards ═══
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-prava-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
+  if (isLoading) return <PageLoader />;
+  if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />;
   return <>{children}</>;
 }
 
-// Public Route wrapper (redirect if already logged in)
 function PublicRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-prava-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (isAuthenticated) {
-    return <Navigate to="/feed" replace />;
-  }
-
+  if (isLoading) return <PageLoader />;
+  if (isAuthenticated) return <Navigate to="/feed" replace />;
   return <>{children}</>;
 }
 
-// Root redirect with auth awareness
 function AuthRedirect() {
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-prava-accent border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (isLoading) return <PageLoader />;
+  return <Navigate to={isAuthenticated ? '/feed' : '/'} state={{ from: location }} replace />;
+}
 
+// Wrap lazy component with Suspense + ErrorBoundary
+function LazyRoute({ children }: { children: ReactNode }) {
   return (
-    <Navigate
-      to={isAuthenticated ? '/feed' : '/'}
-      state={{ from: location }}
-      replace
-    />
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoader />}>
+        {children}
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -118,30 +95,30 @@ const AppRoutes = () => {
       {/* Landing Page (Public) */}
       <Route path="/" element={<LandingPage />} />
 
-      {/* Protected Routes */}
-      <Route path="/feed" element={<ProtectedRoute><FeedPage /></ProtectedRoute>} />
-      <Route path="/post/:postId" element={<ProtectedRoute><PostDetailPage /></ProtectedRoute>} />
-      <Route path="/chats" element={<ProtectedRoute><ChatsPage /></ProtectedRoute>} />
-      <Route path="/chats/archived" element={<ProtectedRoute><ArchivedChatsPage /></ProtectedRoute>} />
-      <Route path="/chats/starred" element={<ProtectedRoute><StarredMessagesPage /></ProtectedRoute>} />
-      <Route path="/chats/new" element={<ProtectedRoute><NewGroupPage /></ProtectedRoute>} />
-      <Route path="/friends" element={<ProtectedRoute><FriendsPage /></ProtectedRoute>} />
-      <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
-      <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
-      <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-      <Route path="/profile/:id" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-      <Route path="/broadcast" element={<ProtectedRoute><BroadcastPage /></ProtectedRoute>} />
-      <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-      <Route path="/settings/account" element={<ProtectedRoute><AccountInfoPage /></ProtectedRoute>} />
-      <Route path="/settings/handle" element={<ProtectedRoute><HandleLinksPage /></ProtectedRoute>} />
-      <Route path="/settings/security" element={<ProtectedRoute><SecurityCenterPage /></ProtectedRoute>} />
-      <Route path="/settings/devices" element={<ProtectedRoute><DevicesPage /></ProtectedRoute>} />
-      <Route path="/settings/blocked" element={<ProtectedRoute><BlockedAccountsPage /></ProtectedRoute>} />
-      <Route path="/settings/muted" element={<ProtectedRoute><MutedWordsPage /></ProtectedRoute>} />
-      <Route path="/settings/language" element={<ProtectedRoute><LanguagePage /></ProtectedRoute>} />
-      <Route path="/settings/export" element={<ProtectedRoute><DataExportPage /></ProtectedRoute>} />
-      <Route path="/settings/legal" element={<ProtectedRoute><LegalPage /></ProtectedRoute>} />
-      <Route path="/support" element={<ProtectedRoute><SupportPage /></ProtectedRoute>} />
+      {/* Protected Routes — all lazy-loaded */}
+      <Route path="/feed" element={<ProtectedRoute><LazyRoute><FeedPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/post/:postId" element={<ProtectedRoute><LazyRoute><PostDetailPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/chats" element={<ProtectedRoute><LazyRoute><ChatsPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/chats/archived" element={<ProtectedRoute><LazyRoute><ArchivedChatsPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/chats/starred" element={<ProtectedRoute><LazyRoute><StarredMessagesPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/chats/new" element={<ProtectedRoute><LazyRoute><NewGroupPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/friends" element={<ProtectedRoute><LazyRoute><FriendsPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/search" element={<ProtectedRoute><LazyRoute><SearchPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/notifications" element={<ProtectedRoute><LazyRoute><NotificationsPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/profile" element={<ProtectedRoute><LazyRoute><ProfilePage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/profile/:id" element={<ProtectedRoute><LazyRoute><ProfilePage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/broadcast" element={<ProtectedRoute><LazyRoute><BroadcastPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings" element={<ProtectedRoute><LazyRoute><SettingsPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/account" element={<ProtectedRoute><LazyRoute><AccountInfoPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/handle" element={<ProtectedRoute><LazyRoute><HandleLinksPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/security" element={<ProtectedRoute><LazyRoute><SecurityCenterPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/devices" element={<ProtectedRoute><LazyRoute><DevicesPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/blocked" element={<ProtectedRoute><LazyRoute><BlockedAccountsPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/muted" element={<ProtectedRoute><LazyRoute><MutedWordsPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/language" element={<ProtectedRoute><LazyRoute><LanguagePage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/export" element={<ProtectedRoute><LazyRoute><DataExportPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/legal" element={<ProtectedRoute><LazyRoute><LegalPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/support" element={<ProtectedRoute><LazyRoute><SupportPage /></LazyRoute></ProtectedRoute>} />
 
       {/* Catch all */}
       <Route path="*" element={<AuthRedirect />} />

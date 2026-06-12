@@ -70,7 +70,7 @@ export default function AppShell({ children }: AppShellProps) {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-prava-accent border-t-transparent rounded-full animate-spin" />
+        <div className="p-spinner" />
       </div>
     );
   }
@@ -81,9 +81,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <LenisProvider>
-      <div className={`prava-app min-h-screen min-h-dvh bg-prava-light-bg dark:bg-prava-dark-bg ${isMainTabRoute ? 'prava-main-tab' : 'prava-detail-route'} ${mobileChromeVisible ? '' : 'mobile-chrome-hidden'}`}>
-        {/* Background Gradient */}
-        <div className="fixed inset-0 -z-10 prava-gradient-bg opacity-60 dark:opacity-40" />
+      <div className={`prava-app min-h-screen min-h-dvh ${isMainTabRoute ? 'prava-main-tab' : 'prava-detail-route'} ${mobileChromeVisible ? '' : 'mobile-chrome-hidden'}`} style={{ background: 'var(--p-bg-app)' }}>
 
         {isMainTabRoute && (
           <MobileTopBar
