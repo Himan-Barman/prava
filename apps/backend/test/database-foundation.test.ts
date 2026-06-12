@@ -206,6 +206,61 @@ test("foundation rerun repairs partially marked foundation tables", async () => 
   assert.equal(names.has("search_vector"), true);
 });
 
+test("foundation refresh restores follow uuid columns before domain indexes", async () => {
+  const pgLib = await import("../src/lib/pg.js");
+  const { runDatabaseFoundationMigrations } = await import("../src/lib/database-foundation.js");
+
+  const stamp = Date.now();
+  const followerId = `foundation_follower_${stamp}`;
+  const followingId = `foundation_following_${stamp}`;
+
+  await pgLib.query(
+    `INSERT INTO users (
+      user_id, email, email_lower, username, username_lower, display_name,
+      display_name_lower, password_hash, created_at, updated_at
+    ) VALUES
+      ($1, $2, $2, $3, $3, 'Foundation Follower', 'foundation follower', 'hash', now(), now()),
+      ($4, $5, $5, $6, $6, 'Foundation Following', 'foundation following', 'hash', now(), now())`,
+    [
+      followerId,
+      `${followerId}@example.com`,
+      followerId,
+      followingId,
+      `${followingId}@example.com`,
+      followingId,
+    ]
+  );
+  await pgLib.query(
+    `INSERT INTO follows (follower_id, following_id, created_at)
+     VALUES ($1, $2, now())`,
+    [followerId, followingId]
+  );
+
+  await pgLib.query(`
+    DROP INDEX IF EXISTS idx_follows_follower_status_created;
+    DROP INDEX IF EXISTS idx_follows_following_status_created;
+    DROP INDEX IF EXISTS idx_follows_follower_uuid_created;
+    DROP INDEX IF EXISTS idx_follows_following_uuid_created;
+    ALTER TABLE follows DROP COLUMN IF EXISTS follower_uuid;
+    ALTER TABLE follows DROP COLUMN IF EXISTS following_uuid;
+  `);
+
+  await runDatabaseFoundationMigrations(pgLib.getPool());
+
+  const row = await pgLib.queryOne<{
+    follower_uuid: string;
+    following_uuid: string;
+  }>(
+    `SELECT follower_uuid::text AS follower_uuid, following_uuid::text AS following_uuid
+     FROM follows
+     WHERE follower_id = $1 AND following_id = $2`,
+    [followerId, followingId]
+  );
+
+  assert.ok(row?.follower_uuid, JSON.stringify(row));
+  assert.ok(row?.following_uuid, JSON.stringify(row));
+});
+
 test("foundation enforces identity and reliability uniqueness", async () => {
   const pgLib = await import("../src/lib/pg.js");
   const stamp = Date.now();

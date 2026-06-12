@@ -147,6 +147,8 @@ export async function runDatabaseDomainMigrations(pool: pg.Pool): Promise<void> 
   `);
 
   await pool.query(`
+    ALTER TABLE follows ADD COLUMN IF NOT EXISTS follower_uuid UUID;
+    ALTER TABLE follows ADD COLUMN IF NOT EXISTS following_uuid UUID;
     ALTER TABLE follows ADD COLUMN IF NOT EXISTS follow_id UUID;
     ALTER TABLE follows ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'active';
     ALTER TABLE follows ADD COLUMN IF NOT EXISTS requested_at TIMESTAMPTZ;

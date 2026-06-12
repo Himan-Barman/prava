@@ -1564,6 +1564,7 @@ async function refreshFoundationBackfills(pool: pg.Pool): Promise<void> {
   await ensureBackfillColumns(pool);
   await backfillPrimaryUuidColumns(pool);
   await remapPrimaryUuidReferences(pool);
+  await remapExtendedUuidReferences(pool);
   await refreshCommentUuidReferences(pool);
 }
 
@@ -1585,6 +1586,54 @@ async function ensureBackfillColumns(pool: pg.Pool): Promise<void> {
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS notification_uuid UUID;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_uuid UUID;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actor_uuid UUID;
+
+    ALTER TABLE follows ADD COLUMN IF NOT EXISTS follower_uuid UUID;
+    ALTER TABLE follows ADD COLUMN IF NOT EXISTS following_uuid UUID;
+    ALTER TABLE follows ADD COLUMN IF NOT EXISTS source VARCHAR(32) NOT NULL DEFAULT 'app';
+
+    ALTER TABLE post_likes ADD COLUMN IF NOT EXISTS post_uuid UUID;
+    ALTER TABLE post_likes ADD COLUMN IF NOT EXISTS user_uuid UUID;
+    ALTER TABLE post_likes ADD COLUMN IF NOT EXISTS reaction_type VARCHAR(24) NOT NULL DEFAULT 'like';
+
+    ALTER TABLE post_topics ADD COLUMN IF NOT EXISTS post_uuid UUID;
+    ALTER TABLE post_topics ADD COLUMN IF NOT EXISTS topic_id UUID;
+    ALTER TABLE post_topics ADD COLUMN IF NOT EXISTS confidence_score REAL NOT NULL DEFAULT 1;
+    ALTER TABLE post_topics ADD COLUMN IF NOT EXISTS source VARCHAR(32) NOT NULL DEFAULT 'legacy';
+
+    ALTER TABLE post_trend_snapshots ADD COLUMN IF NOT EXISTS post_uuid UUID;
+    ALTER TABLE post_trend_snapshots ADD COLUMN IF NOT EXISTS scope_type VARCHAR(24) NOT NULL DEFAULT 'global';
+    ALTER TABLE post_trend_snapshots ADD COLUMN IF NOT EXISTS scope_key VARCHAR(96) NOT NULL DEFAULT 'global';
+    ALTER TABLE post_trend_snapshots ADD COLUMN IF NOT EXISTS trending_score DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+    ALTER TABLE feed_impressions ADD COLUMN IF NOT EXISTS request_uuid UUID;
+    ALTER TABLE feed_impressions ADD COLUMN IF NOT EXISTS user_uuid UUID;
+    ALTER TABLE feed_impressions ADD COLUMN IF NOT EXISTS post_uuid UUID;
+    ALTER TABLE feed_impressions ADD COLUMN IF NOT EXISTS rank_position INTEGER;
+    ALTER TABLE feed_impressions ADD COLUMN IF NOT EXISTS score DOUBLE PRECISION;
+    ALTER TABLE feed_impressions ADD COLUMN IF NOT EXISTS reason_codes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+    ALTER TABLE feed_impressions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+    ALTER TABLE feed_events ADD COLUMN IF NOT EXISTS request_uuid UUID;
+    ALTER TABLE feed_events ADD COLUMN IF NOT EXISTS user_uuid UUID;
+    ALTER TABLE feed_events ADD COLUMN IF NOT EXISTS post_uuid UUID;
+    ALTER TABLE feed_events ADD COLUMN IF NOT EXISTS entity_type VARCHAR(32) NOT NULL DEFAULT 'post';
+    ALTER TABLE feed_events ADD COLUMN IF NOT EXISTS weight REAL NOT NULL DEFAULT 1;
+
+    ALTER TABLE feed_served_history ADD COLUMN IF NOT EXISTS user_uuid UUID;
+    ALTER TABLE feed_served_history ADD COLUMN IF NOT EXISTS post_uuid UUID;
+    ALTER TABLE feed_served_history ADD COLUMN IF NOT EXISTS source VARCHAR(32) NOT NULL DEFAULT 'feed';
+    ALTER TABLE feed_served_history ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+
+    ALTER TABLE user_topic_affinities ADD COLUMN IF NOT EXISTS user_uuid UUID;
+    ALTER TABLE user_topic_affinities ADD COLUMN IF NOT EXISTS affinity_score DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+    ALTER TABLE user_author_affinities ADD COLUMN IF NOT EXISTS user_uuid UUID;
+    ALTER TABLE user_author_affinities ADD COLUMN IF NOT EXISTS author_uuid UUID;
+    ALTER TABLE user_author_affinities ADD COLUMN IF NOT EXISTS affinity_score DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+    ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS conversation_uuid UUID;
+    ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS user_uuid UUID;
+    ALTER TABLE conversation_members ADD COLUMN IF NOT EXISTS status VARCHAR(24) NOT NULL DEFAULT 'active';
 
     ALTER TABLE comments ADD COLUMN IF NOT EXISTS id UUID;
     ALTER TABLE comments ADD COLUMN IF NOT EXISTS post_uuid UUID;
@@ -1675,6 +1724,28 @@ async function remapPrimaryUuidReferences(pool: pg.Pool): Promise<void> {
     UPDATE messages SET sender_uuid = users.id FROM users WHERE messages.sender_user_id = users.user_id AND messages.sender_uuid IS NULL;
     UPDATE notifications SET recipient_uuid = users.id FROM users WHERE notifications.user_id = users.user_id AND notifications.recipient_uuid IS NULL;
     UPDATE notifications SET actor_uuid = users.id FROM users WHERE notifications.actor_user_id = users.user_id AND notifications.actor_uuid IS NULL;
+  `);
+}
+
+async function remapExtendedUuidReferences(pool: pg.Pool): Promise<void> {
+  await pool.query(`
+    UPDATE follows SET follower_uuid = users.id FROM users WHERE follows.follower_id = users.user_id AND follows.follower_uuid IS NULL;
+    UPDATE follows SET following_uuid = users.id FROM users WHERE follows.following_id = users.user_id AND follows.following_uuid IS NULL;
+    UPDATE post_likes SET post_uuid = posts.id FROM posts WHERE post_likes.post_id = posts.post_id AND post_likes.post_uuid IS NULL;
+    UPDATE post_likes SET user_uuid = users.id FROM users WHERE post_likes.user_id = users.user_id AND post_likes.user_uuid IS NULL;
+    UPDATE post_topics SET post_uuid = posts.id FROM posts WHERE post_topics.post_id = posts.post_id AND post_topics.post_uuid IS NULL;
+    UPDATE post_trend_snapshots SET post_uuid = posts.id FROM posts WHERE post_trend_snapshots.post_id = posts.post_id AND post_trend_snapshots.post_uuid IS NULL;
+    UPDATE feed_impressions SET user_uuid = users.id FROM users WHERE feed_impressions.user_id = users.user_id AND feed_impressions.user_uuid IS NULL;
+    UPDATE feed_impressions SET post_uuid = posts.id FROM posts WHERE feed_impressions.post_id = posts.post_id AND feed_impressions.post_uuid IS NULL;
+    UPDATE feed_events SET user_uuid = users.id FROM users WHERE feed_events.user_id = users.user_id AND feed_events.user_uuid IS NULL;
+    UPDATE feed_events SET post_uuid = posts.id FROM posts WHERE feed_events.post_id = posts.post_id AND feed_events.post_uuid IS NULL;
+    UPDATE feed_served_history SET user_uuid = users.id FROM users WHERE feed_served_history.user_id = users.user_id AND feed_served_history.user_uuid IS NULL;
+    UPDATE feed_served_history SET post_uuid = posts.id FROM posts WHERE feed_served_history.post_id = posts.post_id AND feed_served_history.post_uuid IS NULL;
+    UPDATE user_topic_affinities SET user_uuid = users.id FROM users WHERE user_topic_affinities.user_id = users.user_id AND user_topic_affinities.user_uuid IS NULL;
+    UPDATE user_author_affinities SET user_uuid = users.id FROM users WHERE user_author_affinities.user_id = users.user_id AND user_author_affinities.user_uuid IS NULL;
+    UPDATE user_author_affinities SET author_uuid = users.id FROM users WHERE user_author_affinities.author_id = users.user_id AND user_author_affinities.author_uuid IS NULL;
+    UPDATE conversation_members SET conversation_uuid = conversations.id FROM conversations WHERE conversation_members.conversation_id = conversations.conversation_id AND conversation_members.conversation_uuid IS NULL;
+    UPDATE conversation_members SET user_uuid = users.id FROM users WHERE conversation_members.user_id = users.user_id AND conversation_members.user_uuid IS NULL;
   `);
 }
 
