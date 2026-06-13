@@ -495,6 +495,118 @@ test("chat routes: dm create, send message, read + delivery + sync", async () =>
   assert.equal(report.data.success, true);
   assert.ok(report.data.reportId);
   assert.equal(report.data.status, "open");
+
+  const save = await httpJson<{ success: boolean; note: string }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/messages/${sendMessage.data.message.messageId}/save`,
+    {
+      method: "POST",
+      token: userBToken,
+      body: { note: "important" },
+    }
+  );
+  assert.equal(save.status, 200, JSON.stringify(save.data));
+  assert.equal(save.data.success, true);
+  assert.equal(save.data.note, "important");
+
+  const saved = await httpJson<Array<{ messageId: string; note: string }>>(
+    baseUrl,
+    `/api/conversations/${conversationId}/saved-messages`,
+    { token: userBToken }
+  );
+  assert.equal(saved.status, 200);
+  assert.equal(saved.data[0]?.messageId, sendMessage.data.message.messageId);
+  assert.equal(saved.data[0]?.note, "important");
+
+  const clearLocal = await httpJson<{ success: boolean; clearedBeforeSeq: number }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/clear-local`,
+    {
+      method: "POST",
+      token: userBToken,
+      body: {},
+    }
+  );
+  assert.equal(clearLocal.status, 200, JSON.stringify(clearLocal.data));
+  assert.equal(clearLocal.data.success, true);
+  assert.equal(clearLocal.data.clearedBeforeSeq, 1);
+
+  const messagesAfterClear = await httpJson<Array<{ messageId: string }>>(
+    baseUrl,
+    `/api/conversations/${conversationId}/messages`,
+    { token: userBToken }
+  );
+  assert.equal(messagesAfterClear.status, 200);
+  assert.equal(messagesAfterClear.data.length, 0);
+
+  const hiddenSaved = await httpJson<Array<{ messageId: string }>>(
+    baseUrl,
+    `/api/conversations/${conversationId}/saved-messages`,
+    { token: userBToken }
+  );
+  assert.equal(hiddenSaved.status, 200);
+  assert.equal(hiddenSaved.data.length, 0);
+
+  const deleteLocal = await httpJson<{ success: boolean; localDeletedAt: string }>(
+    baseUrl,
+    `/api/conversations/${conversationId}`,
+    {
+      method: "DELETE",
+      token: userBToken,
+      body: {},
+    }
+  );
+  assert.equal(deleteLocal.status, 200, JSON.stringify(deleteLocal.data));
+  assert.equal(deleteLocal.data.success, true);
+  assert.ok(deleteLocal.data.localDeletedAt);
+
+  const listAfterLocalDelete = await httpJson<Array<{ id: string }>>(
+    baseUrl,
+    "/api/conversations?includeArchived=true",
+    { token: userBToken }
+  );
+  assert.equal(listAfterLocalDelete.status, 200);
+  assert.equal(listAfterLocalDelete.data.some((item) => item.id === conversationId), false);
+
+  const blockA = await httpJson<{ blocked: boolean }>(
+    baseUrl,
+    `/api/users/${userAId}/block`,
+    {
+      method: "POST",
+      token: userBToken,
+      body: {},
+    }
+  );
+  assert.equal(blockA.status, 200, JSON.stringify(blockA.data));
+  assert.equal(blockA.data.blocked, true);
+
+  const blockedSend = await httpJson<{ message?: string }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/messages`,
+    {
+      method: "POST",
+      token: userAToken,
+      body: {
+        body: "blocked message",
+        contentType: "text",
+        deviceId: "device-a",
+        clientMessageId: "00000000-0000-4000-8000-000000000111",
+      },
+    }
+  );
+  assert.equal(blockedSend.status, 403);
+
+  const unblockA = await httpJson<{ blocked: boolean }>(
+    baseUrl,
+    `/api/users/${userAId}/block`,
+    {
+      method: "DELETE",
+      token: userBToken,
+      body: {},
+    }
+  );
+  assert.equal(unblockA.status, 200, JSON.stringify(unblockA.data));
+  assert.equal(unblockA.data.blocked, false);
 });
 
 test("username availability: taken and available", async () => {

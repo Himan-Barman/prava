@@ -563,14 +563,20 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       marked_unread   BOOLEAN NOT NULL DEFAULT FALSE,
       draft_text      TEXT NOT NULL DEFAULT '',
       draft_updated_at TIMESTAMPTZ DEFAULT NULL,
+      cleared_before_seq INT NOT NULL DEFAULT 0,
+      local_deleted_at TIMESTAMPTZ DEFAULT NULL,
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (conversation_id, user_id)
     );
     ALTER TABLE conversation_user_preferences ADD COLUMN IF NOT EXISTS marked_unread BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE conversation_user_preferences ADD COLUMN IF NOT EXISTS draft_text TEXT NOT NULL DEFAULT '';
     ALTER TABLE conversation_user_preferences ADD COLUMN IF NOT EXISTS draft_updated_at TIMESTAMPTZ DEFAULT NULL;
+    ALTER TABLE conversation_user_preferences ADD COLUMN IF NOT EXISTS cleared_before_seq INT NOT NULL DEFAULT 0;
+    ALTER TABLE conversation_user_preferences ADD COLUMN IF NOT EXISTS local_deleted_at TIMESTAMPTZ DEFAULT NULL;
     CREATE INDEX IF NOT EXISTS idx_conv_preferences_user ON conversation_user_preferences (user_id, is_favorite, is_starred, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_conv_preferences_archived ON conversation_user_preferences (user_id, is_archived, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_conv_preferences_local_deleted
+      ON conversation_user_preferences (user_id, local_deleted_at, cleared_before_seq);
 
     CREATE TABLE IF NOT EXISTS chat_pinned_messages (
       conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
@@ -581,6 +587,19 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_chat_pinned_messages_conversation
       ON chat_pinned_messages (conversation_id, pinned_at DESC);
+
+    CREATE TABLE IF NOT EXISTS chat_saved_messages (
+      conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+      message_id      TEXT NOT NULL REFERENCES messages(message_id) ON DELETE CASCADE,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      saved_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      note            TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (conversation_id, message_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_saved_messages_user
+      ON chat_saved_messages (user_id, saved_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_chat_saved_messages_conversation
+      ON chat_saved_messages (conversation_id, user_id, saved_at DESC);
 
     CREATE TABLE IF NOT EXISTS chat_reports (
       report_id       TEXT PRIMARY KEY,
@@ -743,4 +762,142 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
   `);
 
   await runDatabaseFoundationMigrations(p);
+
+  await p.query(`
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_user_id UUID;
+    UPDATE notifications
+       SET recipient_user_id = users.id
+      FROM users
+     WHERE notifications.user_id = users.user_id
+       AND notifications.recipient_user_id IS NULL;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actor_internal_user_id UUID;
+    UPDATE notifications
+       SET actor_internal_user_id = users.id
+      FROM users
+     WHERE notifications.actor_user_id = users.user_id
+       AND notifications.actor_internal_user_id IS NULL;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS aggregation_key TEXT;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal';
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMPTZ DEFAULT NULL;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_id TEXT DEFAULT NULL;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_eligible BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS preference_category TEXT NOT NULL DEFAULT 'system';
+    UPDATE notifications SET notification_type = type WHERE notification_type IS NULL;
+    UPDATE notifications SET recipient_uuid = recipient_user_id WHERE recipient_uuid IS NULL AND recipient_user_id IS NOT NULL;
+    UPDATE notifications SET actor_uuid = actor_internal_user_id WHERE actor_uuid IS NULL AND actor_internal_user_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_idempotency_unique_full
+      ON notifications (idempotency_key);
+    CREATE INDEX IF NOT EXISTS idx_notifications_inbox_cursor
+      ON notifications (recipient_user_id, created_at DESC, notification_id DESC);
+    CREATE INDEX IF NOT EXISTS idx_notifications_unread_cursor
+      ON notifications (recipient_user_id, created_at DESC, notification_id DESC)
+      WHERE read_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_notifications_expires
+      ON notifications (expires_at)
+      WHERE expires_at IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_notifications_type_recipient
+      ON notifications (recipient_user_id, notification_type, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS notification_outbox (
+      event_id UUID PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      actor_user_id UUID DEFAULT NULL,
+      recipient_user_id UUID DEFAULT NULL,
+      entity_type TEXT DEFAULT NULL,
+      entity_id TEXT DEFAULT NULL,
+      payload JSONB NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      published_at TIMESTAMPTZ DEFAULT NULL,
+      attempt_count INT NOT NULL DEFAULT 0,
+      last_error TEXT DEFAULT NULL,
+      locked_at TIMESTAMPTZ DEFAULT NULL,
+      locked_by TEXT DEFAULT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_notification_outbox_unpublished
+      ON notification_outbox (published_at, created_at)
+      WHERE published_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_notification_outbox_locked
+      ON notification_outbox (locked_at, attempt_count, created_at)
+      WHERE published_at IS NULL;
+
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS preference_category TEXT;
+    UPDATE notification_preferences SET preference_category = notification_type WHERE preference_category IS NULL;
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS push_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS email_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS quiet_hours_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC';
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    CREATE INDEX IF NOT EXISTS idx_notification_preferences_user_category
+      ON notification_preferences (user_id, preference_category);
+
+    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS public_device_id TEXT;
+    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS push_provider TEXT NOT NULL DEFAULT 'fcm';
+    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS push_token TEXT;
+    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS token_refreshed_at TIMESTAMPTZ;
+    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_devices_public_active
+      ON user_devices (user_id, public_device_id)
+      WHERE public_device_id IS NOT NULL AND invalidated_at IS NULL AND revoked_at IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_devices_push_token_active
+      ON user_devices (push_provider, push_token)
+      WHERE push_token IS NOT NULL AND invalidated_at IS NULL AND revoked_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS notification_deliveries (
+      delivery_id UUID PRIMARY KEY,
+      notification_id TEXT NOT NULL REFERENCES notifications(notification_id) ON DELETE CASCADE,
+      device_id UUID DEFAULT NULL REFERENCES user_devices(id) ON DELETE SET NULL,
+      channel TEXT NOT NULL,
+      provider_message_id TEXT DEFAULT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      attempt_count INT NOT NULL DEFAULT 0,
+      next_retry_at TIMESTAMPTZ DEFAULT NULL,
+      sent_at TIMESTAMPTZ DEFAULT NULL,
+      delivered_at TIMESTAMPTZ DEFAULT NULL,
+      failed_at TIMESTAMPTZ DEFAULT NULL,
+      error_code TEXT DEFAULT NULL,
+      error_message TEXT DEFAULT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_notification_deliveries_notification
+      ON notification_deliveries (notification_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_notification_deliveries_retry
+      ON notification_deliveries (status, next_retry_at)
+      WHERE status IN ('queued', 'retry');
+
+    CREATE TABLE IF NOT EXISTS notification_aggregates (
+      aggregation_key TEXT NOT NULL,
+      recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      notification_type TEXT NOT NULL,
+      entity_id TEXT DEFAULT NULL,
+      actor_count INT NOT NULL DEFAULT 0,
+      latest_actor_user_id UUID DEFAULT NULL REFERENCES users(id) ON DELETE SET NULL,
+      notification_id TEXT NOT NULL REFERENCES notifications(notification_id) ON DELETE CASCADE,
+      window_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      window_expires_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (aggregation_key, recipient_user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_notification_aggregates_expires
+      ON notification_aggregates (window_expires_at);
+
+    CREATE TABLE IF NOT EXISTS notification_dead_letters (
+      dead_letter_id UUID PRIMARY KEY,
+      source_event_id UUID DEFAULT NULL,
+      event_type TEXT NOT NULL,
+      payload JSONB NOT NULL DEFAULT '{}',
+      error_message TEXT NOT NULL,
+      failed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      resolved_at TIMESTAMPTZ DEFAULT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_notification_dead_letters_failed
+      ON notification_dead_letters (resolved_at, failed_at DESC);
+
+    ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;
+    ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS locked_by TEXT;
+    ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
+  `);
 }

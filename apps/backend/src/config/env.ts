@@ -37,6 +37,9 @@ const envSchema = z.object({
   REDIS_TLS: z.string().optional(),
   REDIS_KEY_PREFIX: z.string().optional(),
 
+  // Push notifications
+  FCM_SERVER_KEY: z.string().optional(),
+
   // Server tuning
   CONNECTION_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   KEEP_ALIVE_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
@@ -146,6 +149,7 @@ export const env = {
   CLOUDINARY_API_SECRET: normalizeOptionalString(parsed.CLOUDINARY_API_SECRET),
   REDIS_TLS: parseBoolean(parsed.REDIS_TLS, false),
   REDIS_KEY_PREFIX: parsed.REDIS_KEY_PREFIX ?? "prava",
+  FCM_SERVER_KEY: normalizeOptionalString(parsed.FCM_SERVER_KEY),
   CONNECTION_TIMEOUT_MS: parsed.CONNECTION_TIMEOUT_MS ?? 10_000,
   KEEP_ALIVE_TIMEOUT_MS: parsed.KEEP_ALIVE_TIMEOUT_MS ?? 60_000,
   MAX_PARAM_LENGTH: parsed.MAX_PARAM_LENGTH ?? 200,

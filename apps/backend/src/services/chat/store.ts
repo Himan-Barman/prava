@@ -97,6 +97,8 @@ function mapConversationRow(row: any, members: any[] = []) {
     markedUnread: row.marked_unread === true,
     draftText: row.draft_text || "",
     draftUpdatedAt: row.draft_updated_at || null,
+    clearedBeforeSeq: Number(row.cleared_before_seq || 0),
+    localDeletedAt: row.local_deleted_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     members: mappedMembers,

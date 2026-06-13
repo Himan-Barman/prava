@@ -58,13 +58,15 @@ export async function markOutboxFailed(
   client?: Queryable
 ): Promise<void> {
   const runner = client || { query };
+  const message = error instanceof Error ? error.message : String(error);
+  const nextRetryAt = new Date(Date.now() + Math.min(3_600_000, 1000 * 2 ** 3));
   await runner.query(
     `UPDATE outbox_events
      SET attempts = attempts + 1,
          status = CASE WHEN attempts >= 9 THEN 'dead' ELSE 'pending' END,
-         available_at = NOW() + make_interval(secs => LEAST(3600, POWER(2, attempts + 1)::int)),
+         available_at = $3,
          last_error = $2
      WHERE id = $1`,
-    [eventId, error instanceof Error ? error.message : String(error)]
+    [eventId, message.slice(0, 1000), nextRetryAt]
   );
 }

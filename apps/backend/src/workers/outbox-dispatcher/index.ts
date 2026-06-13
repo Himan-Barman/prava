@@ -2,6 +2,11 @@ import { sendOtpEmail } from "../../lib/email.js";
 import { query, queryMany, queryOne, withTransaction } from "../../lib/pg.js";
 import { markOutboxFailed, markOutboxProcessed } from "../../shared/outbox/index.js";
 import { incrementMetric, observeTiming } from "../../shared/metrics/index.js";
+import {
+  createNotificationFromEvent,
+  publishNotificationOutboxBatch,
+} from "../../services/notification/repository.js";
+import { sendQueuedPushDeliveries } from "../../services/notification/push.js";
 
 export type OutboxDispatchResult = {
   processed: number;
@@ -46,96 +51,6 @@ async function resolveLegacyUser(userId: unknown): Promise<any | null> {
   );
 }
 
-async function createNotification(input: {
-  notificationId: string;
-  recipient: any;
-  actor?: any | null;
-  type: string;
-  title: string;
-  body: string;
-  data?: Record<string, unknown>;
-}): Promise<void> {
-  if (!input.recipient?.user_id || !input.recipient?.id) {
-    return;
-  }
-  if (input.actor?.user_id && input.actor.user_id === input.recipient.user_id) {
-    return;
-  }
-
-  await withTransaction(async (client) => {
-    await client.query(
-      `INSERT INTO notifications (
-         notification_id, notification_uuid, user_id, recipient_uuid,
-         actor_user_id, actor_uuid, type, notification_type,
-         title, body, data, entity_type, entity_uuid, created_at
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10, $11, $12, NOW())
-       ON CONFLICT (notification_id) DO NOTHING`,
-      [
-        input.notificationId,
-        input.notificationId,
-        input.recipient.user_id,
-        input.recipient.id,
-        input.actor?.user_id || null,
-        input.actor?.id || null,
-        input.type,
-        input.title,
-        input.body,
-        JSON.stringify(input.data || {}),
-        String(input.data?.entityType || input.type.split(".")[0] || "system"),
-        input.data?.entityUuid || null,
-      ]
-    );
-
-    const inserted = await client.query(
-      `SELECT notification_uuid
-       FROM notifications
-       WHERE notification_id = $1
-       LIMIT 1`,
-      [input.notificationId]
-    );
-    const notificationUuid = inserted.rows[0]?.notification_uuid;
-    if (notificationUuid) {
-      const preferences = await client.query(
-        `SELECT channel, enabled
-         FROM notification_preferences
-         WHERE user_id = $1
-           AND notification_type IN ($2, 'all')`,
-        [input.recipient.id, input.type]
-      );
-      const disabled = new Set(
-        preferences.rows.filter((row: any) => row.enabled === false).map((row: any) => row.channel)
-      );
-      const subscriptions = await client.query(
-        `SELECT id
-         FROM push_subscriptions
-         WHERE user_id = $1 AND is_active = TRUE AND revoked_at IS NULL
-         LIMIT 25`,
-        [input.recipient.id]
-      );
-      if (!disabled.has("push") && (subscriptions.rowCount || 0) > 0) {
-        await client.query(
-          `INSERT INTO notification_delivery_attempts (
-             notification_id, channel, provider, status, attempted_at
-           )
-           VALUES ($1, 'push', 'configured_subscription', 'queued', NOW())`,
-          [notificationUuid]
-        );
-      }
-    }
-
-    await client.query(
-      `INSERT INTO user_stats (user_id, unread_notifications_count, updated_at)
-       VALUES ($1, 1, NOW())
-       ON CONFLICT (user_id)
-       DO UPDATE SET unread_notifications_count = (
-         SELECT COUNT(*)::bigint FROM notifications WHERE recipient_uuid = $1 AND read_at IS NULL
-       ), updated_at = NOW()`,
-      [input.recipient.id]
-    );
-  });
-}
-
 async function dispatchAuthEmail(eventType: string, payload: Record<string, unknown>): Promise<void> {
   const email = String(payload.email || "").trim().toLowerCase();
   const code = String(payload.code || payload.devCode || payload.token || "").trim();
@@ -165,17 +80,16 @@ async function dispatchPostLiked(event: any, payload: Record<string, unknown>): 
   if (!post) {
     return;
   }
-  const recipient = await resolveLegacyUser(post.author_id);
-  await createNotification({
-    notificationId: String(event.id),
-    recipient,
-    actor,
-    type: "post.like",
-    title: "New like",
-    body: `${actor.display_name || actor.username || "Someone"} liked your post.`,
-    data: {
+  await createNotificationFromEvent({
+    eventId: String(event.id),
+    type: "POST_LIKED",
+    recipientUserId: post.author_id,
+    actorUserId: actor.user_id,
+    entityType: "post",
+    entityId: post.post_id,
+    idempotencyKey: `outbox:${event.id}`,
+    payload: {
       postId: post.post_id,
-      entityType: "post",
       entityUuid: post.id,
       actorUserId: actor.user_id,
     },
@@ -188,16 +102,16 @@ async function dispatchFollowAccepted(event: any, payload: Record<string, unknow
   if (!actor || !recipient) {
     return;
   }
-  await createNotification({
-    notificationId: String(event.id),
-    recipient,
-    actor,
-    type: "relationship.follow",
-    title: "New follower",
-    body: `${actor.display_name || actor.username || "Someone"} followed you.`,
-    data: {
+  await createNotificationFromEvent({
+    eventId: String(event.id),
+    type: "FOLLOW_RECEIVED",
+    recipientUserId: recipient.user_id,
+    actorUserId: actor.user_id,
+    entityType: "user",
+    entityId: actor.user_id,
+    idempotencyKey: `outbox:${event.id}`,
+    payload: {
       actorUserId: actor.user_id,
-      entityType: "user",
       entityUuid: actor.id,
     },
   });
@@ -237,6 +151,18 @@ async function dispatchEvent(event: any): Promise<void> {
     case "follow.accepted":
       await dispatchFollowAccepted(event, payload);
       return;
+    case "notification.event":
+      await createNotificationFromEvent({
+        eventId: String(event.id),
+        type: String(payload.type || payload.notificationType || "SYSTEM_ANNOUNCEMENT"),
+        recipientUserId: String(payload.recipientUserId || ""),
+        actorUserId: payload.actorUserId ? String(payload.actorUserId) : null,
+        entityType: payload.entityType ? String(payload.entityType) : null,
+        entityId: payload.entityId ? String(payload.entityId) : null,
+        idempotencyKey: `outbox:${event.id}`,
+        payload,
+      });
+      return;
     case "moderation.report.created":
     case "moderation.case.note_added":
     case "moderation.action.reversed":
@@ -249,8 +175,11 @@ async function dispatchEvent(event: any): Promise<void> {
 
 export async function runOutboxDispatcherBatch(limit = 100): Promise<OutboxDispatchResult> {
   const started = Date.now();
+  const notificationOutbox = await publishNotificationOutboxBatch(Math.max(1, Math.floor(limit / 2)));
   const events = await queryMany(
-    `SELECT *
+    `SELECT id::text AS id, aggregate_type, aggregate_uuid::text AS aggregate_uuid,
+            aggregate_id::text AS aggregate_id, event_type, payload, attempts,
+            available_at, created_at
      FROM outbox_events
      WHERE status = 'pending'
        AND available_at <= NOW()
@@ -274,8 +203,12 @@ export async function runOutboxDispatcherBatch(limit = 100): Promise<OutboxDispa
     }
   }
 
+  await sendQueuedPushDeliveries(limit).catch(() => undefined);
   incrementMetric("worker.outbox.processed", processed);
   incrementMetric("worker.outbox.failed", failed);
   observeTiming("worker.outbox.batch_ms", Date.now() - started);
-  return { processed, failed };
+  return {
+    processed: processed + notificationOutbox.processed,
+    failed: failed + notificationOutbox.failed,
+  };
 }

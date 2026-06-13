@@ -85,6 +85,15 @@ class ChatRealtime {
     });
   }
 
+  void sendRecording({
+    required String conversationId,
+    required bool isRecording,
+  }) {
+    _send(isRecording ? 'RECORDING_START' : 'RECORDING_STOP', {
+      'conversationId': conversationId,
+    });
+  }
+
   void sendMessage({
     required String conversationId,
     required String body,

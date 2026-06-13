@@ -24,6 +24,7 @@ import {
   registerConnection,
   unregisterConnection,
 } from "./hub.js";
+import { canSendDirectMessage, hasBlockBetween } from "../../shared/policies/index.js";
 
 function parseIntStrict(value: unknown): number | null {
   const parsed = Number.parseInt(String(value || ""), 10);
@@ -58,6 +59,8 @@ const EVENT_ALIASES = new Map<string, string>([
   ["CHAT_SYNC_INIT", "SYNC_INIT"],
   ["TYPING_START", "TYPING_START"],
   ["TYPING_STOP", "TYPING_STOP"],
+  ["RECORDING_START", "RECORDING_START"],
+  ["RECORDING_STOP", "RECORDING_STOP"],
 ]);
 
 function normalizeEventType(value: unknown): string {
@@ -176,10 +179,29 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
     const sendTyping = async (conversationId: string, isTyping: boolean) => {
       const conversation = await getConversation(conversationId);
       if (!conversation) return;
+      if (conversation.type === "dm") {
+        const peerId = (conversation.memberIds || []).find((id: string) => id !== userId);
+        if (peerId && await hasBlockBetween(userId, peerId)) return;
+      }
       publishToConversation(
         conversation.memberIds,
         "TYPING",
         { conversationId, userId, isTyping },
+        userId,
+      );
+    };
+
+    const sendRecording = async (conversationId: string, isRecording: boolean) => {
+      const conversation = await getConversation(conversationId);
+      if (!conversation) return;
+      if (conversation.type === "dm") {
+        const peerId = (conversation.memberIds || []).find((id: string) => id !== userId);
+        if (peerId && await hasBlockBetween(userId, peerId)) return;
+      }
+      publishToConversation(
+        conversation.memberIds,
+        "RECORDING",
+        { conversationId, userId, isRecording },
         userId,
       );
     };
@@ -190,6 +212,13 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
     ) => {
       const conversation = await getConversation(conversationId);
       if (!conversation) return;
+      if (conversation.type === "dm") {
+        const peerId = (conversation.memberIds || []).find((id: string) => id !== userId);
+        if (peerId) {
+          const policy = await canSendDirectMessage(userId, peerId);
+          ensure(policy.allowed, 403, "User interaction is blocked");
+        }
+      }
       const result = await upsertReadState(conversation, userId, {
         lastReadSeq,
       });
@@ -428,6 +457,8 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
             if (!conversation) return;
             state.subscribedConversations.add(conversationId);
             if (conversation.type === "dm") {
+              const peerId = (conversation.memberIds || []).find((id: string) => id !== userId);
+              if (peerId && await hasBlockBetween(userId, peerId)) return;
               publishToConversation(
                 conversation.memberIds,
                 "PRESENCE_UPDATE",
@@ -492,6 +523,12 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
             break;
           case "TYPING_STOP":
             await sendTyping(normalizeString(payload.conversationId), false);
+            break;
+          case "RECORDING_START":
+            await sendRecording(normalizeString(payload.conversationId), true);
+            break;
+          case "RECORDING_STOP":
+            await sendRecording(normalizeString(payload.conversationId), false);
             break;
           default:
             break;

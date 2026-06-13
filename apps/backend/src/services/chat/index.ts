@@ -11,6 +11,10 @@ import {
   publishToConversation,
   publishToUsers,
 } from "../realtime/hub.js";
+import { enqueueNotificationEvent } from "../notification/repository.js";
+import {
+  canSendDirectMessage,
+} from "../../shared/policies/index.js";
 import {
   MESSAGE_TYPES,
   createMessage,
@@ -75,21 +79,20 @@ async function createChatNotifications({
 
   for (const userId of recipients) {
     if (!(await shouldCreateNotification(userId, "notifyChats"))) continue;
-    await query(
-      `INSERT INTO notifications (
-         notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
-       )
-       VALUES ($1, $2, $3, 'chat', $4, $5, $6, $7, NULL)`,
-      [
-        generateId(),
-        userId,
-        actorUserId,
+    await enqueueNotificationEvent({
+      eventType: conversation.type === "group"
+        ? "GROUP_MESSAGE_RECEIVED"
+        : "DM_MESSAGE_RECEIVED",
+      recipientUserId: userId,
+      actorUserId,
+      entityType: "conversation",
+      entityId: conversationId,
+      payload: {
+        conversationId,
         title,
-        preview,
-        JSON.stringify({ conversationId }),
-        now(),
-      ]
-    );
+        body: preview,
+      },
+    });
   }
 }
 
@@ -167,6 +170,8 @@ function conversationSummary(conversation: any, currentUserId: string, peerMap: 
     markedUnread: conversation.markedUnread === true,
     draftText: conversation.draftText || "",
     draftUpdatedAt: toIso(conversation.draftUpdatedAt),
+    clearedBeforeSeq: Number(conversation.clearedBeforeSeq || 0),
+    localDeletedAt: toIso(conversation.localDeletedAt),
   };
 }
 
@@ -196,6 +201,14 @@ function ensureConversationOpenForUser(conversation: any, userId: string) {
   }
 }
 
+async function ensureDmSendAllowed(conversation: any, userId: string) {
+  if (conversation.type !== "dm") return;
+  const peerId = (conversation.memberIds || []).find((id: string) => id !== userId);
+  if (!peerId) return;
+  const policy = await canSendDirectMessage(userId, peerId);
+  ensure(policy.allowed, 403, "User interaction is blocked");
+}
+
 function boolOrCurrent(value: unknown, current: boolean): boolean {
   return value === undefined ? current : value === true;
 }
@@ -207,11 +220,14 @@ type ConversationPreferencePatch = {
   isArchived?: boolean;
   markedUnread?: boolean;
   draftText?: string;
+  clearedBeforeSeq?: number;
+  localDeletedAt?: Date | null;
 };
 
 async function loadPreference(conversationId: string, userId: string) {
   const row = await queryOne(
-    `SELECT is_favorite, is_starred, is_muted, is_archived, marked_unread, draft_text, draft_updated_at
+    `SELECT is_favorite, is_starred, is_muted, is_archived, marked_unread,
+            draft_text, draft_updated_at, cleared_before_seq, local_deleted_at
      FROM conversation_user_preferences
      WHERE conversation_id = $1 AND user_id = $2`,
     [conversationId, userId]
@@ -225,6 +241,8 @@ async function loadPreference(conversationId: string, userId: string) {
     markedUnread: row?.marked_unread === true,
     draftText: row?.draft_text || "",
     draftUpdatedAt: row?.draft_updated_at || null,
+    clearedBeforeSeq: Number(row?.cleared_before_seq || 0),
+    localDeletedAt: row?.local_deleted_at || null,
   };
 }
 
@@ -249,14 +267,19 @@ async function savePreference(
     markedUnread: patch.markedUnread ?? current.markedUnread,
     draftText,
     draftUpdatedAt,
+    clearedBeforeSeq: patch.clearedBeforeSeq ?? current.clearedBeforeSeq,
+    localDeletedAt: patch.localDeletedAt === undefined
+      ? current.localDeletedAt
+      : patch.localDeletedAt,
   };
 
   await query(
     `INSERT INTO conversation_user_preferences (
        conversation_id, user_id, is_favorite, is_starred, is_muted,
-       is_archived, marked_unread, draft_text, draft_updated_at, updated_at
+       is_archived, marked_unread, draft_text, draft_updated_at,
+       cleared_before_seq, local_deleted_at, updated_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (conversation_id, user_id)
      DO UPDATE SET
        is_favorite = EXCLUDED.is_favorite,
@@ -266,6 +289,8 @@ async function savePreference(
        marked_unread = EXCLUDED.marked_unread,
        draft_text = EXCLUDED.draft_text,
        draft_updated_at = EXCLUDED.draft_updated_at,
+       cleared_before_seq = EXCLUDED.cleared_before_seq,
+       local_deleted_at = EXCLUDED.local_deleted_at,
        updated_at = EXCLUDED.updated_at`,
     [
       conversationId,
@@ -277,6 +302,8 @@ async function savePreference(
       next.markedUnread,
       next.draftText,
       next.draftUpdatedAt,
+      next.clearedBeforeSeq,
+      next.localDeletedAt,
       ts,
     ]
   );
@@ -289,6 +316,8 @@ async function savePreference(
     markedUnread: next.markedUnread,
     draftText: next.draftText,
     draftUpdatedAt: toIso(next.draftUpdatedAt),
+    clearedBeforeSeq: next.clearedBeforeSeq,
+    localDeletedAt: toIso(next.localDeletedAt),
     updatedAt: toIso(ts),
   };
 }
@@ -410,7 +439,9 @@ export default async function chatService(app: any) {
               COALESCE(cup.is_archived, FALSE) AS is_archived,
               COALESCE(cup.marked_unread, FALSE) AS marked_unread,
               COALESCE(cup.draft_text, '') AS draft_text,
-              cup.draft_updated_at AS draft_updated_at
+              cup.draft_updated_at AS draft_updated_at,
+              COALESCE(cup.cleared_before_seq, 0) AS cleared_before_seq,
+              cup.local_deleted_at AS local_deleted_at
        FROM conversations c
        JOIN conversation_members cm ON cm.conversation_id = c.conversation_id
        LEFT JOIN conversation_user_preferences cup
@@ -424,6 +455,10 @@ export default async function chatService(app: any) {
            OR c.dm_request_sender_user_id = $1
          )
          AND c.dm_request_status <> 'declined'
+         AND (
+           cup.local_deleted_at IS NULL
+           OR c.seq_counter > COALESCE(cup.cleared_before_seq, 0)
+         )
        ORDER BY c.updated_at DESC
        LIMIT $2`,
       [request.user.userId, limit]
@@ -478,7 +513,9 @@ export default async function chatService(app: any) {
               COALESCE(cup.is_archived, FALSE) AS is_archived,
               COALESCE(cup.marked_unread, FALSE) AS marked_unread,
               COALESCE(cup.draft_text, '') AS draft_text,
-              cup.draft_updated_at AS draft_updated_at
+              cup.draft_updated_at AS draft_updated_at,
+              COALESCE(cup.cleared_before_seq, 0) AS cleared_before_seq,
+              cup.local_deleted_at AS local_deleted_at
        FROM conversations c
        JOIN conversation_members cm ON cm.conversation_id = c.conversation_id
        LEFT JOIN conversation_user_preferences cup
@@ -490,6 +527,10 @@ export default async function chatService(app: any) {
          AND c.last_message_id IS NOT NULL
          AND cm.user_id = $1
          AND cm.left_at IS NULL
+         AND (
+           cup.local_deleted_at IS NULL
+           OR c.seq_counter > COALESCE(cup.cleared_before_seq, 0)
+         )
        ORDER BY c.updated_at DESC
        LIMIT $2`,
       [request.user.userId, limit]
@@ -539,6 +580,7 @@ export default async function chatService(app: any) {
     ensure(conversation.type === "dm", 400, "Conversation is not a DM");
     ensure(conversation.dmRequestStatus === "pending", 400, "Message request is not pending");
     ensure(conversation.dmRequestRecipientUserId === request.user.userId, 403, "Only the recipient can accept this request");
+    await ensureDmSendAllowed(conversation, request.user.userId);
 
     const ts = now();
     await query(
@@ -1323,6 +1365,53 @@ export default async function chatService(app: any) {
     return { success: true, preferences };
   });
 
+  app.post("/:conversationId/clear-local", { preHandler: requireAuth }, async (request: any) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+
+    const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensureConversationOpenForUser(conversation, request.user.userId);
+    const clearedBeforeSeq = Number(conversation.seqCounter || 0);
+    const preferences = await savePreference(conversationId, request.user.userId, {
+      clearedBeforeSeq,
+      localDeletedAt: null,
+      markedUnread: false,
+      draftText: "",
+    });
+
+    return {
+      success: true,
+      conversationId,
+      clearedBeforeSeq,
+      preferences,
+    };
+  });
+
+  app.delete("/:conversationId", { preHandler: requireAuth }, async (request: any) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+
+    const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensureConversationOpenForUser(conversation, request.user.userId);
+    const clearedBeforeSeq = Number(conversation.seqCounter || 0);
+    const deletedAt = now();
+    const preferences = await savePreference(conversationId, request.user.userId, {
+      clearedBeforeSeq,
+      localDeletedAt: deletedAt,
+      isArchived: false,
+      markedUnread: false,
+      draftText: "",
+    });
+
+    return {
+      success: true,
+      conversationId,
+      localDeletedAt: toIso(deletedAt),
+      clearedBeforeSeq,
+      preferences,
+    };
+  });
+
   app.post("/:conversationId/mark-unread", { preHandler: requireAuth }, async (request: any) => {
     const conversationId = normalizeString(request.params.conversationId);
     ensure(conversationId.length >= 8, 400, "Invalid conversation");
@@ -1415,6 +1504,7 @@ export default async function chatService(app: any) {
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
     ensureConversationOpenForUser(conversation, request.user.userId);
+    const preference = await loadPreference(conversationId, request.user.userId);
 
     const q = normalizeString(request.query?.q).slice(0, 120);
     ensure(q.length >= 2, 400, "Search query is too short");
@@ -1424,11 +1514,12 @@ export default async function chatService(app: any) {
       `SELECT *
        FROM messages
        WHERE conversation_id = $1
+         AND seq > $4
          AND deleted_for_all_at IS NULL
          AND COALESCE(body, '') ILIKE $2
        ORDER BY seq DESC
        LIMIT $3`,
-      [conversationId, `%${q}%`, limit]
+      [conversationId, `%${q}%`, limit, preference.clearedBeforeSeq]
     );
 
     return {
@@ -1443,6 +1534,7 @@ export default async function chatService(app: any) {
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
     ensureConversationOpenForUser(conversation, request.user.userId);
+    const preference = await loadPreference(conversationId, request.user.userId);
     const limit = parseLimit(request.query?.limit, 30, 1, 80);
 
     const rows = await queryMany(
@@ -1450,9 +1542,10 @@ export default async function chatService(app: any) {
        FROM chat_pinned_messages cpm
        JOIN messages m ON m.message_id = cpm.message_id
        WHERE cpm.conversation_id = $1
+         AND m.seq > $3
        ORDER BY cpm.pinned_at DESC
        LIMIT $2`,
-      [conversationId, limit]
+      [conversationId, limit, preference.clearedBeforeSeq]
     );
     const messages = await loadMessagesWithReactions(rows);
 
@@ -1509,6 +1602,8 @@ export default async function chatService(app: any) {
     ensure(otherUserId !== request.user.userId, 400, "Cannot create DM with self");
 
     await ensureUserExists(otherUserId);
+    const sendPolicy = await canSendDirectMessage(request.user.userId, otherUserId);
+    ensure(sendPolicy.allowed, 403, "User interaction is blocked");
 
     const memberIds = [request.user.userId, otherUserId].sort();
     const memberHash = normalizeMemberHash(memberIds);
@@ -1962,10 +2057,11 @@ export default async function chatService(app: any) {
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
     ensureConversationOpenForUser(conversation, request.user.userId);
+    const preference = await loadPreference(conversationId, request.user.userId);
 
     const limit = parseLimit(request.query?.limit, 50, 1, 100);
-    const params: unknown[] = [conversationId];
-    let where = "conversation_id = $1";
+    const params: unknown[] = [conversationId, preference.clearedBeforeSeq];
+    let where = "conversation_id = $1 AND seq > $2";
     const beforeSeqRaw = request.query?.beforeSeq;
     if (beforeSeqRaw !== undefined) {
       const beforeSeq = Number.parseInt(String(beforeSeqRaw), 10);
@@ -1996,12 +2092,16 @@ export default async function chatService(app: any) {
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
     ensureConversationOpenForUser(conversation, request.user.userId);
+    const preference = await loadPreference(conversationId, request.user.userId);
 
     const row = await queryOne(
       `SELECT * FROM messages WHERE conversation_id = $1 AND message_id = $2`,
       [conversationId, messageId]
     );
     if (!row) {
+      throw new HttpError(404, "Message not found");
+    }
+    if (Number(row.seq || 0) <= preference.clearedBeforeSeq) {
       throw new HttpError(404, "Message not found");
     }
 
@@ -2027,9 +2127,103 @@ export default async function chatService(app: any) {
           seen: lastReadSeq >= messageSeq,
           lastDeliveredSeq,
           lastReadSeq,
-          updatedAt: toIso(receipt?.updated_at),
+      updatedAt: toIso(receipt?.updated_at),
         };
       }),
+    };
+  });
+
+  app.get("/:conversationId/saved-messages", { preHandler: requireAuth }, async (request: any) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+
+    const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensureConversationOpenForUser(conversation, request.user.userId);
+    const preference = await loadPreference(conversationId, request.user.userId);
+    const limit = parseLimit(request.query?.limit, 30, 1, 80);
+
+    const rows = await queryMany(
+      `SELECT m.*, csm.saved_at, csm.note
+       FROM chat_saved_messages csm
+       JOIN messages m ON m.message_id = csm.message_id
+       WHERE csm.conversation_id = $1
+         AND csm.user_id = $2
+         AND m.seq > $4
+       ORDER BY csm.saved_at DESC
+       LIMIT $3`,
+      [conversationId, request.user.userId, limit, preference.clearedBeforeSeq]
+    );
+    const messages = await loadMessagesWithReactions(rows);
+
+    return messages.map((message, index) => ({
+      ...message,
+      savedAt: toIso(rows[index]?.saved_at),
+      note: rows[index]?.note || "",
+    }));
+  });
+
+  app.post("/:conversationId/messages/:messageId/save", { preHandler: requireAuth }, async (request: any) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    const messageId = normalizeString(request.params.messageId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+    ensure(messageId.length >= 8, 400, "Invalid message");
+
+    const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensureConversationOpenForUser(conversation, request.user.userId);
+    const preference = await loadPreference(conversationId, request.user.userId);
+    const note = normalizeString(request.body?.note).slice(0, 500);
+
+    const message = await queryOne(
+      `SELECT message_id, seq
+       FROM messages
+       WHERE conversation_id = $1 AND message_id = $2 AND deleted_for_all_at IS NULL`,
+      [conversationId, messageId]
+    );
+    if (!message || Number(message.seq || 0) <= preference.clearedBeforeSeq) {
+      throw new HttpError(404, "Message not found");
+    }
+
+    const ts = now();
+    await query(
+      `INSERT INTO chat_saved_messages (conversation_id, message_id, user_id, saved_at, note)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (conversation_id, message_id, user_id)
+       DO UPDATE SET saved_at = EXCLUDED.saved_at,
+                     note = EXCLUDED.note`,
+      [conversationId, messageId, request.user.userId, ts, note]
+    );
+
+    return {
+      success: true,
+      conversationId,
+      messageId,
+      savedAt: toIso(ts),
+      note,
+    };
+  });
+
+  app.delete("/:conversationId/messages/:messageId/save", { preHandler: requireAuth }, async (request: any) => {
+    const conversationId = normalizeString(request.params.conversationId);
+    const messageId = normalizeString(request.params.messageId);
+    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+    ensure(messageId.length >= 8, 400, "Invalid message");
+
+    const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    ensureConversationOpenForUser(conversation, request.user.userId);
+
+    const result = await query(
+      `DELETE FROM chat_saved_messages
+       WHERE conversation_id = $1
+         AND message_id = $2
+         AND user_id = $3`,
+      [conversationId, messageId, request.user.userId]
+    );
+
+    return {
+      success: true,
+      conversationId,
+      messageId,
+      removed: (result.rowCount || 0) > 0,
     };
   });
 
@@ -2041,15 +2235,16 @@ export default async function chatService(app: any) {
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
     ensureConversationOpenForUser(conversation, request.user.userId);
+    const preference = await loadPreference(conversationId, request.user.userId);
     if (conversation.type === "group") {
       ensure(isGroupAdmin(getGroupMeta(conversation), request.user.userId), 403, "Admin privileges required");
     }
 
     const message = await queryOne(
-      `SELECT message_id FROM messages WHERE conversation_id = $1 AND message_id = $2`,
+      `SELECT message_id, seq FROM messages WHERE conversation_id = $1 AND message_id = $2`,
       [conversationId, messageId]
     );
-    if (!message) {
+    if (!message || Number(message.seq || 0) <= preference.clearedBeforeSeq) {
       throw new HttpError(404, "Message not found");
     }
 
@@ -2089,8 +2284,17 @@ export default async function chatService(app: any) {
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
     ensureConversationOpenForUser(conversation, request.user.userId);
+    const preference = await loadPreference(conversationId, request.user.userId);
     if (conversation.type === "group") {
       ensure(isGroupAdmin(getGroupMeta(conversation), request.user.userId), 403, "Admin privileges required");
+    }
+
+    const message = await queryOne(
+      `SELECT message_id, seq FROM messages WHERE conversation_id = $1 AND message_id = $2`,
+      [conversationId, messageId]
+    );
+    if (!message || Number(message.seq || 0) <= preference.clearedBeforeSeq) {
+      throw new HttpError(404, "Message not found");
     }
 
     await query(
@@ -2211,6 +2415,8 @@ export default async function chatService(app: any) {
       ) {
         continue;
       }
+      const preference = await loadPreference(item.conversationId, request.user.userId);
+      const lastKnownSeq = Math.max(item.lastKnownSeq, preference.clearedBeforeSeq);
 
       const deltaMessages = await queryMany(
         `SELECT *
@@ -2218,7 +2424,7 @@ export default async function chatService(app: any) {
          WHERE conversation_id = $1 AND seq > $2
          ORDER BY seq ASC
          LIMIT $3`,
-        [item.conversationId, item.lastKnownSeq, limitPerConversation]
+        [item.conversationId, lastKnownSeq, limitPerConversation]
       );
 
       conversations.push({
@@ -2238,6 +2444,7 @@ export default async function chatService(app: any) {
     ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
     const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    await ensureDmSendAllowed(conversation, request.user.userId);
     const memberIds = Array.isArray(conversation.memberIds) ? conversation.memberIds : [];
     if (conversation.type === "dm") {
       ensure(conversation.dmRequestStatus !== "declined", 403, "Message request was removed");
@@ -2282,6 +2489,9 @@ export default async function chatService(app: any) {
       clientTimestamp: request.body?.clientTimestamp,
     });
     const message = result.message;
+    await savePreference(conversationId, request.user.userId, {
+      localDeletedAt: null,
+    });
 
     if (result.created) {
       publishToConversation(memberIds, "MESSAGE_PUSH", toRealtimeMessagePayload(message));

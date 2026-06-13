@@ -1,7 +1,8 @@
 import { query, queryMany, queryOne, withTransaction } from "../../lib/pg.js";
 import { requireAuth } from "../../lib/auth.js";
 import { HttpError, ensure, generateId, now, toIso } from "../../lib/security.js";
-import { publishToFeedSubscribers, publishToUsers } from "../realtime/hub.js";
+import { publishToFeedSubscribers } from "../realtime/hub.js";
+import { enqueueNotificationEvent } from "../notification/repository.js";
 import {
   buildFeedPage,
   ingestFeedEvents,
@@ -278,39 +279,17 @@ async function createNotification({ userId, actorUserId, type, title, body, data
   if (!userId || userId === actorUserId) return;
   try {
     if (!(await shouldCreateNotification(userId, categoryKey))) return;
-    const notificationId = generateId();
-    const createdAt = now();
-    await query(
-      `INSERT INTO notifications (
-         notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)`,
-      [notificationId, userId, actorUserId, type, title, body, JSON.stringify(data), createdAt]
-    );
-
-    const actor = await queryOne(
-      `SELECT user_id, username, display_name, avatar_url, is_verified
-       FROM users
-       WHERE user_id = $1`,
-      [actorUserId]
-    );
-    publishToUsers([userId], "NOTIFICATION_PUSH", {
-      id: notificationId,
-      type,
-      title,
-      body,
-      createdAt: toIso(createdAt),
-      readAt: null,
-      data,
-      actor: actor
-        ? {
-            id: actor.user_id,
-            username: actor.username,
-            displayName: actor.display_name || actor.username,
-            avatarUrl: actor.avatar_url || "",
-            isVerified: actor.is_verified === true
-          }
-        : null
+    await enqueueNotificationEvent({
+      eventType: type,
+      recipientUserId: userId,
+      actorUserId,
+      entityType: String(data.entityType || (data.commentId ? "comment" : data.postId ? "post" : "system")),
+      entityId: String(data.commentId || data.postId || data.followerId || ""),
+      payload: {
+        ...data,
+        title,
+        body,
+      },
     });
   } catch {
     // Notification failures must not block likes, comments, shares, or posts.
@@ -329,7 +308,7 @@ async function notifyMentionedUsers({ usernames, actorUserId, postId, commentId 
     await createNotification({
       userId: user.user_id,
       actorUserId,
-      type: "mention",
+      type: commentId ? "COMMENT_MENTIONED" : "POST_MENTIONED",
       title: "New mention",
       body: commentId ? "Someone mentioned you in a comment" : "Someone mentioned you in a post",
       data: { postId, commentId: commentId || null },

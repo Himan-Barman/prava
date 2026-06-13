@@ -49,6 +49,7 @@ class _ChatDetailsPageState extends State<ChatDetailsPage> {
   List<ChatAttachment> _attachments = <ChatAttachment>[];
   List<GroupInvite> _invites = <GroupInvite>[];
   List<ChatMessage> _pinnedMessages = <ChatMessage>[];
+  List<ChatMessage> _savedMessages = <ChatMessage>[];
 
   @override
   void initState() {
@@ -76,6 +77,10 @@ class _ChatDetailsPageState extends State<ChatDetailsPage> {
           conversationId: widget.conversationId,
           limit: 10,
         ),
+        _chatService.listSavedMessages(
+          conversationId: widget.conversationId,
+          limit: 10,
+        ),
       ]);
       if (!mounted) return;
       setState(() {
@@ -83,6 +88,7 @@ class _ChatDetailsPageState extends State<ChatDetailsPage> {
         _attachments = results[1] as List<ChatAttachment>;
         _invites = results[2] as List<GroupInvite>;
         _pinnedMessages = results[3] as List<ChatMessage>;
+        _savedMessages = results[4] as List<ChatMessage>;
         _loading = false;
       });
     } catch (_) {
@@ -137,6 +143,80 @@ class _ChatDetailsPageState extends State<ChatDetailsPage> {
       _showSnack('Marked as unread');
     } catch (_) {
       _showSnack('Could not mark unread');
+    }
+  }
+
+  Future<void> _clearLocalHistory() async {
+    HapticFeedback.selectionClick();
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('Clear chat history?'),
+        content: const Text(
+          'Messages will be hidden for you on this device and account. Other people will still see them.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final ok = await _chatService.clearLocalConversation(
+        widget.conversationId,
+      );
+      if (!ok) throw Exception('clear failed');
+      if (!mounted) return;
+      setState(() {
+        _pinnedMessages = <ChatMessage>[];
+        _savedMessages = <ChatMessage>[];
+      });
+      PravaNavigator.pop(context, 'cleared');
+    } catch (_) {
+      _showSnack('Could not clear chat history');
+    }
+  }
+
+  Future<void> _deleteLocalConversation() async {
+    HapticFeedback.selectionClick();
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('Delete chat?'),
+        content: const Text(
+          'This removes the conversation from your chat list until a new message arrives.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final ok = await _chatService.deleteConversationLocal(
+        widget.conversationId,
+      );
+      if (!ok) throw Exception('delete failed');
+      if (!mounted) return;
+      PravaNavigator.pop(context, 'deleted');
+    } catch (_) {
+      _showSnack('Could not delete chat');
     }
   }
 
@@ -323,7 +403,32 @@ class _ChatDetailsPageState extends State<ChatDetailsPage> {
                                         _PinnedMessageRow(message: message),
                                   ),
                             const SizedBox(height: 22),
+                            const _SectionTitle('Saved messages'),
+                            if (_savedMessages.isEmpty)
+                              _EmptyLine('No saved messages', secondary)
+                            else
+                              ..._savedMessages
+                                  .take(5)
+                                  .map(
+                                    (message) =>
+                                        _SavedMessageRow(message: message),
+                                  ),
+                            const SizedBox(height: 22),
                             const _SectionTitle('Safety'),
+                            _ActionRow(
+                              icon: CupertinoIcons.clear,
+                              title: 'Clear local history',
+                              subtitle: 'Hide previous messages for you',
+                              isDestructive: true,
+                              onTap: _clearLocalHistory,
+                            ),
+                            _ActionRow(
+                              icon: CupertinoIcons.delete,
+                              title: 'Delete chat locally',
+                              subtitle: 'Remove this chat from your list',
+                              isDestructive: true,
+                              onTap: _deleteLocalConversation,
+                            ),
                             _ActionRow(
                               icon: CupertinoIcons.exclamationmark_bubble,
                               title: widget.isGroup
@@ -624,6 +729,60 @@ class _PinnedMessageRow extends StatelessWidget {
         children: [
           const Icon(
             CupertinoIcons.pin_fill,
+            color: PravaColors.accentPrimary,
+            size: 20,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  body,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.body.copyWith(color: primary),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${message.createdAt.day}/${message.createdAt.month}/${message.createdAt.year}',
+                  style: PravaTypography.caption.copyWith(color: secondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SavedMessageRow extends StatelessWidget {
+  const _SavedMessageRow({required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final body = message.isDeleted
+        ? 'Message deleted'
+        : message.body.trim().isEmpty
+        ? 'Media attachment'
+        : message.body.trim();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(
+        children: [
+          const Icon(
+            CupertinoIcons.bookmark_fill,
             color: PravaColors.accentPrimary,
             size: 20,
           ),

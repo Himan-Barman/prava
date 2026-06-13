@@ -282,7 +282,7 @@ test("outbox dispatcher materializes notification side effects", async () => {
      FROM notifications
      WHERE user_id = $1
        AND actor_user_id = $2
-       AND type IN ('post.like', 'relationship.follow')`,
+       AND notification_type IN ('POST_LIKED', 'FOLLOW_RECEIVED')`,
     [userB, userA]
   );
   assert.equal(notification?.count, "2");
@@ -300,11 +300,40 @@ test("outbox dispatcher materializes notification side effects", async () => {
     `SELECT notification_id
      FROM notifications
      WHERE user_id = $1
-     ORDER BY created_at DESC
+     ORDER BY created_at DESC, notification_id DESC
      LIMIT 1`,
     [userB]
   );
   assert.ok(latest?.notification_id);
+
+  const page = await injectJson<any>(`/api/v1/notifications?limit=1`, {
+    token: tokenB,
+  });
+  assert.equal(page.status, 200, JSON.stringify(page.data));
+  assert.equal(page.data.data.items.length, 1);
+  assert.ok(page.data.data.nextCursor);
+  assert.equal(page.data.data.unreadCount, 2);
+
+  const invalidCursor = await injectJson<any>(`/api/v1/notifications?cursor=not-a-cursor`, {
+    token: tokenB,
+  });
+  assert.equal(invalidCursor.status, 400);
+
+  const click = await injectJson<any>(`/api/v1/notifications/${latest.notification_id}/click`, {
+    method: "POST",
+    token: tokenB,
+    body: {},
+  });
+  assert.equal(click.status, 200, JSON.stringify(click.data));
+  assert.ok(click.data.data.clickedAt);
+
+  const clickedStats = await pgLib.queryOne<{ unread_notifications_count: string }>(
+    `SELECT unread_notifications_count::text AS unread_notifications_count
+     FROM user_stats
+     WHERE user_id = (SELECT id FROM users WHERE user_id = $1)`,
+    [userB]
+  );
+  assert.equal(clickedStats?.unread_notifications_count, "2");
 
   const read = await injectJson<any>(`/api/v1/notifications/${latest.notification_id}/read`, {
     method: "POST",
@@ -321,4 +350,58 @@ test("outbox dispatcher materializes notification side effects", async () => {
     [userB]
   );
   assert.equal(updatedStats?.unread_notifications_count, "1");
+
+  const preferences = await injectJson<any>("/api/v1/notifications/preferences", {
+    method: "PATCH",
+    token: tokenB,
+    body: {
+      preferences: [
+        {
+          category: "posts",
+          inAppEnabled: true,
+          pushEnabled: false,
+          emailEnabled: false,
+          quietHoursEnabled: true,
+          quietHoursStart: "22:00",
+          quietHoursEnd: "07:00",
+          timezone: "Asia/Kolkata",
+        },
+      ],
+    },
+  });
+  assert.equal(preferences.status, 200, JSON.stringify(preferences.data));
+  const postsPreference = preferences.data.data.items.find((item: any) => item.category === "posts");
+  assert.equal(postsPreference.pushEnabled, false);
+  assert.equal(postsPreference.quietHoursEnabled, true);
+
+  const device = await injectJson<any>("/api/v1/notifications/devices", {
+    method: "POST",
+    token: tokenB,
+    body: {
+      deviceId: "contract-device",
+      platform: "android",
+      pushProvider: "fcm",
+      pushToken: `contract-token-${Date.now()}`,
+      appVersion: "1.0.0",
+      deviceName: "Contract device",
+    },
+  });
+  assert.equal(device.status, 200, JSON.stringify(device.data));
+  assert.equal(device.data.data.success, true);
+
+  const deleteDevice = await injectJson<any>("/api/v1/notifications/devices/contract-device", {
+    method: "DELETE",
+    token: tokenB,
+    body: {},
+  });
+  assert.equal(deleteDevice.status, 200, JSON.stringify(deleteDevice.data));
+  assert.equal(deleteDevice.data.data.success, true);
+
+  const readAll = await injectJson<any>("/api/v1/notifications/read-all", {
+    method: "POST",
+    token: tokenB,
+    body: {},
+  });
+  assert.equal(readAll.status, 200, JSON.stringify(readAll.data));
+  assert.equal(readAll.data.data.unreadCount, 0);
 });

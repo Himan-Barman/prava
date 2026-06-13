@@ -12,6 +12,7 @@ import {
   toIso,
   verifyPassword,
 } from "../../lib/security.js";
+import { enqueueNotificationEvent } from "../notification/repository.js";
 
 const PROFILE_VISIBILITY_VALUES = ["everyone", "followers", "friends", "onlyMe"] as const;
 type ProfileVisibility = (typeof PROFILE_VISIBILITY_VALUES)[number];
@@ -1822,19 +1823,14 @@ export default async function userService(app: any) {
       );
 
       if (notifyTarget) {
-        await client.query(
-          `INSERT INTO notifications (
-             notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
-           )
-           VALUES ($1, $2, $3, 'follow', 'New follower', 'Someone started following you', $4, $5, NULL)`,
-          [
-            generateId(),
-            targetUserId,
-            request.user.userId,
-            JSON.stringify({ followerId: request.user.userId }),
-            ts,
-          ]
-        );
+        await enqueueNotificationEvent({
+          eventType: "FOLLOW_RECEIVED",
+          recipientUserId: targetUserId,
+          actorUserId: request.user.userId,
+          entityType: "user",
+          entityId: request.user.userId,
+          payload: { followerId: request.user.userId },
+        }, client);
       }
     });
 
@@ -1858,19 +1854,14 @@ export default async function userService(app: any) {
         [request.user.userId, targetUserId, ts]
       );
       if ((result.rowCount || 0) > 0 && await shouldCreateNotification(targetUserId, "notifyFollows")) {
-        await query(
-          `INSERT INTO notifications (
-             notification_id, user_id, actor_user_id, type, title, body, data, created_at, read_at
-           )
-           VALUES ($1, $2, $3, 'follow', 'New follower', 'Someone started following you', $4, $5, NULL)`,
-          [
-            generateId(),
-            targetUserId,
-            request.user.userId,
-            JSON.stringify({ followerId: request.user.userId }),
-            ts,
-          ]
-        );
+        await enqueueNotificationEvent({
+          eventType: "FOLLOW_RECEIVED",
+          recipientUserId: targetUserId,
+          actorUserId: request.user.userId,
+          entityType: "user",
+          entityId: request.user.userId,
+          payload: { followerId: request.user.userId },
+        });
       }
       return {
         following: true,

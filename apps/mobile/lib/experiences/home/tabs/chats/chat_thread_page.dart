@@ -95,6 +95,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   List<String> _groupMemberIds = <String>[];
   final Set<String> _hiddenMessageIds = <String>{};
   final Set<String> _pinnedMessageIds = <String>{};
+  final Set<String> _savedMessageIds = <String>{};
 
   bool get _isDmChat => !widget.chat.isGroup;
   bool get _isGroupChat => widget.chat.isGroup;
@@ -150,6 +151,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     await _loadGroupMembers();
     await _loadMessages();
     await _loadPinnedMessages();
+    await _loadSavedMessages();
     await _realtime.connect(_handleRealtimeEvent);
     _realtime.subscribeConversation(widget.chat.id);
   }
@@ -278,6 +280,26 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       });
     } catch (_) {
       // Pinned messages are secondary metadata; the thread still works without them.
+    }
+  }
+
+  Future<void> _loadSavedMessages() async {
+    try {
+      final saved = await _chatService.listSavedMessages(
+        conversationId: widget.chat.id,
+        limit: 80,
+        currentUserId: _userId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _savedMessageIds
+          ..clear()
+          ..addAll(
+            saved.map((message) => message.id).where((id) => id.isNotEmpty),
+          );
+      });
+    } catch (_) {
+      // Saved messages are secondary metadata; the thread still works without them.
     }
   }
 
@@ -990,7 +1012,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         ? widget.chat.name[0].toUpperCase()
         : 'P';
     HapticFeedback.selectionClick();
-    PravaNavigator.push(
+    PravaNavigator.push<String>(
       context,
       ChatDetailsPage(
         conversationId: widget.chat.id,
@@ -1003,7 +1025,16 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         isArchived: widget.chat.isArchived,
         peerUserId: _peerUserId,
       ),
-    );
+    ).then((result) {
+      if (!mounted) return;
+      if (result == 'cleared') {
+        _applyLocalHistoryCleared();
+        return;
+      }
+      if (result == 'deleted') {
+        Navigator.of(context).maybePop('deleted');
+      }
+    });
   }
 
   Future<void> _showThreadOptions() async {
@@ -1033,6 +1064,10 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
             child: Text(_isStarred ? 'Unstar chat' : 'Star chat'),
           ),
           CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('saved'),
+            child: const Text('Saved messages'),
+          ),
+          CupertinoActionSheetAction(
             onPressed: () => Navigator.of(context).pop('clear'),
             isDestructiveAction: true,
             child: const Text('Clear local view'),
@@ -1060,10 +1095,37 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       case 'star':
         await _updateThreadPreferences(isStarred: !_isStarred);
         break;
+      case 'saved':
+        _showSavedMessages();
+        break;
       case 'clear':
-        setState(() => _messages = <ChatMessage>[]);
+        await _clearLocalHistory();
         break;
     }
+  }
+
+  Future<void> _clearLocalHistory() async {
+    HapticFeedback.selectionClick();
+    try {
+      final ok = await _chatService.clearLocalConversation(widget.chat.id);
+      if (!ok) throw Exception('clear failed');
+      if (!mounted) return;
+      _applyLocalHistoryCleared();
+    } catch (_) {
+      _showThreadSnack('Could not clear chat');
+    }
+  }
+
+  void _applyLocalHistoryCleared() {
+    setState(() {
+      _messages = <ChatMessage>[];
+      _hiddenMessageIds.clear();
+      _pinnedMessageIds.clear();
+      _savedMessageIds.clear();
+      _hasMore = false;
+      _oldestSeq = null;
+    });
+    _showThreadSnack('Chat cleared on this device');
   }
 
   Future<void> _updateThreadPreferences({
@@ -1181,6 +1243,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         message.seq != null &&
         message.id.trim().isNotEmpty;
     final isPinned = _pinnedMessageIds.contains(message.id);
+    final isSaved = _savedMessageIds.contains(message.id);
 
     showModalBottomSheet(
       context: context,
@@ -1249,6 +1312,17 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                     onTap: () {
                       Navigator.of(context).pop();
                       isPinned ? _unpinMessage(message) : _pinMessage(message);
+                    },
+                  ),
+                if (canServerAction)
+                  _SheetAction(
+                    icon: isSaved
+                        ? CupertinoIcons.bookmark
+                        : CupertinoIcons.bookmark_fill,
+                    label: isSaved ? 'Unsave message' : 'Save message',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      isSaved ? _unsaveMessage(message) : _saveMessage(message);
                     },
                   ),
                 if (canServerAction)
@@ -1337,6 +1411,43 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         setState(() => _pinnedMessageIds.add(message.id));
       }
       _showThreadSnack('Could not unpin message');
+    }
+  }
+
+  Future<void> _saveMessage(ChatMessage message) async {
+    HapticFeedback.selectionClick();
+    setState(() => _savedMessageIds.add(message.id));
+    try {
+      final ok = await _chatService.saveMessage(
+        conversationId: widget.chat.id,
+        messageId: message.id,
+      );
+      if (!ok) throw Exception('save failed');
+      _showThreadSnack('Message saved');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _savedMessageIds.remove(message.id));
+      _showThreadSnack('Could not save message');
+    }
+  }
+
+  Future<void> _unsaveMessage(ChatMessage message) async {
+    HapticFeedback.selectionClick();
+    final wasSaved = _savedMessageIds.contains(message.id);
+    setState(() => _savedMessageIds.remove(message.id));
+    try {
+      final ok = await _chatService.unsaveMessage(
+        conversationId: widget.chat.id,
+        messageId: message.id,
+      );
+      if (!ok) throw Exception('unsave failed');
+      _showThreadSnack('Message removed from saved');
+    } catch (_) {
+      if (!mounted) return;
+      if (wasSaved) {
+        setState(() => _savedMessageIds.add(message.id));
+      }
+      _showThreadSnack('Could not unsave message');
     }
   }
 
@@ -1432,6 +1543,21 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => _PinnedMessagesSheet(
+        chatService: _chatService,
+        conversationId: widget.chat.id,
+        currentUserId: _userId,
+        onOpenDetails: _showMessageDetails,
+      ),
+    );
+  }
+
+  void _showSavedMessages() {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _SavedMessagesSheet(
         chatService: _chatService,
         conversationId: widget.chat.id,
         currentUserId: _userId,
@@ -2897,6 +3023,57 @@ class _PinnedMessagesSheet extends StatelessWidget {
           final messages = snapshot.data ?? <ChatMessage>[];
           if (messages.isEmpty) {
             return const _SheetEmptyState(text: 'No pinned messages');
+          }
+          return ListView.builder(
+            itemCount: messages.length,
+            itemBuilder: (context, index) => _MessageResultTile(
+              message: messages[index],
+              onTap: () {
+                Navigator.of(context).pop();
+                onOpenDetails(messages[index]);
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SavedMessagesSheet extends StatelessWidget {
+  const _SavedMessagesSheet({
+    required this.chatService,
+    required this.conversationId,
+    required this.currentUserId,
+    required this.onOpenDetails,
+  });
+
+  final ChatService chatService;
+  final String conversationId;
+  final String? currentUserId;
+  final ValueChanged<ChatMessage> onOpenDetails;
+
+  @override
+  Widget build(BuildContext context) {
+    return _MessageListSheetFrame(
+      title: 'Saved messages',
+      child: FutureBuilder<List<ChatMessage>>(
+        future: chatService.listSavedMessages(
+          conversationId: conversationId,
+          limit: 80,
+          currentUserId: currentUserId,
+        ),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(
+                color: PravaColors.accentPrimary,
+              ),
+            );
+          }
+          final messages = snapshot.data ?? <ChatMessage>[];
+          if (messages.isEmpty) {
+            return const _SheetEmptyState(text: 'No saved messages');
           }
           return ListView.builder(
             itemCount: messages.length,

@@ -706,6 +706,30 @@ class ChatService {
     return false;
   }
 
+  Future<bool> clearLocalConversation(String conversationId) async {
+    final data = await _client.post(
+      '/conversations/$conversationId/clear-local',
+      auth: true,
+      body: {},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> deleteConversationLocal(String conversationId) async {
+    final data = await _client.delete(
+      '/conversations/$conversationId',
+      auth: true,
+      body: {},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
   Future<Map<String, dynamic>> getChatSettings() async {
     final data = await _client.get('/conversations/settings', auth: true);
     if (data is Map<String, dynamic>) return data;
@@ -790,6 +814,25 @@ class ChatService {
         .toList();
   }
 
+  Future<List<ChatMessage>> listSavedMessages({
+    required String conversationId,
+    int? limit,
+    String? currentUserId,
+  }) async {
+    final params = <String, String>{};
+    if (limit != null) params['limit'] = limit.toString();
+    final data = await _client.get(
+      '/conversations/$conversationId/saved-messages',
+      auth: true,
+      query: params.isEmpty ? null : params,
+    );
+    if (data is! List) return [];
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map((row) => ChatMessage.fromJson(row, currentUserId: currentUserId))
+        .toList();
+  }
+
   Future<Map<String, dynamic>?> getMessageDetails({
     required String conversationId,
     required String messageId,
@@ -823,6 +866,37 @@ class ChatService {
   }) async {
     final data = await _client.delete(
       '/conversations/$conversationId/messages/$messageId/pin',
+      auth: true,
+      body: {},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> saveMessage({
+    required String conversationId,
+    required String messageId,
+    String note = '',
+  }) async {
+    final data = await _client.post(
+      '/conversations/$conversationId/messages/$messageId/save',
+      auth: true,
+      body: {'note': note},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> unsaveMessage({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final data = await _client.delete(
+      '/conversations/$conversationId/messages/$messageId/save',
       auth: true,
       body: {},
     );
