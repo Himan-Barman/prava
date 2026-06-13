@@ -8,33 +8,33 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Light mode
+        // Light mode — Graphite neutral scale
         'prava-light': {
-          bg: '#FFFFFF',
-          surface: '#F6F6F6',
-          elevated: '#FFFFFF',
-          'text-primary': '#0C0C0C',
-          'text-secondary': '#4A4A4A',
-          'text-tertiary': '#8A8A8A',
-          border: '#E5E5E5',
+          bg: '#F7F9FC',         // graphite-50
+          surface: '#EFF3F7',    // graphite-100
+          elevated: '#FCFDFE',   // graphite-25
+          'text-primary': '#131B25',   // graphite-900
+          'text-secondary': '#4F5B6A', // graphite-600
+          'text-tertiary': '#687485',  // graphite-500
+          border: '#E1E7EE',     // graphite-200
         },
-        // Dark mode
+        // Dark mode — Graphite neutral scale
         'prava-dark': {
-          bg: '#0C0C0C',
-          surface: '#1D1D1D',
-          elevated: '#292929',
-          'text-primary': '#F2F2F2',
-          'text-secondary': '#B3B3B3',
-          'text-tertiary': '#7A7A7A',
-          border: '#2E2E2E',
+          bg: '#080D14',          // graphite-1000
+          surface: '#131B25',     // graphite-900
+          elevated: '#1B2531',    // graphite-850
+          'text-primary': '#F7F9FC',   // graphite-50
+          'text-secondary': '#C9D2DD', // graphite-300
+          'text-tertiary': '#9AA6B4',  // graphite-400
+          border: '#1B2531',      // graphite-850
         },
-        // Brand colors
+        // Brand — Sapphire scale
         'prava': {
-          accent: '#5B8CFF',
-          'accent-muted': '#8FA9FF',
-          success: '#3CCB7F',
-          warning: '#F4C430',
-          error: '#E5533D',
+          accent: '#3D63F0',       // sapphire-600 (light primary)
+          'accent-muted': '#A8BEFF', // sapphire-300
+          success: '#137A50',
+          warning: '#A85F00',
+          error: '#C23B52',
         },
       },
       fontFamily: {
@@ -42,29 +42,30 @@ export default {
         display: ['Inter', 'system-ui', 'sans-serif'],
       },
       fontSize: {
-        'h1': ['26px', { lineHeight: '1.16', letterSpacing: '0', fontWeight: '700' }],
-        'h2': ['20px', { lineHeight: '1.24', letterSpacing: '0', fontWeight: '600' }],
-        'h3': ['16px', { lineHeight: '1.35', fontWeight: '600' }],
-        'body-lg': ['15px', { lineHeight: '1.4', fontWeight: '400' }],
-        'body': ['13px', { lineHeight: '1.4', fontWeight: '400' }],
-        'body-sm': ['12px', { lineHeight: '1.3', fontWeight: '400' }],
-        'label': ['12px', { lineHeight: '1.4', letterSpacing: '0.2px', fontWeight: '500' }],
-        'caption': ['11px', { lineHeight: '1.3', letterSpacing: '0.2px', fontWeight: '400' }],
-        'button': ['13px', { lineHeight: '1.35', letterSpacing: '0', fontWeight: '600' }],
+        'h1': ['24px', { lineHeight: '1.2', letterSpacing: '-0.3px', fontWeight: '800' }],
+        'h2': ['18px', { lineHeight: '1.3', letterSpacing: '-0.2px', fontWeight: '700' }],
+        'h3': ['15px', { lineHeight: '1.35', fontWeight: '600' }],
+        'body-lg': ['15px', { lineHeight: '1.45', fontWeight: '400' }],
+        'body': ['14px', { lineHeight: '1.45', fontWeight: '400' }],
+        'body-sm': ['13px', { lineHeight: '1.4', fontWeight: '400' }],
+        'label': ['11px', { lineHeight: '1.4', letterSpacing: '0.06em', fontWeight: '600' }],
+        'caption': ['12px', { lineHeight: '1.35', fontWeight: '400' }],
+        'button': ['13px', { lineHeight: '1.35', fontWeight: '600' }],
       },
       borderRadius: {
         'prava': '14px',
         'prava-lg': '18px',
-        'prava-sm': '12px',
+        'prava-sm': '10px',
+        'prava-xs': '8px',
       },
       boxShadow: {
-        'prava': '0 10px 28px rgba(15, 20, 40, 0.07)',
-        'prava-dark': '0 10px 28px rgba(0, 0, 0, 0.48)',
-        'prava-soft': '0 8px 22px rgba(15, 20, 40, 0.05)',
-        'prava-glow': '0 8px 20px rgba(91, 140, 255, 0.24)',
+        'prava': '0 4px 12px rgba(11, 17, 25, 0.08)',
+        'prava-dark': '0 4px 12px rgba(0, 0, 0, 0.32)',
+        'prava-soft': '0 1px 3px rgba(11, 17, 25, 0.06)',
+        'prava-lg': '0 8px 24px rgba(11, 17, 25, 0.10)',
       },
       backdropBlur: {
-        'prava': '18px',
+        'prava': '20px',
       },
       animation: {
         'fade-up': 'fadeUp 0.4s ease-out',

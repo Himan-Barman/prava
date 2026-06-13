@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 
 import {
   ensure,
@@ -69,7 +70,16 @@ function normalizeEventType(value: unknown): string {
 
 function sendSocketEvent(socket: any, type: string, payload: Record<string, unknown>): void {
   try {
-    socket.send(JSON.stringify({ type, payload }));
+    socket.send(
+      JSON.stringify({
+        type,
+        event_type: type,
+        version: 1,
+        event_id: randomUUID(),
+        timestamp: new Date().toISOString(),
+        payload,
+      })
+    );
   } catch {
     // Transport write failures are handled by the socket close path.
   }
@@ -139,7 +149,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
             userId,
             isOnline: false,
           },
-          userId
+          userId,
         );
       }
     };
@@ -148,7 +158,10 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
     socket.on("error", cleanup);
 
     const getConversation = async (conversationId: string) => {
-      const conversation = await loadConversationForUserOrNull(conversationId, userId);
+      const conversation = await loadConversationForUserOrNull(
+        conversationId,
+        userId,
+      );
       if (!conversation) {
         return null;
       }
@@ -167,31 +180,41 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
         conversation.memberIds,
         "TYPING",
         { conversationId, userId, isTyping },
-        userId
+        userId,
       );
     };
 
-    const sendReadUpdate = async (conversationId: string, lastReadSeq: number) => {
+    const sendReadUpdate = async (
+      conversationId: string,
+      lastReadSeq: number,
+    ) => {
       const conversation = await getConversation(conversationId);
       if (!conversation) return;
-      const result = await upsertReadState(conversation, userId, { lastReadSeq });
+      const result = await upsertReadState(conversation, userId, {
+        lastReadSeq,
+      });
       publishToConversation(
         conversation.memberIds,
         "READ_UPDATE",
         { conversationId, userId, lastReadSeq: result.lastReadSeq },
-        userId
+        userId,
       );
     };
 
-    const sendDeliveryUpdate = async (conversationId: string, lastDeliveredSeq: number) => {
+    const sendDeliveryUpdate = async (
+      conversationId: string,
+      lastDeliveredSeq: number,
+    ) => {
       const conversation = await getConversation(conversationId);
       if (!conversation) return;
-      const result = await upsertReadState(conversation, userId, { lastDeliveredSeq });
+      const result = await upsertReadState(conversation, userId, {
+        lastDeliveredSeq,
+      });
       publishToConversation(
         conversation.memberIds,
         "DELIVERY_UPDATE",
         { conversationId, userId, lastDeliveredSeq: result.lastDeliveredSeq },
-        userId
+        userId,
       );
     };
 
@@ -205,7 +228,8 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
         const row = item as Record<string, unknown>;
         const conversationId = normalizeString(row.conversationId);
         const lastDeliveredSeq = parseIntStrict(row.lastDeliveredSeq);
-        if (!conversationId || lastDeliveredSeq == null || lastDeliveredSeq < 0) continue;
+        if (!conversationId || lastDeliveredSeq == null || lastDeliveredSeq < 0)
+          continue;
 
         const conversation = await getConversation(conversationId);
         if (!conversation) continue;
@@ -222,18 +246,36 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       if (!conversation) return;
 
       const body = normalizeString(payload.body);
-      const contentType = normalizeString(payload.contentType || "text").toLowerCase();
+      const contentType = normalizeString(
+        payload.contentType || "text",
+      ).toLowerCase();
       const tempId = normalizeString(payload.tempId);
       const clientMessageId = normalizeString(
-        payload.clientMessageId || payload.client_message_id || tempId
+        payload.clientMessageId || payload.client_message_id || tempId,
       );
       const mediaAssetId = normalizeString(payload.mediaAssetId);
       const replyToMessageId = normalizeString(payload.replyToMessageId);
       const senderDeviceId = normalizeString(payload.deviceId || deviceId);
 
       ensure(MESSAGE_TYPES.has(contentType), 400, "Invalid content type");
-      ensure(body.length > 0 && body.length <= 65535, 400, "Invalid body");
-      ensure(senderDeviceId.length >= 3 && senderDeviceId.length <= 128, 400, "Invalid device");
+      ensure(body.length <= 65535, 400, "Invalid body");
+      if (contentType === "text" || contentType === "system") {
+        ensure(body.length > 0, 400, "Invalid body");
+      } else {
+        ensure(mediaAssetId.length > 0, 400, "Attachment media is required");
+      }
+      if (mediaAssetId) {
+        const asset = await query(
+          `SELECT asset_id FROM media_assets WHERE asset_id = $1 AND user_id = $2`,
+          [mediaAssetId, userId],
+        );
+        ensure((asset.rowCount || 0) > 0, 404, "Media asset not found");
+      }
+      ensure(
+        senderDeviceId.length >= 3 && senderDeviceId.length <= 128,
+        400,
+        "Invalid device",
+      );
 
       const result = await createMessage(conversation, {
         senderUserId: userId,
@@ -251,24 +293,21 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
         publishToConversation(
           conversation.memberIds,
           "MESSAGE_PUSH",
-          toRealtimeMessagePayload(message)
+          toRealtimeMessagePayload(message),
         );
       }
 
       if (tempId) {
-        publishToUsers(
-          [userId],
-          "MESSAGE_ACK",
-          {
-            conversationId,
-            tempId,
-            clientMessageId: message.client_message_id || message.client_message_uuid || null,
-            messageId: message.message_id,
-            seq: Number(message.seq || 0),
-            createdAt: toIso(message.created_at),
-            created: result.created,
-          }
-        );
+        publishToUsers([userId], "MESSAGE_ACK", {
+          conversationId,
+          tempId,
+          clientMessageId:
+            message.client_message_id || message.client_message_uuid || null,
+          messageId: message.message_id,
+          seq: Number(message.seq || 0),
+          createdAt: toIso(message.created_at),
+          created: result.created,
+        });
       }
     };
 
@@ -281,19 +320,20 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       const conversation = await getConversation(conversationId);
       if (!conversation) return;
 
-      const updated = await editMessageForUser(conversation, messageId, userId, body);
+      const updated = await editMessageForUser(
+        conversation,
+        messageId,
+        userId,
+        body,
+      );
       if (!updated) return;
 
-      publishToConversation(
-        conversation.memberIds,
-        "MESSAGE_EDIT",
-        {
-          conversationId,
-          messageId,
-          body,
-          editVersion: Number(updated.edit_version || 0),
-        }
-      );
+      publishToConversation(conversation.memberIds, "MESSAGE_EDIT", {
+        conversationId,
+        messageId,
+        body,
+        editVersion: Number(updated.edit_version || 0),
+      });
     };
 
     const deleteMessage = async (payload: Record<string, unknown>) => {
@@ -304,21 +344,24 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       const conversation = await getConversation(conversationId);
       if (!conversation) return;
 
-      const updated = await deleteMessageForUser(conversation, messageId, userId);
+      const updated = await deleteMessageForUser(
+        conversation,
+        messageId,
+        userId,
+      );
       if (!updated) return;
 
-      publishToConversation(
-        conversation.memberIds,
-        "MESSAGE_DELETE",
-        {
-          conversationId,
-          messageId,
-          deletedForAllAt: toIso(updated.deleted_for_all_at),
-        }
-      );
+      publishToConversation(conversation.memberIds, "MESSAGE_DELETE", {
+        conversationId,
+        messageId,
+        deletedForAllAt: toIso(updated.deleted_for_all_at),
+      });
     };
 
-    const setReaction = async (payload: Record<string, unknown>, remove = false) => {
+    const setReaction = async (
+      payload: Record<string, unknown>,
+      remove = false,
+    ) => {
       const conversationId = normalizeString(payload.conversationId);
       const messageId = normalizeString(payload.messageId);
       const emoji = remove ? "" : normalizeString(payload.emoji);
@@ -332,26 +375,23 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
         conversationId,
         messageId,
         userId,
-        remove ? null : emoji
+        remove ? null : emoji,
       );
       if (!reactions) return;
 
-      publishToConversation(
-        conversation.memberIds,
-        "REACTION_UPDATE",
-        {
-          conversationId,
-          messageId,
-          userId,
-          emoji: remove ? null : emoji,
-          updatedAt: toIso(new Date()),
-        }
-      );
+      publishToConversation(conversation.memberIds, "REACTION_UPDATE", {
+        conversationId,
+        messageId,
+        userId,
+        emoji: remove ? null : emoji,
+        updatedAt: toIso(new Date()),
+      });
     };
 
     socket.on("message", async (raw: unknown) => {
       touchLastSeen();
-      let event: { type?: string; payload?: Record<string, unknown> } | null = null;
+      let event: { type?: string; payload?: Record<string, unknown> } | null =
+        null;
       try {
         event = JSON.parse(String(raw));
       } catch {
@@ -368,14 +408,18 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
           case "CONNECTION_PING":
           case "PRESENCE_HEARTBEAT":
             touchLastSeen();
-            sendSocketEvent(socket, type === "CONNECTION_AUTHENTICATE"
-              ? "connection.ready"
-              : type === "CONNECTION_PING"
-                ? "connection.pong"
-                : "presence.heartbeat", {
-              userId,
-              serverTime: toIso(new Date()),
-            });
+            sendSocketEvent(
+              socket,
+              type === "CONNECTION_AUTHENTICATE"
+                ? "connection.ready"
+                : type === "CONNECTION_PING"
+                  ? "connection.pong"
+                  : "presence.heartbeat",
+              {
+                userId,
+                serverTime: toIso(new Date()),
+              },
+            );
             break;
           case "CONVERSATION_SUBSCRIBE": {
             const conversationId = normalizeString(payload.conversationId);
@@ -388,7 +432,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
                 conversation.memberIds,
                 "PRESENCE_UPDATE",
                 { conversationId, userId, isOnline: true },
-                userId
+                userId,
               );
             }
             break;
@@ -403,7 +447,7 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
                 meta.memberIds,
                 "PRESENCE_UPDATE",
                 { conversationId, userId, isOnline: false },
-                userId
+                userId,
               );
             }
             break;

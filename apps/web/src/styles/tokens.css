@@ -1,61 +1,146 @@
 /* ═══════════════════════════════════════════════════════════
-   PRAVA DESIGN SYSTEM — Centralized Design Tokens
+   PRAVA DESIGN SYSTEM — Obsidian Sapphire Token System
    
+   Derived from apps/mobile/lib/ui-system/colors.dart
    Single source of truth for all visual properties.
-   All components consume these tokens.
+   All components consume these semantic tokens.
+   
+   Graphite neutral scale  +  Royal Sapphire brand scale.
    ═══════════════════════════════════════════════════════════ */
 
 :root {
+  /* ─── Graphite Neutral Raw Scale ─── */
+  --p-graphite-0: #FFFFFF;
+  --p-graphite-25: #FCFDFE;
+  --p-graphite-50: #F7F9FC;
+  --p-graphite-100: #EFF3F7;
+  --p-graphite-200: #E1E7EE;
+  --p-graphite-300: #C9D2DD;
+  --p-graphite-400: #9AA6B4;
+  --p-graphite-500: #687485;
+  --p-graphite-600: #4F5B6A;
+  --p-graphite-700: #384453;
+  --p-graphite-800: #252F3B;
+  --p-graphite-850: #1B2531;
+  --p-graphite-900: #131B25;
+  --p-graphite-950: #0B1119;
+  --p-graphite-1000: #080D14;
+
+  /* ─── Royal Sapphire Brand Raw Scale ─── */
+  --p-sapphire-50: #F3F6FF;
+  --p-sapphire-100: #E7EDFF;
+  --p-sapphire-200: #CCD9FF;
+  --p-sapphire-300: #A8BEFF;
+  --p-sapphire-400: #7E9FFF;
+  --p-sapphire-500: #5B7EFF;
+  --p-sapphire-600: #3D63F0;
+  --p-sapphire-700: #2C4FCC;
+  --p-sapphire-800: #263FA3;
+  --p-sapphire-900: #23377F;
+  --p-sapphire-950: #17234F;
+
+  /* ─── Champagne Gold Premium Scale ─── */
+  --p-gold-50: #FFF9EC;
+  --p-gold-100: #FFF0C8;
+  --p-gold-300: #E8C16A;
+  --p-gold-500: #B5842F;
+  --p-gold-700: #74501C;
+  --p-gold-900: #493419;
+
+  /* ═══ LIGHT THEME — Semantic Tokens ═══ */
+
   /* ─── Brand ─── */
-  --p-brand: #5B8CFF;
-  --p-brand-hover: #4A7BF0;
-  --p-brand-active: #3A6BE0;
-  --p-brand-muted: #8FA9FF;
-  --p-brand-subtle: rgba(91, 140, 255, 0.08);
+  --p-brand: #3D63F0;         /* sapphire-600 */
+  --p-brand-hover: #2C4FCC;   /* sapphire-700 */
+  --p-brand-active: #263FA3;  /* sapphire-800 */
+  --p-brand-muted: #A8BEFF;   /* sapphire-300 */
+  --p-brand-subtle: rgba(61, 99, 240, 0.06);
+  --p-brand-container: #E7EDFF; /* sapphire-100 */
+  --p-brand-content: #2C4FCC;   /* sapphire-700 */
 
   /* ─── Backgrounds ─── */
-  --p-bg-app: #FAFAFA;
-  --p-bg-surface: #FFFFFF;
-  --p-bg-surface-elevated: #FFFFFF;
-  --p-bg-subtle: #F4F4F5;
-  --p-bg-hover: rgba(0, 0, 0, 0.03);
-  --p-bg-selected: rgba(91, 140, 255, 0.06);
-  --p-bg-overlay: rgba(0, 0, 0, 0.5);
+  --p-bg-app: #F7F9FC;           /* graphite-50 */
+  --p-bg-surface: #FFFFFF;       /* graphite-0 */
+  --p-bg-surface-elevated: #FCFDFE; /* graphite-25 */
+  --p-bg-subtle: #EFF3F7;        /* graphite-100 */
+  --p-bg-inset: #F3F6F9;
+  --p-bg-hover: #EFF3F7;         /* graphite-100 */
+  --p-bg-pressed: #E1E7EE;       /* graphite-200 */
+  --p-bg-selected: rgba(61, 99, 240, 0.06);
+  --p-bg-overlay: rgba(19, 27, 37, 0.64);
 
   /* ─── Text ─── */
-  --p-text-primary: #111111;
-  --p-text-secondary: #555555;
-  --p-text-muted: #888888;
-  --p-text-placeholder: #AAAAAA;
-  --p-text-inverse: #FFFFFF;
-  --p-text-link: #5B8CFF;
+  --p-text-primary: #131B25;     /* graphite-900 */
+  --p-text-secondary: #4F5B6A;   /* graphite-600 */
+  --p-text-muted: #687485;       /* graphite-500 */
+  --p-text-placeholder: #9AA6B4; /* graphite-400 */
+  --p-text-disabled: #9AA6B4;    /* graphite-400 */
+  --p-text-inverse: #FFFFFF;     /* graphite-0 */
+  --p-text-link: #2C4FCC;        /* sapphire-700 */
+
+  /* ─── Icons ─── */
+  --p-icon-primary: #384453;     /* graphite-700 */
+  --p-icon-secondary: #687485;   /* graphite-500 */
+  --p-icon-disabled: #9AA6B4;    /* graphite-400 */
 
   /* ─── Borders & Dividers ─── */
-  --p-border: rgba(0, 0, 0, 0.08);
-  --p-border-subtle: rgba(0, 0, 0, 0.05);
-  --p-border-strong: rgba(0, 0, 0, 0.15);
-  --p-divider: rgba(0, 0, 0, 0.06);
+  --p-border: #E1E7EE;           /* graphite-200 */
+  --p-border-subtle: #E1E7EE;    /* graphite-200 */
+  --p-border-default: #C9D2DD;   /* graphite-300 */
+  --p-border-strong: #9AA6B4;    /* graphite-400 */
+  --p-divider: #E1E7EE;          /* graphite-200 */
 
   /* ─── Semantic States ─── */
-  --p-success: #2ECC71;
-  --p-success-subtle: rgba(46, 204, 113, 0.08);
-  --p-warning: #F39C12;
-  --p-warning-subtle: rgba(243, 156, 18, 0.08);
-  --p-danger: #E74C3C;
-  --p-danger-subtle: rgba(231, 76, 60, 0.08);
-  --p-info: #3498DB;
-  --p-info-subtle: rgba(52, 152, 219, 0.08);
-  --p-online: #2ECC71;
-  --p-unread: #5B8CFF;
+  --p-success: #137A50;
+  --p-success-subtle: #EAF8F1;
+  --p-warning: #A85F00;
+  --p-warning-subtle: #FFF5DF;
+  --p-danger: #C23B52;
+  --p-danger-subtle: #FFF0F2;
+  --p-info: #2C4FCC;             /* sapphire-700 */
+  --p-info-subtle: #F3F6FF;      /* sapphire-50 */
+  --p-online: #137A50;
+  --p-unread: #3D63F0;           /* sapphire-600 */
+
+  /* ─── Social ─── */
+  --p-like-active: #D64263;
+  --p-repost-active: #14845D;
+  --p-premium-content: #74501C;  /* gold-700 */
+  --p-premium-container: #FFF9EC; /* gold-50 */
+
+  /* ─── Chat ─── */
+  --p-chat-own-bubble: #E7EDFF;  /* sapphire-100 */
+  --p-chat-own-text: #131B25;    /* graphite-900 */
+  --p-chat-received-bubble: #FFFFFF;
+  --p-chat-received-text: #131B25;
+  --p-notif-unread: #F3F6FF;     /* sapphire-50 */
+  --p-notif-read: #FFFFFF;
+
+  /* ─── Skeleton ─── */
+  --p-skeleton-base: #EFF3F7;    /* graphite-100 */
+  --p-skeleton-shimmer: #E1E7EE; /* graphite-200 */
 
   /* ─── Interaction ─── */
-  --p-focus-ring: rgba(91, 140, 255, 0.4);
+  --p-focus-ring: rgba(61, 99, 240, 0.22);
   --p-disabled-bg: rgba(0, 0, 0, 0.04);
-  --p-disabled-text: #BBBBBB;
+  --p-disabled-text: #9AA6B4;
+
+  /* ─── Shadows (soft, no glow) ─── */
+  --p-shadow-soft: 0 1px 3px rgba(11, 17, 25, 0.06);
+  --p-shadow-sm: 0 1px 3px rgba(11, 17, 25, 0.06), 0 1px 2px rgba(11, 17, 25, 0.03);
+  --p-shadow-md: 0 4px 12px rgba(11, 17, 25, 0.08);
+  --p-shadow-lg: 0 8px 24px rgba(11, 17, 25, 0.10);
+  --p-shadow-xl: 0 16px 48px rgba(11, 17, 25, 0.12);
+  --p-shadow-overlay: 0 20px 60px rgba(11, 17, 25, 0.20);
 
   /* ─── Spacing Scale ─── */
+  --p-space-0: 0px;
+  --p-space-px: 1px;
+  --p-space-0-5: 2px;
   --p-space-1: 4px;
+  --p-space-1-5: 6px;
   --p-space-2: 8px;
+  --p-space-2-5: 10px;
   --p-space-3: 12px;
   --p-space-4: 16px;
   --p-space-5: 20px;
@@ -66,18 +151,13 @@
   --p-space-16: 64px;
 
   /* ─── Border Radius ─── */
+  --p-radius-xs: 6px;
   --p-radius-sm: 8px;
   --p-radius-md: 10px;
   --p-radius-lg: 14px;
   --p-radius-xl: 18px;
+  --p-radius-2xl: 24px;
   --p-radius-pill: 9999px;
-
-  /* ─── Shadows (subtle, no glow) ─── */
-  --p-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
-  --p-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
-  --p-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
-  --p-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.10);
-  --p-shadow-overlay: 0 20px 60px rgba(0, 0, 0, 0.16);
 
   /* ─── Typography ─── */
   --p-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -103,6 +183,7 @@
 
   /* line heights */
   --p-leading-tight: 1.2;
+  --p-leading-snug: 1.35;
   --p-leading-normal: 1.45;
   --p-leading-relaxed: 1.6;
 
@@ -136,37 +217,115 @@
   --p-z-overlay: 40;
   --p-z-modal: 50;
   --p-z-toast: 60;
+
+  /* ─── Legacy Compatibility Aliases ─── */
+  /* These map old --bg/--card-bg/etc. names used in index.css app-* classes
+     so those classes don't break while we migrate. */
+  --bg: var(--p-bg-app);
+  --card-bg: var(--p-bg-subtle);
+  --border: var(--p-border);
+  --border-hover: var(--p-border-default);
+  --hover-bg: var(--p-bg-hover);
+  --text-primary: var(--p-text-primary);
+  --text-secondary: var(--p-text-secondary);
+  --text-tertiary: var(--p-text-muted);
 }
 
 /* ═══ Dark Theme Overrides ═══ */
 .dark {
-  --p-bg-app: #0A0A0A;
-  --p-bg-surface: #141414;
-  --p-bg-surface-elevated: #1C1C1C;
-  --p-bg-subtle: #1A1A1A;
-  --p-bg-hover: rgba(255, 255, 255, 0.04);
-  --p-bg-selected: rgba(91, 140, 255, 0.10);
-  --p-bg-overlay: rgba(0, 0, 0, 0.7);
+  /* ─── Brand ─── */
+  --p-brand: #7E9FFF;           /* sapphire-400 */
+  --p-brand-hover: #A8BEFF;     /* sapphire-300 */
+  --p-brand-active: #5B7EFF;    /* sapphire-500 */
+  --p-brand-muted: #A8BEFF;     /* sapphire-300 */
+  --p-brand-subtle: rgba(126, 159, 255, 0.08);
+  --p-brand-container: #17234F; /* sapphire-950 */
+  --p-brand-content: #A8BEFF;   /* sapphire-300 */
 
-  --p-text-primary: #F0F0F0;
-  --p-text-secondary: #999999;
-  --p-text-muted: #666666;
-  --p-text-placeholder: #555555;
-  --p-text-inverse: #111111;
+  /* ─── Backgrounds ─── */
+  --p-bg-app: #080D14;            /* graphite-1000 */
+  --p-bg-surface: #0B1119;        /* graphite-950 */
+  --p-bg-surface-elevated: #1B2531; /* graphite-850 */
+  --p-bg-subtle: #131B25;         /* graphite-900 */
+  --p-bg-inset: #070B10;
+  --p-bg-hover: #1B2531;          /* graphite-850 */
+  --p-bg-pressed: #252F3B;        /* graphite-800 */
+  --p-bg-selected: rgba(126, 159, 255, 0.10);
+  --p-bg-overlay: rgba(0, 0, 0, 0.68);
 
-  --p-border: rgba(255, 255, 255, 0.08);
-  --p-border-subtle: rgba(255, 255, 255, 0.05);
-  --p-border-strong: rgba(255, 255, 255, 0.15);
-  --p-divider: rgba(255, 255, 255, 0.06);
+  /* ─── Text ─── */
+  --p-text-primary: #F7F9FC;      /* graphite-50 */
+  --p-text-secondary: #C9D2DD;    /* graphite-300 */
+  --p-text-muted: #9AA6B4;        /* graphite-400 */
+  --p-text-placeholder: #687485;  /* graphite-500 */
+  --p-text-disabled: #687485;     /* graphite-500 */
+  --p-text-inverse: #080D14;      /* graphite-1000 */
+  --p-text-link: #A8BEFF;         /* sapphire-300 */
 
+  /* ─── Icons ─── */
+  --p-icon-primary: #C9D2DD;      /* graphite-300 */
+  --p-icon-secondary: #9AA6B4;    /* graphite-400 */
+  --p-icon-disabled: #687485;     /* graphite-500 */
+
+  /* ─── Borders & Dividers ─── */
+  --p-border: #1B2531;            /* graphite-850 */
+  --p-border-subtle: #1B2531;     /* graphite-850 */
+  --p-border-default: #252F3B;    /* graphite-800 */
+  --p-border-strong: #384453;     /* graphite-700 */
+  --p-divider: #1B2531;           /* graphite-850 */
+
+  /* ─── Semantic States ─── */
+  --p-success: #64DDA5;
+  --p-success-subtle: #123428;
+  --p-warning: #F6C564;
+  --p-warning-subtle: #3B2A10;
+  --p-danger: #FF8394;
+  --p-danger-subtle: #451A24;
+  --p-info: #A8BEFF;              /* sapphire-300 */
+  --p-info-subtle: #17234F;       /* sapphire-950 */
+  --p-online: #64DDA5;
+  --p-unread: #7E9FFF;            /* sapphire-400 */
+
+  /* ─── Social ─── */
+  --p-like-active: #FF7892;
+  --p-repost-active: #62D9A7;
+  --p-premium-content: #E8C16A;   /* gold-300 */
+  --p-premium-container: #493419; /* gold-900 */
+
+  /* ─── Chat ─── */
+  --p-chat-own-bubble: #17234F;   /* sapphire-950 */
+  --p-chat-own-text: #F7F9FC;     /* graphite-50 */
+  --p-chat-received-bubble: #131B25; /* graphite-900 */
+  --p-chat-received-text: #F7F9FC;
+  --p-notif-unread: #17234F;      /* sapphire-950 */
+  --p-notif-read: #0B1119;        /* graphite-950 */
+
+  /* ─── Skeleton ─── */
+  --p-skeleton-base: #131B25;     /* graphite-900 */
+  --p-skeleton-shimmer: #252F3B;  /* graphite-800 */
+
+  /* ─── Interaction ─── */
+  --p-focus-ring: rgba(126, 159, 255, 0.32);
   --p-disabled-bg: rgba(255, 255, 255, 0.05);
-  --p-disabled-text: #444444;
+  --p-disabled-text: #687485;
 
-  --p-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
-  --p-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
-  --p-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
-  --p-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.5);
-  --p-shadow-overlay: 0 20px 60px rgba(0, 0, 0, 0.6);
+  /* ─── Shadows ─── */
+  --p-shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.24);
+  --p-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.24), 0 1px 2px rgba(0, 0, 0, 0.16);
+  --p-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.32);
+  --p-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.40);
+  --p-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.50);
+  --p-shadow-overlay: 0 20px 60px rgba(0, 0, 0, 0.60);
+
+  /* ─── Legacy Compatibility Aliases ─── */
+  --bg: var(--p-bg-app);
+  --card-bg: var(--p-bg-subtle);
+  --border: var(--p-border);
+  --border-hover: var(--p-border-default);
+  --hover-bg: var(--p-bg-hover);
+  --text-primary: var(--p-text-primary);
+  --text-secondary: var(--p-text-secondary);
+  --text-tertiary: var(--p-text-muted);
 }
 
 /* ═══ Avatar Sizes ═══ */

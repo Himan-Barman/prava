@@ -560,10 +560,75 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       is_starred      BOOLEAN NOT NULL DEFAULT FALSE,
       is_muted        BOOLEAN NOT NULL DEFAULT FALSE,
       is_archived     BOOLEAN NOT NULL DEFAULT FALSE,
+      marked_unread   BOOLEAN NOT NULL DEFAULT FALSE,
+      draft_text      TEXT NOT NULL DEFAULT '',
+      draft_updated_at TIMESTAMPTZ DEFAULT NULL,
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (conversation_id, user_id)
     );
+    ALTER TABLE conversation_user_preferences ADD COLUMN IF NOT EXISTS marked_unread BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE conversation_user_preferences ADD COLUMN IF NOT EXISTS draft_text TEXT NOT NULL DEFAULT '';
+    ALTER TABLE conversation_user_preferences ADD COLUMN IF NOT EXISTS draft_updated_at TIMESTAMPTZ DEFAULT NULL;
     CREATE INDEX IF NOT EXISTS idx_conv_preferences_user ON conversation_user_preferences (user_id, is_favorite, is_starred, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_conv_preferences_archived ON conversation_user_preferences (user_id, is_archived, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS chat_pinned_messages (
+      conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+      message_id      TEXT NOT NULL REFERENCES messages(message_id) ON DELETE CASCADE,
+      pinned_by_user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      pinned_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (conversation_id, message_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_pinned_messages_conversation
+      ON chat_pinned_messages (conversation_id, pinned_at DESC);
+
+    CREATE TABLE IF NOT EXISTS chat_reports (
+      report_id       TEXT PRIMARY KEY,
+      reporter_user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      conversation_id TEXT DEFAULT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+      message_id      TEXT DEFAULT NULL REFERENCES messages(message_id) ON DELETE SET NULL,
+      reported_user_id TEXT DEFAULT NULL REFERENCES users(user_id) ON DELETE SET NULL,
+      reason          TEXT NOT NULL DEFAULT 'other',
+      details         TEXT NOT NULL DEFAULT '',
+      status          TEXT NOT NULL DEFAULT 'open',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_reports_conversation
+      ON chat_reports (conversation_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_chat_reports_status
+      ON chat_reports (status, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS group_invites (
+      invite_id       TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+      invite_token    TEXT NOT NULL UNIQUE,
+      created_by_user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      max_uses        INT DEFAULT NULL,
+      use_count       INT NOT NULL DEFAULT 0,
+      requires_approval BOOLEAN NOT NULL DEFAULT FALSE,
+      status          TEXT NOT NULL DEFAULT 'active',
+      expires_at      TIMESTAMPTZ DEFAULT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      revoked_at      TIMESTAMPTZ DEFAULT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_group_invites_conversation
+      ON group_invites (conversation_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_group_invites_token
+      ON group_invites (invite_token);
+
+    CREATE TABLE IF NOT EXISTS group_join_requests (
+      request_id      TEXT PRIMARY KEY,
+      invite_id       TEXT DEFAULT NULL REFERENCES group_invites(invite_id) ON DELETE SET NULL,
+      conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+      requester_user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      status          TEXT NOT NULL DEFAULT 'pending',
+      decided_by_user_id TEXT DEFAULT NULL REFERENCES users(user_id) ON DELETE SET NULL,
+      decided_at      TIMESTAMPTZ DEFAULT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(conversation_id, requester_user_id, status)
+    );
+    CREATE INDEX IF NOT EXISTS idx_group_join_requests_conversation
+      ON group_join_requests (conversation_id, status, created_at DESC);
 
     -- E2EE CRYPTO
     CREATE TABLE IF NOT EXISTS crypto_devices (
@@ -653,6 +718,28 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_media_user ON media_assets (user_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS chat_attachments (
+      attachment_id   TEXT PRIMARY KEY,
+      owner_user_id   TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      conversation_id TEXT DEFAULT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+      message_id      TEXT DEFAULT NULL REFERENCES messages(message_id) ON DELETE SET NULL,
+      media_asset_id  TEXT DEFAULT NULL REFERENCES media_assets(asset_id) ON DELETE SET NULL,
+      upload_session_id TEXT NOT NULL UNIQUE,
+      attachment_type TEXT NOT NULL DEFAULT 'file',
+      file_name       TEXT NOT NULL DEFAULT '',
+      mime_type       TEXT NOT NULL DEFAULT 'application/octet-stream',
+      byte_size       BIGINT NOT NULL DEFAULT 0,
+      status          TEXT NOT NULL DEFAULT 'pending',
+      metadata        JSONB NOT NULL DEFAULT '{}',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      deleted_at      TIMESTAMPTZ DEFAULT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_attachments_owner
+      ON chat_attachments (owner_user_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_chat_attachments_conversation
+      ON chat_attachments (conversation_id, created_at DESC);
   `);
 
   await runDatabaseFoundationMigrations(p);

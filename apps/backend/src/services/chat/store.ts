@@ -8,7 +8,16 @@ import {
   toIso,
 } from "../../lib/security.js";
 
-export const MESSAGE_TYPES = new Set(["text", "system", "media"]);
+export const MESSAGE_TYPES = new Set([
+  "text",
+  "system",
+  "media",
+  "image",
+  "video",
+  "file",
+  "audio",
+  "voice_note",
+]);
 
 export function parseLimit(raw: unknown, fallback: number, min: number, max: number): number {
   const parsed = Number.parseInt(String(raw || ""), 10);
@@ -85,6 +94,9 @@ function mapConversationRow(row: any, members: any[] = []) {
     isStarred: row.is_starred === true,
     isMuted: row.is_muted === true,
     isArchived: row.is_archived === true,
+    markedUnread: row.marked_unread === true,
+    draftText: row.draft_text || "",
+    draftUpdatedAt: row.draft_updated_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     members: mappedMembers,
@@ -531,6 +543,28 @@ export async function createMessage(
     );
 
     const message = messageResult.rows[0];
+    if (input.mediaAssetId) {
+      await client.query(
+        `UPDATE chat_attachments
+         SET conversation_id = $2,
+             message_id = $3,
+             status = 'attached',
+             updated_at = $4
+         WHERE owner_user_id = $1
+           AND media_asset_id = $5
+           AND deleted_at IS NULL
+           AND (conversation_id IS NULL OR conversation_id = $2)
+           AND (message_id IS NULL OR message_id = $3)`,
+        [
+          input.senderUserId,
+          conversation.conversationId,
+          message.message_id,
+          ts,
+          input.mediaAssetId,
+        ]
+      );
+    }
+
     await client.query(
       `UPDATE conversations
        SET updated_at = $2,

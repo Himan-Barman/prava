@@ -8,8 +8,8 @@
 
 @layer base {
   :root {
-    --prava-accent: #5B8CFF;
-    --prava-accent-muted: #8FA9FF;
+    --prava-accent: #3D63F0;
+    --prava-accent-muted: #A8BEFF;
   }
   
   html {
@@ -168,11 +168,11 @@ html, body, #root {
 
 /* App shell compact system. Landing page classes below stay isolated. */
 .prava-app {
-  background: #ffffff;
+  background: var(--p-bg-app);
 }
 
 .dark .prava-app {
-  background: #0c0c0c;
+  background: var(--p-bg-app);
 }
 
 .prava-app .prava-gradient-bg {
@@ -194,6 +194,45 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ─── Sidebar Styles ─── */
+.sidebar-desktop {
+  display: none !important;
+}
+@media (min-width: 501px) {
+  .sidebar-desktop {
+    display: flex !important;
+  }
+  .mobile-menu-overlay,
+  .mobile-menu-drawer {
+    display: none !important;
+  }
+}
+@media (max-width: 500px) {
+  .sidebar-desktop {
+    display: none !important;
+  }
+}
+
+.sidebar-navlink:hover:not([data-active]) {
+  background: var(--p-bg-hover);
+  color: var(--p-text-primary);
+}
+.sidebar-action-btn:hover {
+  background: var(--p-bg-hover);
+  color: var(--p-text-primary);
+}
+.sidebar-brand:hover {
+  transform: scale(1.05);
+}
+.sidebar-navlink:hover .sidebar-tooltip,
+.sidebar-action-btn:hover .sidebar-tooltip,
+.sidebar-brand:hover .sidebar-tooltip {
+  opacity: 1 !important;
+}
+.app-mobile-bottom-nav a:hover span:first-child {
+  background: var(--p-bg-hover);
+}
+
 .app-mobile-topbar {
   display: block;
   max-height: calc(54px + env(safe-area-inset-top, 0px));
@@ -202,6 +241,12 @@ html, body, #root {
     max-height 160ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 120ms cubic-bezier(0.22, 1, 0.36, 1),
     transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Hide mobile chrome on desktop */
+@media (min-width: 501px) {
+  .app-mobile-topbar { display: none !important; }
+  .app-mobile-bottom-nav { display: none !important; }
 }
 
 .app-mobile-topbar--hidden {
@@ -221,7 +266,7 @@ html, body, #root {
 .app-mobile-topbar__inner h1 {
   flex: 1;
   min-width: 0;
-  color: #0c0c0c;
+  color: var(--p-text-primary);
   font-size: 28px;
   line-height: 1;
   font-weight: 800;
@@ -232,7 +277,7 @@ html, body, #root {
 }
 
 .dark .app-mobile-topbar__inner h1 {
-  color: #f2f2f2;
+  color: var(--p-text-primary);
 }
 
 .app-mobile-topbar__actions {
@@ -250,19 +295,19 @@ html, body, #root {
   height: 40px;
   display: grid;
   place-items: center;
-  color: #0c0c0c;
+  color: var(--p-text-primary);
   border-radius: 999px;
   transition: background-color 140ms ease;
 }
 
 .dark .app-mobile-topbar__actions a,
 .dark .app-mobile-topbar__actions button {
-  color: #f2f2f2;
+  color: var(--p-text-primary);
 }
 
 .app-mobile-topbar__actions a:active,
 .app-mobile-topbar__actions button:active {
-  background: rgba(91, 140, 255, 0.12);
+  background: var(--p-brand-subtle);
 }
 
 .app-mobile-bottom-nav {
@@ -299,6 +344,22 @@ html, body, #root {
   opacity: 0;
   pointer-events: none;
   transform: translateY(92px) scale(0.94);
+}
+
+/* ─── Main content responsive layout ─── */
+@media (min-width: 501px) {
+  .prava-app-main {
+    margin-left: var(--p-sidebar-collapsed);
+    padding-bottom: 0 !important;
+  }
+  .prava-app-main .prava-app-content {
+    padding: var(--p-space-4) var(--p-space-5) var(--p-space-5);
+  }
+}
+@media (min-width: 1025px) {
+  .prava-app-main .prava-app-content {
+    padding: var(--p-space-5) var(--p-space-6) var(--p-space-6);
+  }
 }
 
 @media (max-width: 500px) {
@@ -1202,7 +1263,7 @@ html, body, #root {
   font-family: inherit;
 }
 .app-tab--active {
-  background: #5B8CFF; color: #fff;
+  background: var(--p-brand); color: var(--p-text-inverse);
 }
 .app-tab__count {
   font-size: 20px; font-weight: 800; line-height: 1;
@@ -1233,7 +1294,7 @@ html, body, #root {
   width: 40px; height: 40px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 15px; font-weight: 700; flex-shrink: 0;
-  background: #5B8CFF; color: #fff;
+  background: var(--p-brand); color: var(--p-text-inverse);
 }
 .app-list-item__body {
   flex: 1; min-width: 0;
@@ -1261,7 +1322,7 @@ html, body, #root {
   font-family: inherit;
 }
 .app-btn--primary {
-  background: #5B8CFF; color: #fff;
+  background: var(--p-brand); color: var(--p-text-inverse);
 }
 .app-btn--primary:hover { opacity: 0.88; }
 .app-btn--ghost {
@@ -1311,13 +1372,13 @@ html, body, #root {
   text-decoration: none; color: inherit;
   transition: color 0.15s;
 }
-.app-settings-row:hover { color: #5B8CFF; }
+.app-settings-row:hover { color: var(--p-brand); }
 .app-settings-row__icon {
   width: 38px; height: 38px; border-radius: 11px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  background: rgba(91, 140, 255, 0.08);
-  color: #5B8CFF;
+  background: var(--p-brand-subtle);
+  color: var(--p-brand);
 }
 .app-settings-row__body {
   flex: 1; min-width: 0;
@@ -1353,7 +1414,7 @@ html, body, #root {
 .app-notif__time { font-size: 11px; color: var(--text-tertiary); }
 .app-notif__dot {
   width: 7px; height: 7px; border-radius: 50%;
-  background: #5B8CFF; flex-shrink: 0;
+  background: var(--p-brand); flex-shrink: 0;
 }
 
 /* ─── Profile Header (compact, solid) ─── */
@@ -1365,7 +1426,7 @@ html, body, #root {
 }
 .app-profile-cover {
   height: 100px;
-  background: #5B8CFF;
+  background: var(--p-brand);
   position: relative;
 }
 .app-profile-info {
@@ -1377,7 +1438,7 @@ html, body, #root {
   width: 80px; height: 80px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 28px; font-weight: 800; color: #fff;
-  background: #5B8CFF;
+  background: var(--p-brand);
   border: 3px solid var(--card-bg);
   margin-top: -40px;
 }
@@ -1386,7 +1447,7 @@ html, body, #root {
   color: var(--text-primary); margin-top: 8px;
 }
 .app-profile-handle {
-  font-size: 14px; font-weight: 600; color: #5B8CFF;
+  font-size: 14px; font-weight: 600; color: var(--p-brand);
 }
 .app-profile-bio {
   font-size: 13px; color: var(--text-secondary);
@@ -1444,8 +1505,8 @@ html, body, #root {
   transition: all 0.2s; font-family: inherit;
 }
 .app-underline-tab--active {
-  color: #5B8CFF;
-  border-bottom-color: #5B8CFF;
+  color: var(--p-brand);
+  border-bottom-color: var(--p-brand);
 }
 .app-underline-tab:hover:not(.app-underline-tab--active) {
   color: var(--text-primary);
@@ -1463,7 +1524,7 @@ html, body, #root {
 }
 .app-search-input::placeholder { color: var(--text-tertiary); }
 .app-search-input:focus {
-  border-color: #5B8CFF;
+  border-color: var(--p-brand);
 }
 .app-search-wrap { position: relative; }
 .app-search-wrap svg {
@@ -1493,28 +1554,10 @@ html, body, #root {
   flex: 1; display: flex; align-items: center; justify-content: center;
 }
 
-/* ─── Token Variables (light/dark) ─── */
-:root {
-  --bg: #ffffff;
-  --card-bg: #f8f8f9;
-  --border: rgba(0, 0, 0, 0.06);
-  --border-hover: rgba(0, 0, 0, 0.12);
-  --hover-bg: rgba(0, 0, 0, 0.03);
-  --text-primary: #0c0c0c;
-  --text-secondary: #6b6b6b;
-  --text-tertiary: #9a9a9a;
-}
-
-.dark {
-  --bg: #0c0c0c;
-  --card-bg: rgba(255, 255, 255, 0.04);
-  --border: rgba(255, 255, 255, 0.06);
-  --border-hover: rgba(255, 255, 255, 0.12);
-  --hover-bg: rgba(255, 255, 255, 0.04);
-  --text-primary: #f2f2f2;
-  --text-secondary: #8a8a8a;
-  --text-tertiary: #5a5a5a;
-}
+/* ─── Token Variables ───
+   Now provided by tokens.css as legacy compatibility aliases.
+   See --bg, --card-bg, --border, etc. mapped to --p-* tokens.
+*/
 
 /* ═══ App pages responsive ═══ */
 @media (max-width: 640px) {

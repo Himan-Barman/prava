@@ -25,6 +25,11 @@ ChatMessageType _parseContentType(String? value) {
     case 'system':
       return ChatMessageType.system;
     case 'media':
+    case 'image':
+    case 'video':
+    case 'file':
+    case 'audio':
+    case 'voice_note':
       return ChatMessageType.media;
     case 'text':
     default:
@@ -241,6 +246,174 @@ class ConversationMember {
   }
 }
 
+class ChatAttachmentUploadInit {
+  ChatAttachmentUploadInit({
+    required this.attachmentId,
+    required this.uploadSessionId,
+    required this.provider,
+    required this.uploadUrl,
+    required this.completeUrl,
+    required this.maxBytes,
+    this.expiresAt,
+  });
+
+  final String attachmentId;
+  final String uploadSessionId;
+  final String provider;
+  final String uploadUrl;
+  final String completeUrl;
+  final int maxBytes;
+  final DateTime? expiresAt;
+
+  factory ChatAttachmentUploadInit.fromJson(Map<String, dynamic> json) {
+    return ChatAttachmentUploadInit(
+      attachmentId: json['attachmentId']?.toString() ?? '',
+      uploadSessionId: json['uploadSessionId']?.toString() ?? '',
+      provider: json['provider']?.toString() ?? '',
+      uploadUrl: json['uploadUrl']?.toString() ?? '',
+      completeUrl: json['completeUrl']?.toString() ?? '',
+      maxBytes: json['maxBytes'] is int
+          ? json['maxBytes'] as int
+          : int.tryParse(json['maxBytes']?.toString() ?? '') ?? 0,
+      expiresAt: _parseDate(json['expiresAt']),
+    );
+  }
+}
+
+class ChatAttachment {
+  ChatAttachment({
+    required this.attachmentId,
+    required this.ownerUserId,
+    required this.uploadSessionId,
+    required this.attachmentType,
+    required this.fileName,
+    required this.mimeType,
+    required this.byteSize,
+    required this.status,
+    this.conversationId,
+    this.messageId,
+    this.mediaAssetId,
+    this.createdAt,
+    this.updatedAt,
+    this.deletedAt,
+  });
+
+  final String attachmentId;
+  final String ownerUserId;
+  final String? conversationId;
+  final String? messageId;
+  final String? mediaAssetId;
+  final String uploadSessionId;
+  final String attachmentType;
+  final String fileName;
+  final String mimeType;
+  final int byteSize;
+  final String status;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final DateTime? deletedAt;
+
+  factory ChatAttachment.fromJson(Map<String, dynamic> json) {
+    return ChatAttachment(
+      attachmentId: json['attachmentId']?.toString() ?? '',
+      ownerUserId: json['ownerUserId']?.toString() ?? '',
+      conversationId: json['conversationId']?.toString(),
+      messageId: json['messageId']?.toString(),
+      mediaAssetId: json['mediaAssetId']?.toString(),
+      uploadSessionId: json['uploadSessionId']?.toString() ?? '',
+      attachmentType: json['attachmentType']?.toString() ?? 'file',
+      fileName: json['fileName']?.toString() ?? '',
+      mimeType: json['mimeType']?.toString() ?? 'application/octet-stream',
+      byteSize: json['byteSize'] is int
+          ? json['byteSize'] as int
+          : int.tryParse(json['byteSize']?.toString() ?? '') ?? 0,
+      status: json['status']?.toString() ?? 'pending',
+      createdAt: _parseDate(json['createdAt']),
+      updatedAt: _parseDate(json['updatedAt']),
+      deletedAt: _parseDate(json['deletedAt']),
+    );
+  }
+}
+
+class GroupInvite {
+  GroupInvite({
+    required this.inviteId,
+    required this.conversationId,
+    required this.inviteToken,
+    required this.createdByUserId,
+    required this.useCount,
+    required this.requiresApproval,
+    required this.status,
+    this.maxUses,
+    this.expiresAt,
+    this.createdAt,
+    this.revokedAt,
+  });
+
+  final String inviteId;
+  final String conversationId;
+  final String inviteToken;
+  final String createdByUserId;
+  final int? maxUses;
+  final int useCount;
+  final bool requiresApproval;
+  final String status;
+  final DateTime? expiresAt;
+  final DateTime? createdAt;
+  final DateTime? revokedAt;
+
+  factory GroupInvite.fromJson(Map<String, dynamic> json) {
+    return GroupInvite(
+      inviteId: json['inviteId']?.toString() ?? '',
+      conversationId: json['conversationId']?.toString() ?? '',
+      inviteToken: json['inviteToken']?.toString() ?? '',
+      createdByUserId: json['createdByUserId']?.toString() ?? '',
+      maxUses: _parseInt(json['maxUses']),
+      useCount: _parseInt(json['useCount']) ?? 0,
+      requiresApproval: json['requiresApproval'] == true,
+      status: json['status']?.toString() ?? 'active',
+      expiresAt: _parseDate(json['expiresAt']),
+      createdAt: _parseDate(json['createdAt']),
+      revokedAt: _parseDate(json['revokedAt']),
+    );
+  }
+}
+
+class GroupJoinRequest {
+  GroupJoinRequest({
+    required this.requestId,
+    required this.conversationId,
+    required this.requesterUserId,
+    required this.status,
+    this.inviteId,
+    this.decidedByUserId,
+    this.decidedAt,
+    this.createdAt,
+  });
+
+  final String requestId;
+  final String? inviteId;
+  final String conversationId;
+  final String requesterUserId;
+  final String status;
+  final String? decidedByUserId;
+  final DateTime? decidedAt;
+  final DateTime? createdAt;
+
+  factory GroupJoinRequest.fromJson(Map<String, dynamic> json) {
+    return GroupJoinRequest(
+      requestId: json['requestId']?.toString() ?? '',
+      inviteId: json['inviteId']?.toString(),
+      conversationId: json['conversationId']?.toString() ?? '',
+      requesterUserId: json['requesterUserId']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'pending',
+      decidedByUserId: json['decidedByUserId']?.toString(),
+      decidedAt: _parseDate(json['decidedAt']),
+      createdAt: _parseDate(json['createdAt']),
+    );
+  }
+}
+
 class ConversationSummary {
   ConversationSummary({
     required this.id,
@@ -266,6 +439,9 @@ class ConversationSummary {
     this.isStarred = false,
     this.isMuted = false,
     this.isArchived = false,
+    this.markedUnread = false,
+    this.draftText = '',
+    this.draftUpdatedAt,
   });
 
   final String id;
@@ -291,6 +467,9 @@ class ConversationSummary {
   final bool isStarred;
   final bool isMuted;
   final bool isArchived;
+  final bool markedUnread;
+  final String draftText;
+  final DateTime? draftUpdatedAt;
 
   factory ConversationSummary.fromJson(Map<String, dynamic> json) {
     return ConversationSummary(
@@ -325,6 +504,9 @@ class ConversationSummary {
       isStarred: json['isStarred'] == true,
       isMuted: json['isMuted'] == true,
       isArchived: json['isArchived'] == true,
+      markedUnread: json['markedUnread'] == true,
+      draftText: json['draftText']?.toString() ?? '',
+      draftUpdatedAt: _parseDate(json['draftUpdatedAt']),
     );
   }
 }
@@ -486,20 +668,163 @@ class ChatService {
 
   Future<bool> updatePreferences({
     required String conversationId,
-    required bool isFavorite,
-    required bool isStarred,
-    required bool isMuted,
-    required bool isArchived,
+    bool? isFavorite,
+    bool? isStarred,
+    bool? isMuted,
+    bool? isArchived,
+    bool? markedUnread,
+    String? draftText,
   }) async {
+    final body = <String, dynamic>{};
+    if (isFavorite != null) body['isFavorite'] = isFavorite;
+    if (isStarred != null) body['isStarred'] = isStarred;
+    if (isMuted != null) body['isMuted'] = isMuted;
+    if (isArchived != null) body['isArchived'] = isArchived;
+    if (markedUnread != null) body['markedUnread'] = markedUnread;
+    if (draftText != null) body['draftText'] = draftText;
+
     final data = await _client.put(
       '/conversations/$conversationId/preferences',
       auth: true,
+      body: body,
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> markUnread(String conversationId) async {
+    final data = await _client.post(
+      '/conversations/$conversationId/mark-unread',
+      auth: true,
+      body: {},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<Map<String, dynamic>> getChatSettings() async {
+    final data = await _client.get('/conversations/settings', auth: true);
+    if (data is Map<String, dynamic>) return data;
+    return <String, dynamic>{};
+  }
+
+  Future<bool> updateChatSettings(Map<String, dynamic> settings) async {
+    final data = await _client.patch(
+      '/conversations/settings',
+      auth: true,
+      body: settings,
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> reportConversation({
+    required String conversationId,
+    String? messageId,
+    String? reportedUserId,
+    String reason = 'other',
+    String details = '',
+  }) async {
+    final data = await _client.post(
+      '/conversations/report',
+      auth: true,
       body: {
-        'isFavorite': isFavorite,
-        'isStarred': isStarred,
-        'isMuted': isMuted,
-        'isArchived': isArchived,
+        'conversationId': conversationId,
+        if (messageId != null && messageId.isNotEmpty) 'messageId': messageId,
+        if (reportedUserId != null && reportedUserId.isNotEmpty)
+          'reportedUserId': reportedUserId,
+        'reason': reason,
+        'details': details,
       },
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<List<ChatMessage>> searchMessages({
+    required String conversationId,
+    required String query,
+    int? limit,
+    String? currentUserId,
+  }) async {
+    final params = <String, String>{'q': query};
+    if (limit != null) params['limit'] = limit.toString();
+    final data = await _client.get(
+      '/conversations/$conversationId/search',
+      auth: true,
+      query: params,
+    );
+    if (data is! Map<String, dynamic>) return [];
+    final results = data['results'];
+    if (results is! List) return [];
+    return results
+        .whereType<Map<String, dynamic>>()
+        .map((row) => ChatMessage.fromJson(row, currentUserId: currentUserId))
+        .toList();
+  }
+
+  Future<List<ChatMessage>> listPinnedMessages({
+    required String conversationId,
+    int? limit,
+    String? currentUserId,
+  }) async {
+    final params = <String, String>{};
+    if (limit != null) params['limit'] = limit.toString();
+    final data = await _client.get(
+      '/conversations/$conversationId/pinned-messages',
+      auth: true,
+      query: params.isEmpty ? null : params,
+    );
+    if (data is! List) return [];
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map((row) => ChatMessage.fromJson(row, currentUserId: currentUserId))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>?> getMessageDetails({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final data = await _client.get(
+      '/conversations/$conversationId/messages/$messageId/details',
+      auth: true,
+    );
+    if (data is Map<String, dynamic>) return data;
+    return null;
+  }
+
+  Future<bool> pinMessage({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final data = await _client.post(
+      '/conversations/$conversationId/messages/$messageId/pin',
+      auth: true,
+      body: {},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> unpinMessage({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final data = await _client.delete(
+      '/conversations/$conversationId/messages/$messageId/pin',
+      auth: true,
+      body: {},
     );
     if (data is Map<String, dynamic>) {
       return data['success'] == true;
@@ -599,6 +924,217 @@ class ChatService {
   }) async {
     final data = await _client.delete(
       '/conversations/$conversationId/admins/$userId',
+      auth: true,
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> updateGroupMemberRole({
+    required String conversationId,
+    required String userId,
+    required String role,
+  }) async {
+    final data = await _client.patch(
+      '/conversations/groups/$conversationId/members/$userId/role',
+      auth: true,
+      body: {'role': role},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<List<GroupInvite>> listGroupInvites({
+    required String conversationId,
+  }) async {
+    final data = await _client.get(
+      '/conversations/groups/$conversationId/invites',
+      auth: true,
+    );
+    if (data is! Map<String, dynamic>) return [];
+    final items = data['items'];
+    if (items is! List) return [];
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(GroupInvite.fromJson)
+        .toList();
+  }
+
+  Future<GroupInvite?> createGroupInvite({
+    required String conversationId,
+    bool requiresApproval = false,
+    int? maxUses,
+    int? expiresInHours,
+  }) async {
+    final data = await _client.post(
+      '/conversations/groups/$conversationId/invites',
+      auth: true,
+      body: {
+        'requiresApproval': requiresApproval,
+        if (maxUses != null) 'maxUses': maxUses,
+        if (expiresInHours != null) 'expiresInHours': expiresInHours,
+      },
+    );
+    if (data is Map<String, dynamic>) {
+      final invite = data['invite'];
+      if (invite is Map<String, dynamic>) {
+        return GroupInvite.fromJson(invite);
+      }
+    }
+    return null;
+  }
+
+  Future<bool> revokeGroupInvite({
+    required String conversationId,
+    required String inviteId,
+  }) async {
+    final data = await _client.delete(
+      '/conversations/groups/$conversationId/invites/$inviteId',
+      auth: true,
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<GroupJoinRequest?> joinGroupWithInvite(String inviteToken) async {
+    final data = await _client.post(
+      '/conversations/groups/join/$inviteToken',
+      auth: true,
+      body: {},
+    );
+    if (data is Map<String, dynamic>) {
+      final request = data['request'];
+      if (request is Map<String, dynamic>) {
+        return GroupJoinRequest.fromJson(request);
+      }
+    }
+    return null;
+  }
+
+  Future<List<GroupJoinRequest>> listGroupJoinRequests({
+    required String conversationId,
+  }) async {
+    final data = await _client.get(
+      '/conversations/groups/$conversationId/join-requests',
+      auth: true,
+    );
+    if (data is! Map<String, dynamic>) return [];
+    final items = data['items'];
+    if (items is! List) return [];
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(GroupJoinRequest.fromJson)
+        .toList();
+  }
+
+  Future<bool> approveGroupJoinRequest({
+    required String conversationId,
+    required String requestId,
+  }) async {
+    final data = await _client.post(
+      '/conversations/groups/$conversationId/join-requests/$requestId/approve',
+      auth: true,
+      body: {},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<bool> rejectGroupJoinRequest({
+    required String conversationId,
+    required String requestId,
+  }) async {
+    final data = await _client.post(
+      '/conversations/groups/$conversationId/join-requests/$requestId/reject',
+      auth: true,
+      body: {},
+    );
+    if (data is Map<String, dynamic>) {
+      return data['success'] == true;
+    }
+    return false;
+  }
+
+  Future<ChatAttachmentUploadInit?> initAttachmentUpload({
+    String? conversationId,
+    required String fileName,
+    required String mimeType,
+    required int byteSize,
+    String? attachmentType,
+  }) async {
+    final data = await _client.post(
+      '/conversations/attachments/upload-init',
+      auth: true,
+      body: {
+        if (conversationId != null) 'conversationId': conversationId,
+        'fileName': fileName,
+        'mimeType': mimeType,
+        'byteSize': byteSize,
+        if (attachmentType != null) 'attachmentType': attachmentType,
+      },
+    );
+    if (data is Map<String, dynamic>) {
+      return ChatAttachmentUploadInit.fromJson(data);
+    }
+    return null;
+  }
+
+  Future<ChatAttachment?> completeAttachmentUpload({
+    required String attachmentId,
+    required String uploadSessionId,
+    required String mediaAssetId,
+  }) async {
+    final data = await _client.post(
+      '/conversations/attachments/upload-complete',
+      auth: true,
+      body: {
+        'attachmentId': attachmentId,
+        'uploadSessionId': uploadSessionId,
+        'mediaAssetId': mediaAssetId,
+      },
+    );
+    if (data is Map<String, dynamic>) {
+      final attachment = data['attachment'];
+      if (attachment is Map<String, dynamic>) {
+        return ChatAttachment.fromJson(attachment);
+      }
+    }
+    return null;
+  }
+
+  Future<List<ChatAttachment>> listAttachments({
+    required String conversationId,
+    String? type,
+    int? limit,
+  }) async {
+    final query = <String, String>{};
+    if (type != null && type.isNotEmpty) query['type'] = type;
+    if (limit != null) query['limit'] = limit.toString();
+    final data = await _client.get(
+      '/conversations/$conversationId/attachments',
+      auth: true,
+      query: query.isEmpty ? null : query,
+    );
+    if (data is! Map<String, dynamic>) return [];
+    final items = data['items'];
+    if (items is! List) return [];
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(ChatAttachment.fromJson)
+        .toList();
+  }
+
+  Future<bool> deleteAttachment(String attachmentId) async {
+    final data = await _client.delete(
+      '/conversations/attachments/$attachmentId',
       auth: true,
     );
     if (data is Map<String, dynamic>) {

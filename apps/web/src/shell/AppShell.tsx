@@ -69,7 +69,13 @@ export default function AppShell({ children }: AppShellProps) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--p-bg-app)',
+      }}>
         <div className="p-spinner" />
       </div>
     );
@@ -81,7 +87,13 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <LenisProvider>
-      <div className={`prava-app min-h-screen min-h-dvh ${isMainTabRoute ? 'prava-main-tab' : 'prava-detail-route'} ${mobileChromeVisible ? '' : 'mobile-chrome-hidden'}`} style={{ background: 'var(--p-bg-app)' }}>
+      <div
+        className={`prava-app ${isMainTabRoute ? 'prava-main-tab' : 'prava-detail-route'} ${mobileChromeVisible ? '' : 'mobile-chrome-hidden'}`}
+        style={{
+          minHeight: '100vh',
+          background: 'var(--p-bg-app)',
+        }}
+      >
 
         {isMainTabRoute && (
           <MobileTopBar
@@ -97,19 +109,24 @@ export default function AppShell({ children }: AppShellProps) {
         />
 
         {/* Main Content - Responsive margins */}
-        <main className="
-          min-h-screen min-h-dvh
-          pb-[78px] tablet:pb-0 laptop:pb-0 desktop:pb-0
-          tablet:ml-[72px] laptop:ml-[72px] desktop:ml-[72px]
-        ">
+        <main
+          className="prava-app-main"
+          style={{
+            minHeight: '100vh',
+            paddingBottom: isMainTabRoute ? 78 : 0,
+          }}
+        >
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
-              initial={{ opacity: 0, x: 10, scale: 0.992 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: -8, scale: 0.992 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="prava-app-content px-4 py-2 sm:px-5 sm:py-4 lg:px-6 lg:py-5"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="prava-app-content"
+              style={{
+                padding: '8px 16px 16px',
+              }}
             >
               {children}
             </motion.div>
@@ -131,7 +148,8 @@ function MobileTopBar({
 }) {
   return (
     <header
-      className={`app-mobile-topbar safe-top tablet:hidden laptop:hidden desktop:hidden ${visible ? 'app-mobile-topbar--visible' : 'app-mobile-topbar--hidden'}`}
+      className={`app-mobile-topbar safe-top ${visible ? 'app-mobile-topbar--visible' : 'app-mobile-topbar--hidden'}`}
+      style={{ display: 'block' }}
     >
       <div className="app-mobile-topbar__inner">
         <h1>{title}</h1>
@@ -139,24 +157,24 @@ function MobileTopBar({
           {pathname === '/feed' && (
             <>
               <Link to="/search" aria-label="Search">
-                <Search className="h-[27px] w-[27px]" strokeWidth={3} />
+                <Search className="h-[26px] w-[26px]" strokeWidth={2.4} />
               </Link>
               <Link to="/notifications" aria-label="Notifications">
-                <Bell className="h-[27px] w-[27px]" strokeWidth={3} />
+                <Bell className="h-[26px] w-[26px]" strokeWidth={2.4} />
               </Link>
               <Link to="/settings" aria-label="Settings">
-                <Menu className="h-[29px] w-[29px]" strokeWidth={3} />
+                <Menu className="h-[28px] w-[28px]" strokeWidth={2.4} />
               </Link>
             </>
           )}
           {pathname === '/chats' && (
             <Link to="/settings" aria-label="Chat options">
-              <MoreVertical className="h-[27px] w-[27px]" strokeWidth={3} />
+              <MoreVertical className="h-[26px] w-[26px]" strokeWidth={2.4} />
             </Link>
           )}
           {pathname === '/profile' && (
             <Link to="/settings/account" aria-label="Edit profile">
-              <Edit3 className="h-[26px] w-[26px]" strokeWidth={3} />
+              <Edit3 className="h-[24px] w-[24px]" strokeWidth={2.4} />
             </Link>
           )}
         </div>

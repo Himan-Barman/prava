@@ -1,4 +1,4 @@
-﻿import { useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -10,7 +10,6 @@ import {
   Settings,
   HelpCircle,
   Search,
-  Menu,
   X,
   LogOut,
   Moon,
@@ -26,20 +25,20 @@ interface NavItem {
 }
 
 const mainNavItems: NavItem[] = [
-  { path: '/feed', label: 'Feed', icon: <LayoutGrid className="w-6 h-6" strokeWidth={3} /> },
-  { path: '/chats', label: 'Chats', icon: <MessageCircle className="w-6 h-6" strokeWidth={3} /> },
-  { path: '/friends', label: 'Friends', icon: <Users className="w-6 h-6" strokeWidth={3} /> },
-  { path: '/profile', label: 'Profile', icon: <User className="w-6 h-6" strokeWidth={3} /> },
+  { path: '/feed', label: 'Feed', icon: <LayoutGrid className="w-6 h-6" strokeWidth={2.4} /> },
+  { path: '/chats', label: 'Chats', icon: <MessageCircle className="w-6 h-6" strokeWidth={2.4} /> },
+  { path: '/friends', label: 'Friends', icon: <Users className="w-6 h-6" strokeWidth={2.4} /> },
+  { path: '/profile', label: 'Profile', icon: <User className="w-6 h-6" strokeWidth={2.4} /> },
 ];
 
 const secondaryNavItems: NavItem[] = [
-  { path: '/notifications', label: 'Notifications', icon: <Bell className="w-6 h-6" strokeWidth={3} /> },
-  { path: '/search', label: 'Search', icon: <Search className="w-6 h-6" strokeWidth={3} /> },
+  { path: '/notifications', label: 'Notifications', icon: <Bell className="w-6 h-6" strokeWidth={2.4} /> },
+  { path: '/search', label: 'Search', icon: <Search className="w-6 h-6" strokeWidth={2.4} /> },
 ];
 
 const settingsNavItems: NavItem[] = [
-  { path: '/settings', label: 'Settings', icon: <Settings className="w-6 h-6" strokeWidth={3} /> },
-  { path: '/support', label: 'Support', icon: <HelpCircle className="w-6 h-6" strokeWidth={3} /> },
+  { path: '/settings', label: 'Settings', icon: <Settings className="w-6 h-6" strokeWidth={2.4} /> },
+  { path: '/support', label: 'Support', icon: <HelpCircle className="w-6 h-6" strokeWidth={2.4} /> },
 ];
 
 function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
@@ -50,27 +49,53 @@ function NavLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   return (
     <Link
       to={item.path}
-      className={`
-        group relative flex items-center gap-4 px-4 py-3.5 rounded-[18px]
-        font-medium transition-all duration-300
-        ${isActive
-          ? 'text-prava-accent bg-prava-accent/10 dark:bg-prava-accent/20'
-          : 'text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:text-prava-light-text-primary dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10'
-        }
-        ${collapsed ? 'justify-center px-3' : ''}
-      `}
+      className="sidebar-navlink"
+      data-active={isActive || undefined}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: collapsed ? 0 : 'var(--p-space-4)',
+        padding: collapsed ? 'var(--p-space-3)' : 'var(--p-space-3) var(--p-space-4)',
+        borderRadius: 'var(--p-radius-lg)',
+        fontWeight: 500,
+        fontSize: 'var(--p-text-body)',
+        transition: 'all var(--p-duration-fast) var(--p-ease-default)',
+        textDecoration: 'none',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        color: isActive ? 'var(--p-brand)' : 'var(--p-text-secondary)',
+        background: isActive ? 'var(--p-bg-selected)' : 'transparent',
+        position: 'relative',
+      }}
+      aria-current={isActive ? 'page' : undefined}
     >
-      {/* Icon */}
-      <span className="relative z-10">{item.icon}</span>
+      <span style={{ position: 'relative', zIndex: 10, display: 'flex' }}>{item.icon}</span>
 
-      {/* Label */}
       {!collapsed && (
-        <span className="font-semibold tracking-wide">{item.label}</span>
+        <span style={{ fontWeight: isActive ? 600 : 500, letterSpacing: '0.01em' }}>{item.label}</span>
       )}
 
-      {/* Hover Name Tooltip for Collapsed State */}
       {collapsed && (
-        <div className="absolute left-full ml-3 px-3 py-1.5 bg-prava-dark-surface text-white text-xs font-semibold rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-xl border border-white/10">
+        <div
+          className="sidebar-tooltip"
+          style={{
+            position: 'absolute',
+            left: '100%',
+            marginLeft: 12,
+            padding: '6px 12px',
+            background: 'var(--p-bg-surface-elevated)',
+            color: 'var(--p-text-primary)',
+            fontSize: 'var(--p-text-caption)',
+            fontWeight: 600,
+            borderRadius: 'var(--p-radius-sm)',
+            opacity: 0,
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+            zIndex: 50,
+            boxShadow: 'var(--p-shadow-lg)',
+            border: '1px solid var(--p-border)',
+            transition: 'opacity var(--p-duration-fast) var(--p-ease-default)',
+          }}
+        >
           {item.label}
         </div>
       )}
@@ -96,66 +121,187 @@ export function Sidebar({ mobileChromeVisible = true, showMobileBottomNav = true
 
   // Desktop Sidebar
   const SidebarContent = ({ collapsed = false }: { collapsed?: boolean }) => (
-    <div className="flex flex-col h-full">
-      {/* Brand - Updated to only specific "P" Logo */}
-      <div className={`flex items-center ${collapsed ? 'justify-center' : 'pl-2'} mb-8 mt-2`}>
-        <div className="w-12 h-12 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform duration-300 group relative">
-          <span className="text-prava-accent font-bold text-3xl font-outfit">P.</span>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Brand */}
+      <div style={{
+        display: 'flex',
+        alignItems: collapsed ? 'center' : 'flex-start',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        paddingLeft: collapsed ? 0 : 8,
+        marginBottom: 'var(--p-space-8)',
+        marginTop: 'var(--p-space-2)',
+      }}>
+        <div
+          className="sidebar-brand"
+          style={{
+            width: 48,
+            height: 48,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'transform var(--p-duration-normal) var(--p-ease-default)',
+            position: 'relative',
+          }}
+        >
+          <span style={{
+            color: 'var(--p-brand)',
+            fontWeight: 700,
+            fontSize: 28,
+            fontFamily: 'var(--p-font-sans)',
+          }}>P.</span>
 
-          {/* Brand Name on Hover (as requested: "branding logo show only P" ... "if hover then show the name") */}
-          <div className="absolute left-full ml-4 px-4 py-2 bg-prava-dark-surface text-white text-sm font-bold rounded-[12px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-xl border border-white/10">
+          <div
+            className="sidebar-tooltip"
+            style={{
+              position: 'absolute',
+              left: '100%',
+              marginLeft: 16,
+              padding: '8px 16px',
+              background: 'var(--p-bg-surface-elevated)',
+              color: 'var(--p-text-primary)',
+              fontSize: 'var(--p-text-body-sm)',
+              fontWeight: 700,
+              borderRadius: 'var(--p-radius-md)',
+              opacity: 0,
+              pointerEvents: 'none',
+              whiteSpace: 'nowrap',
+              zIndex: 50,
+              boxShadow: 'var(--p-shadow-lg)',
+              border: '1px solid var(--p-border)',
+              transition: 'opacity var(--p-duration-fast) var(--p-ease-default)',
+            }}
+          >
             Prava
           </div>
         </div>
       </div>
 
       {/* Main Nav */}
-      <nav className="flex flex-col gap-2">
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: 'var(--p-space-1)' }}>
         {mainNavItems.map((item) => (
           <NavLink key={item.path} item={item} collapsed={collapsed} />
         ))}
       </nav>
 
       {/* Divider */}
-      <div className="my-6 h-px bg-prava-light-border dark:bg-prava-dark-border mx-4 opacity-50" />
+      <div style={{
+        margin: 'var(--p-space-5) var(--p-space-4)',
+        height: 1,
+        background: 'var(--p-divider)',
+      }} />
 
       {/* Secondary Nav */}
-      <nav className="flex flex-col gap-2">
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: 'var(--p-space-1)' }}>
         {secondaryNavItems.map((item) => (
           <NavLink key={item.path} item={item} collapsed={collapsed} />
         ))}
       </nav>
 
       {/* Spacer */}
-      <div className="flex-1" />
+      <div style={{ flex: 1 }} />
 
       {/* Settings Nav */}
-      <nav className="flex flex-col gap-2 mt-4">
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: 'var(--p-space-1)', marginTop: 'var(--p-space-4)' }}>
         {settingsNavItems.map((item) => (
           <NavLink key={item.path} item={item} collapsed={collapsed} />
         ))}
       </nav>
 
       {/* Footer Actions */}
-      <div className={`mt-6 pt-6 border-t border-prava-light-border dark:border-prava-dark-border flex ${collapsed ? 'flex-col items-center gap-3' : 'items-center justify-between px-2'}`}>
+      <div style={{
+        marginTop: 'var(--p-space-5)',
+        paddingTop: 'var(--p-space-5)',
+        borderTop: '1px solid var(--p-divider)',
+        display: 'flex',
+        flexDirection: collapsed ? 'column' : 'row',
+        alignItems: 'center',
+        justifyContent: collapsed ? 'center' : 'space-between',
+        gap: collapsed ? 'var(--p-space-3)' : 0,
+        paddingLeft: collapsed ? 0 : 'var(--p-space-2)',
+        paddingRight: collapsed ? 0 : 'var(--p-space-2)',
+      }}>
         <button
           onClick={toggleTheme}
-          className="p-3 rounded-[16px] text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary hover:bg-white dark:hover:bg-white/[0.08] transition-colors relative group"
+          className="sidebar-action-btn"
+          style={{
+            padding: 'var(--p-space-3)',
+            borderRadius: 'var(--p-radius-lg)',
+            color: 'var(--p-text-muted)',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            transition: 'all var(--p-duration-fast) var(--p-ease-default)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+          }}
+          aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
         >
-          {isDark ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
-          {/* Tooltip */}
-          <span className="absolute left-full ml-3 px-3 py-1.5 bg-prava-dark-surface text-white text-xs font-semibold rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-            {isDark ? 'Light' : 'Dark'}
+          {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          <span
+            className="sidebar-tooltip"
+            style={{
+              position: 'absolute',
+              left: '100%',
+              marginLeft: 12,
+              padding: '6px 12px',
+              background: 'var(--p-bg-surface-elevated)',
+              color: 'var(--p-text-primary)',
+              fontSize: 'var(--p-text-caption)',
+              fontWeight: 600,
+              borderRadius: 'var(--p-radius-sm)',
+              opacity: 0,
+              pointerEvents: 'none',
+              whiteSpace: 'nowrap',
+              zIndex: 50,
+              transition: 'opacity var(--p-duration-fast)',
+            }}
+          >
+            {isDark ? 'Light mode' : 'Dark mode'}
           </span>
         </button>
 
         <button
           onClick={handleLogout}
-          className="p-3 rounded-[16px] text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary hover:bg-prava-error/10 hover:text-prava-error transition-colors relative group"
+          className="sidebar-action-btn"
+          style={{
+            padding: 'var(--p-space-3)',
+            borderRadius: 'var(--p-radius-lg)',
+            color: 'var(--p-text-muted)',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            transition: 'all var(--p-duration-fast) var(--p-ease-default)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+          }}
+          aria-label="Log out"
         >
-          <LogOut className="w-6 h-6" />
-          <span className="absolute left-full ml-3 px-3 py-1.5 bg-prava-dark-surface text-white text-xs font-semibold rounded-[8px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-            Logout
+          <LogOut className="w-5 h-5" />
+          <span
+            className="sidebar-tooltip"
+            style={{
+              position: 'absolute',
+              left: '100%',
+              marginLeft: 12,
+              padding: '6px 12px',
+              background: 'var(--p-bg-surface-elevated)',
+              color: 'var(--p-text-primary)',
+              fontSize: 'var(--p-text-caption)',
+              fontWeight: 600,
+              borderRadius: 'var(--p-radius-sm)',
+              opacity: 0,
+              pointerEvents: 'none',
+              whiteSpace: 'nowrap',
+              zIndex: 50,
+              transition: 'opacity var(--p-duration-fast)',
+            }}
+          >
+            Log out
           </span>
         </button>
       </div>
@@ -164,15 +310,51 @@ export function Sidebar({ mobileChromeVisible = true, showMobileBottomNav = true
 
   return (
     <>
-      {/* Desktop/Tablet Sidebar - ALWAYS Collapsed/Compact (Icon Only) */}
-      <aside className="hidden tablet:flex laptop:flex desktop:flex fixed left-0 top-0 h-screen w-[72px] p-3 border-r border-prava-light-border dark:border-prava-dark-border bg-prava-light-bg/84 dark:bg-prava-dark-bg/84 backdrop-blur-2xl z-40">
+      {/* Desktop/Tablet Sidebar - Collapsed/Compact (Icon Only) */}
+      <aside
+        style={{
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          height: '100vh',
+          width: 'var(--p-sidebar-collapsed)',
+          padding: 'var(--p-space-3)',
+          borderRight: '1px solid var(--p-border)',
+          background: 'var(--p-bg-surface)',
+          zIndex: 'var(--p-z-sidebar)',
+          display: 'none',
+        }}
+        className="sidebar-desktop"
+      >
         <SidebarContent collapsed={true} />
       </aside>
 
       {/* Mobile Bottom Nav */}
       {showMobileBottomNav && (
-      <nav className={`app-mobile-bottom-nav fixed bottom-0 left-0 right-0 tablet:hidden laptop:hidden desktop:hidden z-50 ${mobileChromeVisible ? 'app-mobile-bottom-nav--visible' : 'app-mobile-bottom-nav--hidden'}`}>
-        <div className="mx-[14px] mb-[8px] flex h-[58px] items-center justify-around rounded-[22px] bg-white/86 px-1.5 py-1 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] dark:bg-black/35 shadow-[0_10px_24px_rgba(0,0,0,0.10)] dark:shadow-[0_10px_24px_rgba(0,0,0,0.24)]">
+      <nav
+        className={`app-mobile-bottom-nav ${mobileChromeVisible ? 'app-mobile-bottom-nav--visible' : 'app-mobile-bottom-nav--hidden'}`}
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 50,
+        }}
+      >
+        <div style={{
+          margin: '0 14px 8px',
+          display: 'flex',
+          height: 58,
+          alignItems: 'center',
+          justifyContent: 'space-around',
+          borderRadius: 22,
+          padding: '6px',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          background: 'var(--p-bg-surface)',
+          border: '1px solid var(--p-border)',
+          boxShadow: 'var(--p-shadow-lg)',
+        }}>
           {mainNavItems.map((item) => {
             const isActive = location.pathname === item.path ||
               (item.path !== '/' && location.pathname.startsWith(item.path));
@@ -181,21 +363,36 @@ export function Sidebar({ mobileChromeVisible = true, showMobileBottomNav = true
               <Link
                 key={item.path}
                 to={item.path}
-                className={`group flex flex-1 flex-col items-center rounded-[14px] px-1 py-0.5 transition-colors
-                  ${isActive
-                    ? 'text-prava-accent'
-                    : 'text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary'
-                  }
-                `}
+                style={{
+                  display: 'flex',
+                  flex: 1,
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  padding: '2px 4px',
+                  borderRadius: 'var(--p-radius-lg)',
+                  color: isActive ? 'var(--p-brand)' : 'var(--p-text-muted)',
+                  textDecoration: 'none',
+                  transition: 'color var(--p-duration-fast)',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
               >
-                <span className={`grid h-[30px] w-12 place-items-center rounded-full transition-all duration-200 ${
-                  isActive
-                    ? 'bg-prava-accent/15 dark:bg-prava-accent/25'
-                    : 'group-hover:bg-black/5 dark:group-hover:bg-white/10'
-                }`}>
+                <span style={{
+                  display: 'grid',
+                  height: 30,
+                  width: 48,
+                  placeItems: 'center',
+                  borderRadius: 'var(--p-radius-pill)',
+                  transition: 'background var(--p-duration-fast)',
+                  background: isActive ? 'var(--p-bg-selected)' : 'transparent',
+                }}>
                   {item.icon}
                 </span>
-                <span className={`mt-0.5 text-[11px] leading-none ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
+                <span style={{
+                  marginTop: 2,
+                  fontSize: 11,
+                  lineHeight: 1,
+                  fontWeight: isActive ? 700 : 500,
+                }}>{item.label}</span>
               </Link>
             );
           })}
@@ -212,57 +409,127 @@ export function Sidebar({ mobileChromeVisible = true, showMobileBottomNav = true
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setMobileOpen(false)}
-              className="fixed inset-0 bg-black/60 z-50 tablet:hidden laptop:hidden desktop:hidden backdrop-blur-sm"
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'var(--p-bg-overlay)',
+                zIndex: 50,
+                backdropFilter: 'blur(4px)',
+              }}
+              className="mobile-menu-overlay"
             />
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed right-0 top-0 bottom-0 w-[300px] bg-prava-light-bg dark:bg-prava-dark-bg z-50 p-6 tablet:hidden laptop:hidden desktop:hidden border-l border-prava-light-border dark:border-prava-dark-border"
+              style={{
+                position: 'fixed',
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 300,
+                background: 'var(--p-bg-surface)',
+                zIndex: 50,
+                padding: 'var(--p-space-6)',
+                borderLeft: '1px solid var(--p-border)',
+              }}
+              className="mobile-menu-drawer"
             >
-              <div className="flex justify-between items-center mb-8">
-                <span className="font-bold text-2xl text-prava-light-text-primary dark:text-prava-dark-text-primary">Menu</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--p-space-8)' }}>
+                <span style={{ fontWeight: 700, fontSize: 22, color: 'var(--p-text-primary)' }}>Menu</span>
                 <button
                   onClick={() => setMobileOpen(false)}
-                  className="p-2 rounded-[14px] bg-prava-light-surface dark:bg-prava-dark-surface hover:bg-prava-light-border dark:hover:bg-prava-dark-border"
+                  style={{
+                    padding: 'var(--p-space-2)',
+                    borderRadius: 'var(--p-radius-lg)',
+                    background: 'var(--p-bg-subtle)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--p-text-primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  aria-label="Close menu"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="flex flex-col h-full pb-8">
-                <nav className="flex flex-col gap-2">
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', paddingBottom: 'var(--p-space-8)' }}>
+                <nav style={{ display: 'flex', flexDirection: 'column', gap: 'var(--p-space-1)' }}>
                   {[...secondaryNavItems, ...settingsNavItems].map((item) => (
                     <Link
                       key={item.path}
                       to={item.path}
                       onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-4 px-4 py-4 rounded-[18px] text-prava-light-text-secondary dark:text-prava-dark-text-secondary hover:bg-prava-light-surface dark:hover:bg-prava-dark-surface transition-colors"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--p-space-4)',
+                        padding: 'var(--p-space-4)',
+                        borderRadius: 'var(--p-radius-xl)',
+                        color: 'var(--p-text-secondary)',
+                        textDecoration: 'none',
+                        transition: 'background var(--p-duration-fast)',
+                        fontSize: 'var(--p-text-section-title)',
+                        fontWeight: 600,
+                      }}
                     >
                       {item.icon}
-                      <span className="font-bold text-lg">{item.label}</span>
+                      <span>{item.label}</span>
                     </Link>
                   ))}
                 </nav>
 
-                <div className="mt-auto pt-8 border-t border-prava-light-border dark:border-prava-dark-border">
-                  <div className="flex items-center justify-between gap-4">
-                    <button
-                      onClick={toggleTheme}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-4 rounded-[18px] bg-prava-light-surface dark:bg-prava-dark-surface font-bold text-prava-light-text-primary dark:text-prava-dark-text-primary"
-                    >
-                      {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                      {isDark ? 'Light' : 'Dark'}
-                    </button>
+                <div style={{
+                  marginTop: 'auto',
+                  paddingTop: 'var(--p-space-8)',
+                  borderTop: '1px solid var(--p-divider)',
+                  display: 'flex',
+                  gap: 'var(--p-space-4)',
+                }}>
+                  <button
+                    onClick={toggleTheme}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      padding: 'var(--p-space-4)',
+                      borderRadius: 'var(--p-radius-xl)',
+                      background: 'var(--p-bg-subtle)',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                      color: 'var(--p-text-primary)',
+                      fontSize: 'var(--p-text-body)',
+                    }}
+                  >
+                    {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                    {isDark ? 'Light' : 'Dark'}
+                  </button>
 
-                    <button
-                      onClick={handleLogout}
-                      className="px-6 py-4 rounded-[18px] bg-[#E5533D]/10 text-[#E5533D]"
-                    >
-                      <LogOut className="w-6 h-6" />
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleLogout}
+                    style={{
+                      padding: '0 var(--p-space-6)',
+                      height: 48,
+                      borderRadius: 'var(--p-radius-xl)',
+                      background: 'var(--p-danger-subtle)',
+                      color: 'var(--p-danger)',
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    aria-label="Log out"
+                  >
+                    <LogOut className="w-6 h-6" />
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -272,4 +539,3 @@ export function Sidebar({ mobileChromeVisible = true, showMobileBottomNav = true
     </>
   );
 }
-

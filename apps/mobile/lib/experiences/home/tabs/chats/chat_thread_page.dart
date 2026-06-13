@@ -6,6 +6,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../../ui-system/colors.dart';
 import '../../../../ui-system/typography.dart';
@@ -16,10 +17,12 @@ import '../../../../services/chat_service.dart';
 import '../../../../services/chat_sync_store.dart';
 import '../../../../services/e2ee_service.dart';
 import '../../../../services/group_e2ee_service.dart';
+import '../../../../services/media_service.dart';
 import '../../../../security/ratchet/group/sender_key_state.dart';
 import '../../../../core/device/device_id.dart';
 import '../../../../core/storage/secure_store.dart';
 import '../profile/public_profile_page.dart';
+import 'chat_details_page.dart';
 import 'chats_page.dart';
 
 DateTime? _parseDate(dynamic value) {
@@ -55,6 +58,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   final SecureStore _store = SecureStore();
   late final ChatSyncStore _syncStore = ChatSyncStore(store: _store);
   late final ChatService _chatService = ChatService(store: _store);
+  late final MediaService _mediaService = MediaService(store: _store);
   late final ChatRealtime _realtime = ChatRealtime(store: _store);
   late final E2eeService _e2ee = E2eeService(store: _store);
   late final GroupE2eeService _groupE2ee = GroupE2eeService(
@@ -62,6 +66,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     e2ee: _e2ee,
   );
   late final DeviceIdStore _deviceIdStore = DeviceIdStore(_store);
+  final ImagePicker _imagePicker = ImagePicker();
 
   List<ChatMessage> _messages = <ChatMessage>[];
   bool _loading = true;
@@ -73,6 +78,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   String? _peerUserId;
   bool _e2eeReady = false;
   Timer? _typingTimer;
+  Timer? _draftTimer;
   bool _isTyping = false;
   bool _peerTyping = false;
   Timer? _peerTypingTimer;
@@ -84,9 +90,11 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   bool _usingPlaintextFallback = false;
   bool _isMuted = false;
   bool _isStarred = false;
+  bool _uploadingAttachment = false;
   final List<String> _recentEmojis = <String>[];
   List<String> _groupMemberIds = <String>[];
   final Set<String> _hiddenMessageIds = <String>{};
+  final Set<String> _pinnedMessageIds = <String>{};
 
   bool get _isDmChat => !widget.chat.isGroup;
   bool get _isGroupChat => widget.chat.isGroup;
@@ -102,6 +110,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     _peerOnline = widget.chat.isOnline;
     _isMuted = widget.chat.isMuted;
     _isStarred = widget.chat.isStarred;
+    if (widget.chat.draftText.trim().isNotEmpty) {
+      _controller.text = widget.chat.draftText;
+      _controller.selection = TextSelection.collapsed(
+        offset: _controller.text.length,
+      );
+    }
     _scrollController.addListener(_handleScroll);
     _loadRecentEmojis();
     _bootstrap();
@@ -113,10 +127,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   @override
   void dispose() {
     _typingTimer?.cancel();
+    _draftTimer?.cancel();
     _peerTypingTimer?.cancel();
     if (_isTyping) {
       _realtime.sendTyping(conversationId: widget.chat.id, isTyping: false);
     }
+    _syncDraft(_editingMessage == null ? _controller.text.trim() : '');
     _realtime.disconnect();
     _scrollController.removeListener(_handleScroll);
     _controller.dispose();
@@ -133,6 +149,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     await _ensureGroupReady();
     await _loadGroupMembers();
     await _loadMessages();
+    await _loadPinnedMessages();
     await _realtime.connect(_handleRealtimeEvent);
     _realtime.subscribeConversation(widget.chat.id);
   }
@@ -242,6 +259,26 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       _sendDeliveryReceipt();
       _sendReadReceiptIfNeeded();
     });
+  }
+
+  Future<void> _loadPinnedMessages() async {
+    try {
+      final pinned = await _chatService.listPinnedMessages(
+        conversationId: widget.chat.id,
+        limit: 20,
+        currentUserId: _userId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _pinnedMessageIds
+          ..clear()
+          ..addAll(
+            pinned.map((message) => message.id).where((id) => id.isNotEmpty),
+          );
+      });
+    } catch (_) {
+      // Pinned messages are secondary metadata; the thread still works without them.
+    }
   }
 
   Future<List<ChatMessage>> _decryptMessages(List<ChatMessage> messages) async {
@@ -391,6 +428,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       _messages = [..._messages, message];
       _controller.clear();
     });
+    _syncDraft('');
 
     _scrollToBottom();
 
@@ -428,6 +466,218 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     }
   }
 
+  Future<void> _showAttachmentPicker() async {
+    if (_uploadingAttachment) return;
+    HapticFeedback.selectionClick();
+    final action = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('Send attachment'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('image'),
+            child: const Text('Photo'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('video'),
+            child: const Text('Video'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    await _pickAndSendAttachment(isVideo: action == 'video');
+  }
+
+  Future<void> _pickAndSendAttachment({required bool isVideo}) async {
+    if (_uploadingAttachment) return;
+    XFile? picked;
+    try {
+      picked = isVideo
+          ? await _imagePicker.pickVideo(source: ImageSource.gallery)
+          : await _imagePicker.pickImage(
+              source: ImageSource.gallery,
+              imageQuality: 92,
+            );
+    } catch (_) {
+      _showAttachmentError('Could not open media picker');
+      return;
+    }
+    if (picked == null) return;
+
+    setState(() => _uploadingAttachment = true);
+    try {
+      final bytes = await picked.readAsBytes();
+      if (bytes.isEmpty) {
+        throw Exception('empty attachment');
+      }
+
+      final fileName = picked.name.trim().isNotEmpty
+          ? picked.name.trim()
+          : (isVideo ? 'video.mp4' : 'photo.jpg');
+      final mimeType = picked.mimeType?.trim().isNotEmpty == true
+          ? picked.mimeType!.trim()
+          : _mimeTypeForName(fileName, isVideo: isVideo);
+      final attachmentType = isVideo ? 'video' : 'image';
+
+      final init = await _chatService.initAttachmentUpload(
+        conversationId: widget.chat.id,
+        fileName: fileName,
+        mimeType: mimeType,
+        byteSize: bytes.length,
+        attachmentType: attachmentType,
+      );
+      if (init == null || init.attachmentId.isEmpty) {
+        throw Exception('attachment init failed');
+      }
+      if (init.maxBytes > 0 && bytes.length > init.maxBytes) {
+        throw Exception('attachment too large');
+      }
+
+      final dataUri = 'data:$mimeType;base64,${base64Encode(bytes)}';
+      final asset = await _mediaService.uploadChatMedia(
+        dataUri: dataUri,
+        resourceType: isVideo ? 'video' : 'image',
+      );
+      if (asset.assetId.isEmpty) {
+        throw Exception('media upload failed');
+      }
+
+      final attachment = await _chatService.completeAttachmentUpload(
+        attachmentId: init.attachmentId,
+        uploadSessionId: init.uploadSessionId,
+        mediaAssetId: asset.assetId,
+      );
+      final mediaAssetId = attachment?.mediaAssetId?.trim().isNotEmpty == true
+          ? attachment!.mediaAssetId!.trim()
+          : asset.assetId;
+      await _sendMediaMessage(
+        mediaAssetId: mediaAssetId,
+        contentType: attachmentType,
+        fallbackLabel: isVideo ? 'Video' : 'Photo',
+      );
+    } catch (error) {
+      _showAttachmentError(
+        error.toString().contains('too large')
+            ? 'Attachment is too large'
+            : 'Could not send attachment',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _uploadingAttachment = false);
+      }
+    }
+  }
+
+  Future<void> _sendMediaMessage({
+    required String mediaAssetId,
+    required String contentType,
+    required String fallbackLabel,
+  }) async {
+    final tempId = _generateTempId();
+    final caption = _controller.text.trim();
+    final senderUserId = _userId ?? '';
+    final senderDeviceId = _deviceId ?? await _deviceIdStore.getOrCreate();
+    _deviceId ??= senderDeviceId;
+
+    final message = ChatMessage(
+      id: tempId,
+      conversationId: widget.chat.id,
+      senderUserId: senderUserId,
+      senderDeviceId: senderDeviceId,
+      body: caption.isEmpty ? fallbackLabel : caption,
+      type: ChatMessageType.media,
+      createdAt: DateTime.now(),
+      clientTempId: tempId,
+      mediaAssetId: mediaAssetId,
+      deliveryState: MessageDeliveryState.sending,
+      isOutgoing: true,
+    );
+
+    HapticFeedback.selectionClick();
+    _stopTyping();
+    setState(() {
+      _messages = [..._messages, message];
+      if (caption.isNotEmpty) {
+        _controller.clear();
+      }
+    });
+    if (caption.isNotEmpty) {
+      _syncDraft('');
+    }
+    _scrollToBottom();
+
+    String outboundBody = caption;
+    if (caption.isNotEmpty) {
+      if (_isGroupChat) {
+        final encrypted = await _prepareGroupOutboundMessage(tempId, caption);
+        if (encrypted == null || encrypted.isEmpty) {
+          _markFailed(tempId);
+          return;
+        }
+        outboundBody = encrypted;
+      } else if (_isDmChat) {
+        final prepared = await _prepareDmOutboundMessage(tempId, caption);
+        if (prepared == null || prepared.isEmpty) {
+          _markFailed(tempId);
+          return;
+        }
+        outboundBody = prepared;
+      }
+    }
+
+    try {
+      final sent = await _chatService.sendMessage(
+        conversationId: widget.chat.id,
+        body: outboundBody,
+        tempId: tempId,
+        contentType: contentType,
+        mediaAssetId: mediaAssetId,
+        clientTimestamp: DateTime.now(),
+      );
+      if (sent != null) {
+        _applyServerMessage(tempId, sent);
+      } else {
+        _markFailed(tempId);
+      }
+    } catch (_) {
+      _markFailed(tempId);
+    }
+  }
+
+  String _mimeTypeForName(String fileName, {required bool isVideo}) {
+    final lower = fileName.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.heic')) return 'image/heic';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.m4v')) return 'video/x-m4v';
+    if (lower.endsWith('.webm')) return 'video/webm';
+    if (lower.endsWith('.mp4')) return 'video/mp4';
+    return isVideo ? 'video/mp4' : 'image/jpeg';
+  }
+
+  bool _isFallbackMediaLabel(String value) {
+    final normalized = value.trim().toLowerCase();
+    return normalized == 'photo' ||
+        normalized == 'video' ||
+        normalized == 'media attachment' ||
+        normalized == 'media message';
+  }
+
+  void _showAttachmentError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
   void _applyServerMessage(String tempId, ChatMessage serverMessage) {
     final index = _messages.indexWhere(
       (m) => m.clientTempId == tempId || m.id == tempId,
@@ -436,8 +686,13 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
 
     final existing = _messages[index];
     final isEncrypted = _isEncryptedPayload(serverMessage.body);
+    final serverBody =
+        serverMessage.type == ChatMessageType.media &&
+            serverMessage.body.trim().isEmpty
+        ? existing.body
+        : serverMessage.body;
     final updated = serverMessage.copyWith(
-      body: isEncrypted ? existing.body : serverMessage.body,
+      body: isEncrypted ? existing.body : serverBody,
       encryptedBody: isEncrypted ? serverMessage.body : existing.encryptedBody,
       deliveryState: MessageDeliveryState.sent,
       isOutgoing: true,
@@ -473,30 +728,41 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       (m) => m.copyWith(deliveryState: MessageDeliveryState.sending),
     );
 
-    String outboundBody = message.encryptedBody ?? message.body;
+    final isMediaMessage = message.type == ChatMessageType.media;
+    final hasRealMediaCaption =
+        isMediaMessage && !_isFallbackMediaLabel(message.body);
+    final shouldEncryptBody = !isMediaMessage || hasRealMediaCaption;
+    String outboundBody =
+        isMediaMessage && !hasRealMediaCaption && message.encryptedBody == null
+        ? ''
+        : message.encryptedBody ?? message.body;
     if (_isGroupChat) {
       if (message.encryptedBody == null) {
-        final encrypted = await _prepareGroupOutboundMessage(
-          message.id,
-          message.body,
-        );
-        if (encrypted == null || encrypted.isEmpty) {
-          _markFailed(tempId);
-          return;
+        if (shouldEncryptBody) {
+          final encrypted = await _prepareGroupOutboundMessage(
+            message.id,
+            message.body,
+          );
+          if (encrypted == null || encrypted.isEmpty) {
+            _markFailed(tempId);
+            return;
+          }
+          outboundBody = encrypted;
         }
-        outboundBody = encrypted;
       }
     } else if (_isDmChat) {
       if (message.encryptedBody == null) {
-        final prepared = await _prepareDmOutboundMessage(
-          message.id,
-          message.body,
-        );
-        if (prepared == null || prepared.isEmpty) {
-          _markFailed(tempId);
-          return;
+        if (shouldEncryptBody) {
+          final prepared = await _prepareDmOutboundMessage(
+            message.id,
+            message.body,
+          );
+          if (prepared == null || prepared.isEmpty) {
+            _markFailed(tempId);
+            return;
+          }
+          outboundBody = prepared;
         }
-        outboundBody = prepared;
       }
     }
 
@@ -719,6 +985,27 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     PravaNavigator.push(context, PublicProfilePage(userId: peerUserId));
   }
 
+  void _openConversationDetails() {
+    final initial = widget.chat.name.isNotEmpty
+        ? widget.chat.name[0].toUpperCase()
+        : 'P';
+    HapticFeedback.selectionClick();
+    PravaNavigator.push(
+      context,
+      ChatDetailsPage(
+        conversationId: widget.chat.id,
+        name: widget.chat.name,
+        initial: initial,
+        avatarUrl: widget.chat.avatarUrl,
+        isGroup: widget.chat.isGroup,
+        isMuted: _isMuted,
+        isStarred: _isStarred,
+        isArchived: widget.chat.isArchived,
+        peerUserId: _peerUserId,
+      ),
+    );
+  }
+
   Future<void> _showThreadOptions() async {
     HapticFeedback.selectionClick();
     final action = await showCupertinoModalPopup<String>(
@@ -726,6 +1013,10 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       builder: (context) => CupertinoActionSheet(
         title: Text(widget.chat.name),
         actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('details'),
+            child: const Text('Chat details'),
+          ),
           if (_isDmChat)
             CupertinoActionSheetAction(
               onPressed: () => Navigator.of(context).pop('profile'),
@@ -757,6 +1048,9 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
 
     if (!mounted || action == null) return;
     switch (action) {
+      case 'details':
+        _openConversationDetails();
+        break;
       case 'profile':
         _openPeerProfile();
         break;
@@ -790,7 +1084,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         isFavorite: widget.chat.isFavorite,
         isStarred: nextStarred,
         isMuted: nextMuted,
-        isArchived: false,
+        isArchived: widget.chat.isArchived,
       );
     } catch (_) {
       if (!mounted) return;
@@ -882,6 +1176,11 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         message.body.trim().isNotEmpty;
     final canDelete =
         message.isOutgoing && !message.isDeleted && message.seq != null;
+    final canServerAction =
+        !message.isDeleted &&
+        message.seq != null &&
+        message.id.trim().isNotEmpty;
+    final isPinned = _pinnedMessageIds.contains(message.id);
 
     showModalBottomSheet(
       context: context,
@@ -941,6 +1240,36 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                       _startEditing(message);
                     },
                   ),
+                if (canServerAction)
+                  _SheetAction(
+                    icon: isPinned
+                        ? CupertinoIcons.pin_slash_fill
+                        : CupertinoIcons.pin_fill,
+                    label: isPinned ? 'Unpin message' : 'Pin message',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      isPinned ? _unpinMessage(message) : _pinMessage(message);
+                    },
+                  ),
+                if (canServerAction)
+                  _SheetAction(
+                    icon: CupertinoIcons.info_circle,
+                    label: 'Message details',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _showMessageDetails(message);
+                    },
+                  ),
+                if (canServerAction)
+                  _SheetAction(
+                    icon: CupertinoIcons.exclamationmark_bubble,
+                    label: 'Report',
+                    isDestructive: true,
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _reportMessage(message);
+                    },
+                  ),
                 if (canDelete)
                   _SheetAction(
                     icon: CupertinoIcons.trash,
@@ -971,6 +1300,150 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     _realtime.deleteMessage(
       conversationId: widget.chat.id,
       messageId: message.id,
+    );
+  }
+
+  Future<void> _pinMessage(ChatMessage message) async {
+    HapticFeedback.selectionClick();
+    setState(() => _pinnedMessageIds.add(message.id));
+    try {
+      final ok = await _chatService.pinMessage(
+        conversationId: widget.chat.id,
+        messageId: message.id,
+      );
+      if (!ok) throw Exception('pin failed');
+      _showThreadSnack('Message pinned');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pinnedMessageIds.remove(message.id));
+      _showThreadSnack('Could not pin message');
+    }
+  }
+
+  Future<void> _unpinMessage(ChatMessage message) async {
+    HapticFeedback.selectionClick();
+    final wasPinned = _pinnedMessageIds.contains(message.id);
+    setState(() => _pinnedMessageIds.remove(message.id));
+    try {
+      final ok = await _chatService.unpinMessage(
+        conversationId: widget.chat.id,
+        messageId: message.id,
+      );
+      if (!ok) throw Exception('unpin failed');
+      _showThreadSnack('Message unpinned');
+    } catch (_) {
+      if (!mounted) return;
+      if (wasPinned) {
+        setState(() => _pinnedMessageIds.add(message.id));
+      }
+      _showThreadSnack('Could not unpin message');
+    }
+  }
+
+  Future<void> _reportMessage(ChatMessage message) async {
+    final reason = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('Report message'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('spam'),
+            child: const Text('Spam'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('harassment'),
+            child: const Text('Harassment'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('scam'),
+            child: const Text('Scam or fraud'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('harmful_content'),
+            child: const Text('Harmful content'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('other'),
+            child: const Text('Other'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (!mounted || reason == null) return;
+    try {
+      final ok = await _chatService.reportConversation(
+        conversationId: widget.chat.id,
+        messageId: message.id,
+        reportedUserId: message.senderUserId == _userId
+            ? null
+            : message.senderUserId,
+        reason: reason,
+      );
+      if (!ok) throw Exception('report failed');
+      _showThreadSnack('Report sent');
+    } catch (_) {
+      _showThreadSnack('Could not send report');
+    }
+  }
+
+  void _showMessageDetails(ChatMessage message) {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _MessageDetailsSheet(
+        message: message,
+        details: _chatService.getMessageDetails(
+          conversationId: widget.chat.id,
+          messageId: message.id,
+        ),
+        timeLabel: _formatTime(message.createdAt),
+        isPinned: _pinnedMessageIds.contains(message.id),
+      ),
+    );
+  }
+
+  void _openMessageSearch() {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _MessageSearchSheet(
+        title: 'Search chat',
+        chatService: _chatService,
+        conversationId: widget.chat.id,
+        currentUserId: _userId,
+        onOpenDetails: _showMessageDetails,
+      ),
+    );
+  }
+
+  void _showPinnedMessages() {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _PinnedMessagesSheet(
+        chatService: _chatService,
+        conversationId: widget.chat.id,
+        currentUserId: _userId,
+        onOpenDetails: _showMessageDetails,
+      ),
+    );
+  }
+
+  void _showThreadSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -1022,6 +1495,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   }
 
   void _handleTypingChanged(String value) {
+    _scheduleDraftSync(value);
     final hasText = value.trim().isNotEmpty;
 
     if (hasText && !_isTyping) {
@@ -1038,6 +1512,22 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     } else {
       _stopTyping();
     }
+  }
+
+  void _scheduleDraftSync(String value) {
+    if (_editingMessage != null) return;
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 700), () {
+      _syncDraft(value.trim());
+    });
+  }
+
+  void _syncDraft(String value) {
+    void ignoreError(Object _, StackTrace __) {}
+    _chatService
+        .updatePreferences(conversationId: widget.chat.id, draftText: value)
+        .then<void>((_) {})
+        .catchError(ignoreError);
   }
 
   void _stopTyping() {
@@ -1072,6 +1562,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         break;
       case 'REACTION_UPDATE':
         _handleReactionUpdate(payload);
+        break;
+      case 'MESSAGE_PINNED':
+        _handlePinnedUpdate(payload, pinned: true);
+        break;
+      case 'MESSAGE_UNPINNED':
+        _handlePinnedUpdate(payload, pinned: false);
         break;
       case 'TYPING':
         _handlePeerTyping(payload);
@@ -1321,6 +1817,23 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       }
 
       return message.copyWith(reactions: nextReactions);
+    });
+  }
+
+  void _handlePinnedUpdate(
+    Map<String, dynamic> payload, {
+    required bool pinned,
+  }) {
+    final conversationId = payload['conversationId']?.toString();
+    final messageId = payload['messageId']?.toString();
+    if (conversationId != widget.chat.id || messageId == null) return;
+    if (!mounted) return;
+    setState(() {
+      if (pinned) {
+        _pinnedMessageIds.add(messageId);
+      } else {
+        _pinnedMessageIds.remove(messageId);
+      }
     });
   }
 
@@ -1666,9 +2179,15 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                     subtitle: subtitle,
                     initial: initial,
                     avatarUrl: widget.chat.avatarUrl,
-                    onTap: _openPeerProfile,
+                    onTap: _openConversationDetails,
+                    onSearch: _openMessageSearch,
                     onMore: _showThreadOptions,
                   ),
+                  if (_pinnedMessageIds.isNotEmpty)
+                    _PinnedBanner(
+                      count: _pinnedMessageIds.length,
+                      onTap: _showPinnedMessages,
+                    ),
                   Expanded(
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 200),
@@ -1775,10 +2294,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                           controller: _controller,
                           focusNode: _composerFocus,
                           onEmoji: _showEmojiPicker,
+                          onAttach: _showAttachmentPicker,
                           onSend: () {
                             _sendMessage();
                           },
                           onChanged: _handleTypingChanged,
+                          isUploading: _uploadingAttachment,
                         ),
                       ],
                     ),
@@ -1847,6 +2368,7 @@ class _ChatHeader extends StatelessWidget {
     required this.initial,
     required this.avatarUrl,
     required this.onTap,
+    required this.onSearch,
     required this.onMore,
   });
 
@@ -1855,6 +2377,7 @@ class _ChatHeader extends StatelessWidget {
   final String initial;
   final String avatarUrl;
   final VoidCallback onTap;
+  final VoidCallback onSearch;
   final VoidCallback onMore;
 
   @override
@@ -1928,6 +2451,10 @@ class _ChatHeader extends StatelessWidget {
                   ),
                 ),
                 IconButton(
+                  onPressed: onSearch,
+                  icon: Icon(CupertinoIcons.search, color: secondary, size: 21),
+                ),
+                IconButton(
                   onPressed: onMore,
                   icon: Icon(
                     CupertinoIcons.ellipsis_vertical,
@@ -1944,6 +2471,570 @@ class _ChatHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PinnedBanner extends StatelessWidget {
+  const _PinnedBanner({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark
+        ? PravaColors.darkBgElevated
+        : PravaColors.lightBgElevated;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: border),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              CupertinoIcons.pin_fill,
+              color: PravaColors.accentPrimary,
+              size: 17,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                count == 1 ? '1 pinned message' : '$count pinned messages',
+                style: PravaTypography.body.copyWith(
+                  color: primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              'View',
+              style: PravaTypography.caption.copyWith(color: secondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MessageDetailsSheet extends StatelessWidget {
+  const _MessageDetailsSheet({
+    required this.message,
+    required this.details,
+    required this.timeLabel,
+    required this.isPinned,
+  });
+
+  final ChatMessage message;
+  final Future<Map<String, dynamic>?> details;
+  final String timeLabel;
+  final bool isPinned;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark
+        ? PravaColors.darkBgElevated
+        : PravaColors.lightBgElevated;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(18),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.76,
+        ),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: border),
+        ),
+        child: FutureBuilder<Map<String, dynamic>?>(
+          future: details,
+          builder: (context, snapshot) {
+            final rows = (snapshot.data?['receipts'] as List<dynamic>? ?? [])
+                .whereType<Map<String, dynamic>>()
+                .toList();
+            final seenCount = rows.where((row) => row['seen'] == true).length;
+            final deliveredCount = rows
+                .where((row) => row['delivered'] == true)
+                .length;
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Message details',
+                        style: PravaTypography.h3.copyWith(color: primary),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: Icon(CupertinoIcons.xmark, color: secondary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _DetailMetricRow(
+                  icon: CupertinoIcons.clock_fill,
+                  title: 'Sent',
+                  value: timeLabel,
+                ),
+                _DetailMetricRow(
+                  icon: CupertinoIcons.check_mark_circled_solid,
+                  title: 'Delivered',
+                  value: snapshot.connectionState == ConnectionState.waiting
+                      ? 'Loading'
+                      : deliveredCount.toString(),
+                ),
+                _DetailMetricRow(
+                  icon: CupertinoIcons.eye_fill,
+                  title: 'Seen',
+                  value: snapshot.connectionState == ConnectionState.waiting
+                      ? 'Loading'
+                      : seenCount.toString(),
+                ),
+                if (isPinned)
+                  const _DetailMetricRow(
+                    icon: CupertinoIcons.pin_fill,
+                    title: 'Pinned',
+                    value: 'Yes',
+                  ),
+                const SizedBox(height: 12),
+                Text(
+                  'Receipts',
+                  style: PravaTypography.label.copyWith(color: secondary),
+                ),
+                const SizedBox(height: 8),
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: CircularProgressIndicator(
+                        color: PravaColors.accentPrimary,
+                      ),
+                    ),
+                  )
+                else if (rows.isEmpty)
+                  Text(
+                    'No receipt data yet',
+                    style: PravaTypography.body.copyWith(color: secondary),
+                  )
+                else
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: rows.length,
+                      itemBuilder: (context, index) {
+                        final row = rows[index];
+                        final userId = row['userId']?.toString() ?? '';
+                        final seen = row['seen'] == true;
+                        final delivered = row['delivered'] == true;
+                        final state = seen
+                            ? 'Seen'
+                            : delivered
+                            ? 'Delivered'
+                            : 'Pending';
+                        return ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            seen
+                                ? CupertinoIcons.eye_fill
+                                : delivered
+                                ? CupertinoIcons.check_mark_circled_solid
+                                : CupertinoIcons.clock,
+                            color: seen || delivered
+                                ? PravaColors.accentPrimary
+                                : secondary,
+                          ),
+                          title: Text(
+                            userId,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PravaTypography.body.copyWith(
+                              color: primary,
+                            ),
+                          ),
+                          trailing: Text(
+                            state,
+                            style: PravaTypography.caption.copyWith(
+                              color: secondary,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailMetricRow extends StatelessWidget {
+  const _DetailMetricRow({
+    required this.icon,
+    required this.title,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        children: [
+          Icon(icon, color: PravaColors.accentPrimary, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              style: PravaTypography.body.copyWith(color: primary),
+            ),
+          ),
+          Text(
+            value,
+            style: PravaTypography.caption.copyWith(color: secondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MessageSearchSheet extends StatefulWidget {
+  const _MessageSearchSheet({
+    required this.title,
+    required this.chatService,
+    required this.conversationId,
+    required this.currentUserId,
+    required this.onOpenDetails,
+  });
+
+  final String title;
+  final ChatService chatService;
+  final String conversationId;
+  final String? currentUserId;
+  final ValueChanged<ChatMessage> onOpenDetails;
+
+  @override
+  State<_MessageSearchSheet> createState() => _MessageSearchSheetState();
+}
+
+class _MessageSearchSheetState extends State<_MessageSearchSheet> {
+  final TextEditingController _controller = TextEditingController();
+  Timer? _debounce;
+  bool _loading = false;
+  List<ChatMessage> _results = <ChatMessage>[];
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    final query = value.trim();
+    if (query.length < 2) {
+      setState(() {
+        _loading = false;
+        _results = <ChatMessage>[];
+      });
+      return;
+    }
+    setState(() => _loading = true);
+    _debounce = Timer(const Duration(milliseconds: 360), () {
+      _runSearch(query);
+    });
+  }
+
+  Future<void> _runSearch(String query) async {
+    try {
+      final results = await widget.chatService.searchMessages(
+        conversationId: widget.conversationId,
+        query: query,
+        limit: 40,
+        currentUserId: widget.currentUserId,
+      );
+      if (!mounted || _controller.text.trim() != query) return;
+      setState(() {
+        _results = results;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _results = <ChatMessage>[];
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _MessageListSheetFrame(
+      title: widget.title,
+      child: Column(
+        children: [
+          CupertinoSearchTextField(
+            controller: _controller,
+            placeholder: 'Search messages',
+            onChanged: _onChanged,
+          ),
+          const SizedBox(height: 14),
+          if (_loading)
+            const Expanded(
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: PravaColors.accentPrimary,
+                ),
+              ),
+            )
+          else if (_controller.text.trim().length < 2)
+            const Expanded(
+              child: _SheetEmptyState(text: 'Type at least 2 characters'),
+            )
+          else if (_results.isEmpty)
+            const Expanded(child: _SheetEmptyState(text: 'No messages found'))
+          else
+            Expanded(
+              child: ListView.builder(
+                itemCount: _results.length,
+                itemBuilder: (context, index) => _MessageResultTile(
+                  message: _results[index],
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    widget.onOpenDetails(_results[index]);
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PinnedMessagesSheet extends StatelessWidget {
+  const _PinnedMessagesSheet({
+    required this.chatService,
+    required this.conversationId,
+    required this.currentUserId,
+    required this.onOpenDetails,
+  });
+
+  final ChatService chatService;
+  final String conversationId;
+  final String? currentUserId;
+  final ValueChanged<ChatMessage> onOpenDetails;
+
+  @override
+  Widget build(BuildContext context) {
+    return _MessageListSheetFrame(
+      title: 'Pinned messages',
+      child: FutureBuilder<List<ChatMessage>>(
+        future: chatService.listPinnedMessages(
+          conversationId: conversationId,
+          limit: 50,
+          currentUserId: currentUserId,
+        ),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(
+                color: PravaColors.accentPrimary,
+              ),
+            );
+          }
+          final messages = snapshot.data ?? <ChatMessage>[];
+          if (messages.isEmpty) {
+            return const _SheetEmptyState(text: 'No pinned messages');
+          }
+          return ListView.builder(
+            itemCount: messages.length,
+            itemBuilder: (context, index) => _MessageResultTile(
+              message: messages[index],
+              onTap: () {
+                Navigator.of(context).pop();
+                onOpenDetails(messages[index]);
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MessageListSheetFrame extends StatelessWidget {
+  const _MessageListSheetFrame({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark
+        ? PravaColors.darkBgElevated
+        : PravaColors.lightBgElevated;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+
+    return SafeArea(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.72,
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: border),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: PravaTypography.h3.copyWith(color: primary),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: Icon(CupertinoIcons.xmark, color: secondary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Expanded(child: child),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MessageResultTile extends StatelessWidget {
+  const _MessageResultTile({required this.message, required this.onTap});
+
+  final ChatMessage message;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final body = message.isDeleted
+        ? 'Message deleted'
+        : message.body.trim().isEmpty
+        ? 'Media attachment'
+        : message.body.trim();
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      onTap: onTap,
+      leading: Icon(
+        message.type == ChatMessageType.media
+            ? CupertinoIcons.photo_fill
+            : CupertinoIcons.text_bubble_fill,
+        color: PravaColors.accentPrimary,
+      ),
+      title: Text(
+        body,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: PravaTypography.body.copyWith(color: primary),
+      ),
+      subtitle: Text(
+        _compactDateTime(message.createdAt),
+        style: PravaTypography.caption.copyWith(color: secondary),
+      ),
+    );
+  }
+}
+
+class _SheetEmptyState extends StatelessWidget {
+  const _SheetEmptyState({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final secondary = Theme.of(context).brightness == Brightness.dark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    return Center(
+      child: Text(text, style: PravaTypography.body.copyWith(color: secondary)),
+    );
+  }
+}
+
+String _compactDateTime(DateTime value) {
+  final hour = value.hour.toString().padLeft(2, '0');
+  final minute = value.minute.toString().padLeft(2, '0');
+  return '${value.day}/${value.month}/${value.year} $hour:$minute';
 }
 
 class _EncryptionBanner extends StatelessWidget {
@@ -2069,10 +3160,13 @@ class _MessageBubble extends StatelessWidget {
             end: Alignment.bottomRight,
           )
         : null;
+    final isMedia = message.type == ChatMessageType.media;
     final displayBody = message.isDeleted
         ? 'Message deleted'
-        : (message.type == ChatMessageType.media
-              ? 'Media message'
+        : (isMedia
+              ? (message.body.trim().isEmpty
+                    ? 'Media attachment'
+                    : message.body)
               : (message.body.trim().isEmpty
                     ? 'Message unavailable'
                     : message.body));
@@ -2104,12 +3198,18 @@ class _MessageBubble extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            displayBody,
-            style: PravaTypography.body.copyWith(
+          if (isMedia && !message.isDeleted)
+            _MediaMessageContent(
+              label: displayBody,
               color: isOutgoing ? Colors.white : primary,
+            )
+          else
+            Text(
+              displayBody,
+              style: PravaTypography.body.copyWith(
+                color: isOutgoing ? Colors.white : primary,
+              ),
             ),
-          ),
           const SizedBox(height: 6),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -2241,6 +3341,40 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
+class _MediaMessageContent extends StatelessWidget {
+  const _MediaMessageContent({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(CupertinoIcons.photo_fill, size: 18, color: color),
+        ),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: PravaTypography.body.copyWith(color: color),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _StatusIcon extends StatelessWidget {
   const _StatusIcon({required this.status, required this.color});
 
@@ -2272,15 +3406,19 @@ class _ComposerBar extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.onEmoji,
+    required this.onAttach,
     required this.onSend,
     required this.onChanged,
+    required this.isUploading,
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
   final VoidCallback onEmoji;
+  final VoidCallback onAttach;
   final VoidCallback onSend;
   final ValueChanged<String> onChanged;
+  final bool isUploading;
 
   @override
   Widget build(BuildContext context) {
@@ -2315,6 +3453,10 @@ class _ComposerBar extends StatelessWidget {
                 child: Row(
                   children: [
                     _ComposerIcon(icon: CupertinoIcons.smiley, onTap: onEmoji),
+                    _ComposerIcon(
+                      icon: CupertinoIcons.paperclip,
+                      onTap: isUploading ? () {} : onAttach,
+                    ),
                     Expanded(
                       child: TextField(
                         controller: controller,
@@ -2335,6 +3477,18 @@ class _ComposerBar extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (isUploading)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 10),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: PravaColors.accentPrimary,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),

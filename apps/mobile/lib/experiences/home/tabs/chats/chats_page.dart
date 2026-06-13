@@ -39,6 +39,11 @@ ChatMessageType _parseContentType(String? value) {
     case 'system':
       return ChatMessageType.system;
     case 'media':
+    case 'image':
+    case 'video':
+    case 'file':
+    case 'audio':
+    case 'voice_note':
       return ChatMessageType.media;
     case 'text':
     default:
@@ -49,9 +54,11 @@ ChatMessageType _parseContentType(String? value) {
 enum _ChatListFilter {
   all,
   unread,
+  direct,
   favoriteGroups,
   groups,
   starred,
+  archived,
   broadcasts,
 }
 
@@ -169,7 +176,7 @@ class _ChatsPageState extends State<ChatsPage> {
     }
 
     try {
-      final data = await _chatService.listConversations();
+      final data = await _chatService.listConversations(includeArchived: true);
       if (!mounted) return;
 
       setState(() {
@@ -218,7 +225,10 @@ class _ChatsPageState extends State<ChatsPage> {
     final lastType = convo.lastMessageType;
     final isDeleted = convo.lastMessageDeletedForAllAt != null;
     final isEncrypted = _isEncryptedPayload(lastBody);
-    final lastMessage = isDeleted
+    final draftText = convo.draftText.trim();
+    final lastMessage = draftText.isNotEmpty
+        ? 'Draft: $draftText'
+        : isDeleted
         ? 'Message deleted'
         : (lastType == ChatMessageType.media
               ? 'Media message'
@@ -245,6 +255,8 @@ class _ChatsPageState extends State<ChatsPage> {
       isPinned: convo.isStarred,
       isFavorite: convo.isFavorite,
       isStarred: convo.isStarred,
+      isArchived: convo.isArchived,
+      draftText: draftText,
       isTyping: _typingTimers.containsKey(convo.id),
       peerUserId: convo.peerUserId,
       avatarUrl: convo.peerAvatarUrl,
@@ -293,12 +305,16 @@ class _ChatsPageState extends State<ChatsPage> {
         return 'No chats yet';
       case _ChatListFilter.unread:
         return 'No unread chats';
+      case _ChatListFilter.direct:
+        return 'No direct chats';
       case _ChatListFilter.favoriteGroups:
         return 'No favourite groups';
       case _ChatListFilter.groups:
         return 'No groups yet';
       case _ChatListFilter.starred:
         return 'No starred chats';
+      case _ChatListFilter.archived:
+        return 'No archived chats';
       case _ChatListFilter.broadcasts:
         return 'No broadcasts';
     }
@@ -310,29 +326,40 @@ class _ChatsPageState extends State<ChatsPage> {
         return 'Start a new conversation to see it here.';
       case _ChatListFilter.unread:
         return 'Unread messages will appear here.';
+      case _ChatListFilter.direct:
+        return 'One-to-one chats will appear here.';
       case _ChatListFilter.favoriteGroups:
         return 'Favourite group chats will appear here.';
       case _ChatListFilter.groups:
         return 'Create or join a group to see it here.';
       case _ChatListFilter.starred:
         return 'Starred chats will appear here.';
+      case _ChatListFilter.archived:
+        return 'Archived chats will appear here.';
       case _ChatListFilter.broadcasts:
         return 'Broadcast lists will appear here.';
     }
   }
 
   List<ChatPreview> _applyFilter(List<ChatPreview> chats) {
+    final activeChats = chats.where((chat) => !chat.isArchived).toList();
     switch (_filter) {
       case _ChatListFilter.all:
-        return chats;
+        return activeChats;
       case _ChatListFilter.unread:
-        return chats.where((chat) => chat.unreadCount > 0).toList();
+        return activeChats.where((chat) => chat.unreadCount > 0).toList();
+      case _ChatListFilter.direct:
+        return activeChats.where((chat) => !chat.isGroup).toList();
       case _ChatListFilter.favoriteGroups:
-        return chats.where((chat) => chat.isGroup && chat.isFavorite).toList();
+        return activeChats
+            .where((chat) => chat.isGroup && chat.isFavorite)
+            .toList();
       case _ChatListFilter.groups:
-        return chats.where((chat) => chat.isGroup).toList();
+        return activeChats.where((chat) => chat.isGroup).toList();
       case _ChatListFilter.starred:
-        return chats.where((chat) => chat.isStarred).toList();
+        return activeChats.where((chat) => chat.isStarred).toList();
+      case _ChatListFilter.archived:
+        return chats.where((chat) => chat.isArchived).toList();
       case _ChatListFilter.broadcasts:
         return <ChatPreview>[];
     }
@@ -627,10 +654,12 @@ class _ChatsPageState extends State<ChatsPage> {
     bool? isFavorite,
     bool? isStarred,
     bool? isMuted,
+    bool? isArchived,
   }) async {
     final nextFavorite = isFavorite ?? chat.isFavorite;
     final nextStarred = isStarred ?? chat.isStarred;
     final nextMuted = isMuted ?? chat.isMuted;
+    final nextArchived = isArchived ?? chat.isArchived;
 
     _updateChat(
       chat.id,
@@ -639,6 +668,7 @@ class _ChatsPageState extends State<ChatsPage> {
         isStarred: nextStarred,
         isPinned: nextStarred,
         isMuted: nextMuted,
+        isArchived: nextArchived,
       ),
     );
 
@@ -647,7 +677,7 @@ class _ChatsPageState extends State<ChatsPage> {
       isFavorite: nextFavorite,
       isStarred: nextStarred,
       isMuted: nextMuted,
-      isArchived: false,
+      isArchived: nextArchived,
     );
     if (!ok && mounted) {
       _updateChat(
@@ -657,15 +687,21 @@ class _ChatsPageState extends State<ChatsPage> {
           isStarred: chat.isStarred,
           isPinned: chat.isPinned,
           isMuted: chat.isMuted,
+          isArchived: chat.isArchived,
         ),
       );
     }
   }
 
-  Future<void> _archiveChat(ChatPreview chat) async {
+  Future<void> _setArchived(ChatPreview chat, bool archived) async {
     final previous = List<ChatPreview>.from(_chats);
     setState(() {
-      _chats = _chats.where((item) => item.id != chat.id).toList();
+      _chats = _chats
+          .map(
+            (item) =>
+                item.id == chat.id ? item.copyWith(isArchived: archived) : item,
+          )
+          .toList();
     });
 
     final ok = await _chatService.updatePreferences(
@@ -673,7 +709,7 @@ class _ChatsPageState extends State<ChatsPage> {
       isFavorite: chat.isFavorite,
       isStarred: chat.isStarred,
       isMuted: chat.isMuted,
-      isArchived: true,
+      isArchived: archived,
     );
     if (!ok && mounted) {
       setState(() => _chats = previous);
@@ -696,7 +732,7 @@ class _ChatsPageState extends State<ChatsPage> {
           ),
           CupertinoActionSheetAction(
             onPressed: () => Navigator.of(context).pop('archive'),
-            child: const Text('Archive chat'),
+            child: Text(chat.isArchived ? 'Unarchive chat' : 'Archive chat'),
           ),
         ];
         if (chat.isGroup) {
@@ -732,7 +768,7 @@ class _ChatsPageState extends State<ChatsPage> {
     } else if (action == 'mute') {
       _updateChatPreferences(chat, isMuted: !chat.isMuted);
     } else if (action == 'archive') {
-      _archiveChat(chat);
+      _setArchived(chat, !chat.isArchived);
     }
   }
 
@@ -860,7 +896,14 @@ class _ChatsPageState extends State<ChatsPage> {
                     ),
                     const SizedBox(width: 8),
                     _FilterChip(
-                      label: 'Favourite groups',
+                      label: 'Direct',
+                      selected: _filter == _ChatListFilter.direct,
+                      onTap: () =>
+                          setState(() => _filter = _ChatListFilter.direct),
+                    ),
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: 'Favourites',
                       selected: _filter == _ChatListFilter.favoriteGroups,
                       onTap: () => setState(
                         () => _filter = _ChatListFilter.favoriteGroups,
@@ -872,6 +915,20 @@ class _ChatsPageState extends State<ChatsPage> {
                       selected: _filter == _ChatListFilter.groups,
                       onTap: () =>
                           setState(() => _filter = _ChatListFilter.groups),
+                    ),
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: 'Starred',
+                      selected: _filter == _ChatListFilter.starred,
+                      onTap: () =>
+                          setState(() => _filter = _ChatListFilter.starred),
+                    ),
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: 'Archived',
+                      selected: _filter == _ChatListFilter.archived,
+                      onTap: () =>
+                          setState(() => _filter = _ChatListFilter.archived),
                     ),
                   ],
                 ),
@@ -1237,6 +1294,8 @@ class ChatPreview {
   final bool isPinned;
   final bool isFavorite;
   final bool isStarred;
+  final bool isArchived;
+  final String draftText;
   final bool isTyping;
   final String peerUserId;
   final String avatarUrl;
@@ -1260,6 +1319,8 @@ class ChatPreview {
     required this.isPinned,
     this.isFavorite = false,
     this.isStarred = false,
+    this.isArchived = false,
+    this.draftText = '',
     required this.isTyping,
     this.peerUserId = '',
     this.avatarUrl = '',
@@ -1282,6 +1343,8 @@ class ChatPreview {
     bool? isPinned,
     bool? isFavorite,
     bool? isStarred,
+    bool? isArchived,
+    String? draftText,
     bool? isTyping,
     String? peerUserId,
     String? avatarUrl,
@@ -1305,6 +1368,8 @@ class ChatPreview {
       isPinned: isPinned ?? this.isPinned,
       isFavorite: isFavorite ?? this.isFavorite,
       isStarred: isStarred ?? this.isStarred,
+      isArchived: isArchived ?? this.isArchived,
+      draftText: draftText ?? this.draftText,
       isTyping: isTyping ?? this.isTyping,
       peerUserId: peerUserId ?? this.peerUserId,
       avatarUrl: avatarUrl ?? this.avatarUrl,

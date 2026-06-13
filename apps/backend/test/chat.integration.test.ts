@@ -98,12 +98,15 @@ let wsBaseUrl = "";
 let closePg: (() => Promise<void>) | null = null;
 let userAToken = "";
 let userBToken = "";
+let userCToken = "";
 let userAId = "";
 let userBId = "";
+let userCId = "";
 
 before(async () => {
   userAId = `u_${Date.now()}_a`;
   userBId = `u_${Date.now()}_b`;
+  userCId = `u_${Date.now()}_c`;
 
   process.env.NODE_ENV = "test";
   process.env.JWT_SECRET = process.env.JWT_SECRET || "test_jwt_secret_key";
@@ -124,13 +127,15 @@ before(async () => {
        display_name_lower, password_hash, is_verified, created_at, updated_at
      )
      VALUES
-       ($1, 'usera@example.com', 'usera@example.com', 'usera_test', 'usera_test', 'User A', 'user a', 'scrypt$dummy$dummy', TRUE, $3, $3),
-       ($2, 'userb@example.com', 'userb@example.com', 'userb_test', 'userb_test', 'User B', 'user b', 'scrypt$dummy$dummy', TRUE, $3, $3)`,
-    [userAId, userBId, now]
+       ($1, 'usera@example.com', 'usera@example.com', 'usera_test', 'usera_test', 'User A', 'user a', 'scrypt$dummy$dummy', TRUE, $4, $4),
+       ($2, 'userb@example.com', 'userb@example.com', 'userb_test', 'userb_test', 'User B', 'user b', 'scrypt$dummy$dummy', TRUE, $4, $4),
+       ($3, 'userc@example.com', 'userc@example.com', 'userc_test', 'userc_test', 'User C', 'user c', 'scrypt$dummy$dummy', TRUE, $4, $4)`,
+    [userAId, userBId, userCId, now]
   );
 
   userAToken = signAccessToken(userAId);
   userBToken = signAccessToken(userBId);
+  userCToken = signAccessToken(userCId);
 
   const chatService = (await import("../src/services/chat/index.js")).default;
   const realtimeService = (await import("../src/services/realtime/index.js")).default;
@@ -347,6 +352,149 @@ test("chat routes: dm create, send message, read + delivery + sync", async () =>
   assert.equal(sync.data.conversations.length, 1);
   assert.equal(sync.data.conversations[0].conversationId, conversationId);
   assert.equal(sync.data.conversations[0].messages.length, 1);
+
+  const settingsBefore = await httpJson<{ readReceipts: boolean; archivedBehavior: string }>(
+    baseUrl,
+    "/api/conversations/settings",
+    { token: userBToken }
+  );
+  assert.equal(settingsBefore.status, 200);
+  assert.equal(settingsBefore.data.readReceipts, true);
+  assert.equal(settingsBefore.data.archivedBehavior, "keep_archived");
+
+  const settingsPatch = await httpJson<{ success: boolean; settings: { chatReadReceipts: boolean; chatArchivedBehavior: string } }>(
+    baseUrl,
+    "/api/conversations/settings",
+    {
+      method: "PATCH",
+      token: userBToken,
+      body: {
+        readReceipts: false,
+        archivedBehavior: "unarchive_on_message",
+      },
+    }
+  );
+  assert.equal(settingsPatch.status, 200);
+  assert.equal(settingsPatch.data.success, true);
+  assert.equal(settingsPatch.data.settings.chatReadReceipts, false);
+  assert.equal(settingsPatch.data.settings.chatArchivedBehavior, "unarchive_on_message");
+
+  const preferences = await httpJson<{ success: boolean; preferences: { isArchived: boolean; draftText: string } }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/preferences`,
+    {
+      method: "PUT",
+      token: userBToken,
+      body: {
+        isArchived: true,
+        draftText: "draft note",
+      },
+    }
+  );
+  assert.equal(preferences.status, 200);
+  assert.equal(preferences.data.success, true);
+  assert.equal(preferences.data.preferences.isArchived, true);
+  assert.equal(preferences.data.preferences.draftText, "draft note");
+
+  const activeAfterArchive = await httpJson<Array<{ id: string }>>(
+    baseUrl,
+    "/api/conversations",
+    { token: userBToken }
+  );
+  assert.equal(activeAfterArchive.status, 200);
+  assert.equal(activeAfterArchive.data.find((item) => item.id === conversationId), undefined);
+
+  const archived = await httpJson<Array<{ id: string; draftText: string; isArchived: boolean }>>(
+    baseUrl,
+    "/api/conversations?archived=true",
+    { token: userBToken }
+  );
+  assert.equal(archived.status, 200);
+  const archivedRow = archived.data.find((item) => item.id === conversationId);
+  assert.ok(archivedRow);
+  assert.equal(archivedRow.isArchived, true);
+  assert.equal(archivedRow.draftText, "draft note");
+
+  const markUnread = await httpJson<{ success: boolean; unreadCount: number }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/mark-unread`,
+    {
+      method: "POST",
+      token: userBToken,
+      body: {},
+    }
+  );
+  assert.equal(markUnread.status, 200);
+  assert.equal(markUnread.data.unreadCount, 1);
+
+  const includeArchivedAfterMarkUnread = await httpJson<Array<{ id: string; unreadCount: number; markedUnread: boolean }>>(
+    baseUrl,
+    "/api/conversations?includeArchived=true",
+    { token: userBToken }
+  );
+  assert.equal(includeArchivedAfterMarkUnread.status, 200);
+  const markedUnreadRow = includeArchivedAfterMarkUnread.data.find((item) => item.id === conversationId);
+  assert.ok(markedUnreadRow);
+  assert.equal(markedUnreadRow.markedUnread, true);
+  assert.equal(markedUnreadRow.unreadCount, 1);
+
+  const search = await httpJson<{ results: Array<{ messageId: string }> }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/search?q=route`,
+    { token: userBToken }
+  );
+  assert.equal(search.status, 200);
+  assert.equal(search.data.results.length, 1);
+
+  const pin = await httpJson<{ success: boolean; messageId: string }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/messages/${sendMessage.data.message.messageId}/pin`,
+    {
+      method: "POST",
+      token: userBToken,
+      body: {},
+    }
+  );
+  assert.equal(pin.status, 200);
+  assert.equal(pin.data.success, true);
+
+  const pinned = await httpJson<Array<{ messageId: string; pinnedByUserId: string }>>(
+    baseUrl,
+    `/api/conversations/${conversationId}/pinned-messages`,
+    { token: userBToken }
+  );
+  assert.equal(pinned.status, 200);
+  assert.equal(pinned.data[0]?.messageId, sendMessage.data.message.messageId);
+  assert.equal(pinned.data[0]?.pinnedByUserId, userBId);
+
+  const details = await httpJson<{ message: { messageId: string }; receipts: Array<{ userId: string; seen: boolean }> }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/messages/${sendMessage.data.message.messageId}/details`,
+    { token: userAToken }
+  );
+  assert.equal(details.status, 200);
+  assert.equal(details.data.message.messageId, sendMessage.data.message.messageId);
+  assert.equal(details.data.receipts.find((item) => item.userId === userBId)?.seen, true);
+
+  const report = await httpJson<{ success: boolean; reportId: string; status: string }>(
+    baseUrl,
+    "/api/conversations/report",
+    {
+      method: "POST",
+      token: userBToken,
+      body: {
+        conversationId,
+        messageId: sendMessage.data.message.messageId,
+        reportedUserId: userAId,
+        reason: "spam",
+        details: "test report",
+      },
+    }
+  );
+  assert.equal(report.status, 200);
+  assert.equal(report.data.success, true);
+  assert.ok(report.data.reportId);
+  assert.equal(report.data.status, "open");
 });
 
 test("username availability: taken and available", async () => {
@@ -369,6 +517,175 @@ test("username availability: taken and available", async () => {
     "/api/users/username-available?username=ab"
   );
   assert.equal(invalid.status, 400);
+});
+
+test("chat groups: invite approvals, role updates, and attachment lifecycle", async () => {
+  const groupCreate = await httpJson<{ conversationId: string }>(
+    baseUrl,
+    "/api/conversations/group",
+    {
+      method: "POST",
+      token: userAToken,
+      body: { title: "Invite test group", memberIds: [userBId] },
+    }
+  );
+  assert.equal(groupCreate.status, 200, JSON.stringify(groupCreate.data));
+  const conversationId = groupCreate.data.conversationId;
+  assert.ok(conversationId);
+
+  const promote = await httpJson<{ success: boolean; role: string }>(
+    baseUrl,
+    `/api/conversations/groups/${conversationId}/members/${userBId}/role`,
+    {
+      method: "PATCH",
+      token: userAToken,
+      body: { role: "admin" },
+    }
+  );
+  assert.equal(promote.status, 200, JSON.stringify(promote.data));
+  assert.equal(promote.data.success, true);
+  assert.equal(promote.data.role, "admin");
+
+  const invite = await httpJson<{ invite: { inviteId: string; inviteToken: string; requiresApproval: boolean } }>(
+    baseUrl,
+    `/api/conversations/groups/${conversationId}/invites`,
+    {
+      method: "POST",
+      token: userBToken,
+      body: { requiresApproval: true, maxUses: 5, expiresInHours: 24 },
+    }
+  );
+  assert.equal(invite.status, 200, JSON.stringify(invite.data));
+  assert.ok(invite.data.invite.inviteId);
+  assert.ok(invite.data.invite.inviteToken);
+  assert.equal(invite.data.invite.requiresApproval, true);
+
+  const join = await httpJson<{ status: string; request: { requestId: string; requesterUserId: string } }>(
+    baseUrl,
+    `/api/conversations/groups/join/${invite.data.invite.inviteToken}`,
+    {
+      method: "POST",
+      token: userCToken,
+      body: {},
+    }
+  );
+  assert.equal(join.status, 200, JSON.stringify(join.data));
+  assert.equal(join.data.status, "pending");
+  assert.equal(join.data.request.requesterUserId, userCId);
+
+  const requests = await httpJson<{ items: Array<{ requestId: string; requesterUserId: string }> }>(
+    baseUrl,
+    `/api/conversations/groups/${conversationId}/join-requests`,
+    { token: userAToken }
+  );
+  assert.equal(requests.status, 200);
+  assert.equal(requests.data.items[0]?.requestId, join.data.request.requestId);
+
+  const approve = await httpJson<{ success: boolean; status: string; userId: string }>(
+    baseUrl,
+    `/api/conversations/groups/${conversationId}/join-requests/${join.data.request.requestId}/approve`,
+    {
+      method: "POST",
+      token: userAToken,
+      body: {},
+    }
+  );
+  assert.equal(approve.status, 200, JSON.stringify(approve.data));
+  assert.equal(approve.data.success, true);
+  assert.equal(approve.data.status, "approved");
+  assert.equal(approve.data.userId, userCId);
+
+  const listForC = await httpJson<Array<{ id: string }>>(
+    baseUrl,
+    "/api/conversations",
+    { token: userCToken }
+  );
+  assert.equal(listForC.status, 200);
+  assert.ok(listForC.data.some((item) => item.id === conversationId));
+
+  const attachmentInit = await httpJson<{
+    attachmentId: string;
+    uploadSessionId: string;
+    uploadUrl: string;
+  }>(
+    baseUrl,
+    "/api/conversations/attachments/upload-init",
+    {
+      method: "POST",
+      token: userAToken,
+      body: {
+        conversationId,
+        fileName: "photo.png",
+        mimeType: "image/png",
+        byteSize: 2048,
+      },
+    }
+  );
+  assert.equal(attachmentInit.status, 200, JSON.stringify(attachmentInit.data));
+  assert.equal(attachmentInit.data.uploadUrl, "/api/media/upload");
+
+  const pgLib = await import("../src/lib/pg.js");
+  const mediaAssetId = `asset_${Date.now()}_chat`;
+  await pgLib.query(
+    `INSERT INTO media_assets (
+       asset_id, user_id, public_id, url, secure_url, resource_type,
+       format, width, height, bytes, folder, context, created_at
+     )
+     VALUES ($1, $2, $3, $4, $5, 'image', 'png', 32, 32, 2048, 'chat', 'chat_attachment', NOW())`,
+    [
+      mediaAssetId,
+      userAId,
+      `public_${mediaAssetId}`,
+      `https://cdn.example.com/${mediaAssetId}.png`,
+      `https://cdn.example.com/${mediaAssetId}.png`,
+    ]
+  );
+
+  const attachmentComplete = await httpJson<{ success: boolean; attachment: { status: string; mediaAssetId: string } }>(
+    baseUrl,
+    "/api/conversations/attachments/upload-complete",
+    {
+      method: "POST",
+      token: userAToken,
+      body: {
+        attachmentId: attachmentInit.data.attachmentId,
+        uploadSessionId: attachmentInit.data.uploadSessionId,
+        mediaAssetId,
+      },
+    }
+  );
+  assert.equal(attachmentComplete.status, 200, JSON.stringify(attachmentComplete.data));
+  assert.equal(attachmentComplete.data.success, true);
+  assert.equal(attachmentComplete.data.attachment.status, "ready");
+  assert.equal(attachmentComplete.data.attachment.mediaAssetId, mediaAssetId);
+
+  const mediaMessage = await httpJson<{ message: { contentType: string; mediaAssetId: string } }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/messages`,
+    {
+      method: "POST",
+      token: userAToken,
+      body: {
+        body: "",
+        contentType: "image",
+        deviceId: "device-a",
+        mediaAssetId,
+        clientMessageId: "00000000-0000-4000-8000-000000000202",
+      },
+    }
+  );
+  assert.equal(mediaMessage.status, 200, JSON.stringify(mediaMessage.data));
+  assert.equal(mediaMessage.data.message.contentType, "image");
+  assert.equal(mediaMessage.data.message.mediaAssetId, mediaAssetId);
+
+  const attachments = await httpJson<{ items: Array<{ mediaAssetId: string; status: string }> }>(
+    baseUrl,
+    `/api/conversations/${conversationId}/attachments?type=image`,
+    { token: userBToken }
+  );
+  assert.equal(attachments.status, 200);
+  assert.equal(attachments.data.items[0]?.mediaAssetId, mediaAssetId);
+  assert.equal(attachments.data.items[0]?.status, "attached");
 });
 
 test("realtime plugin does not handle plain root requests", async () => {

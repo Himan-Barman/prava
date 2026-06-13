@@ -46,7 +46,16 @@ function send(connection: RealtimeConnection, type: string, payload: unknown): v
   }
 
   try {
-    connection.socket.send(JSON.stringify({ type, payload }));
+    connection.socket.send(
+      JSON.stringify({
+        type,
+        event_type: type,
+        version: 1,
+        event_id: randomUUID(),
+        timestamp: new Date().toISOString(),
+        payload,
+      })
+    );
   } catch {
     // ignore transport errors
   }

@@ -17,9 +17,7 @@ class MediaAsset {
   factory MediaAsset.fromJson(Map<String, dynamic> json) {
     return MediaAsset(
       assetId: json['assetId']?.toString() ?? '',
-      secureUrl: json['secureUrl']?.toString() ??
-          json['url']?.toString() ??
-          '',
+      secureUrl: json['secureUrl']?.toString() ?? json['url']?.toString() ?? '',
       width: json['width'] is int
           ? json['width'] as int
           : int.tryParse(json['width']?.toString() ?? ''),
@@ -32,7 +30,7 @@ class MediaAsset {
 
 class MediaService {
   MediaService({SecureStore? store})
-      : _client = ApiClient(store ?? SecureStore());
+    : _client = ApiClient(store ?? SecureStore());
 
   final ApiClient _client;
 
@@ -47,6 +45,27 @@ class MediaService {
         'dataUri': dataUri,
         'resourceType': 'image',
         'folder': 'prava/profile',
+        'context': context,
+      },
+    );
+    final payload = data is Map<String, dynamic>
+        ? data['asset'] as Map<String, dynamic>? ?? {}
+        : <String, dynamic>{};
+    return MediaAsset.fromJson(payload);
+  }
+
+  Future<MediaAsset> uploadChatMedia({
+    required String dataUri,
+    required String resourceType,
+    String context = 'chat_attachment',
+  }) async {
+    final data = await _client.post(
+      '/media/upload',
+      auth: true,
+      body: {
+        'dataUri': dataUri,
+        'resourceType': resourceType,
+        'folder': 'prava/chat',
         'context': context,
       },
     );
