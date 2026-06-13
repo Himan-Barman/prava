@@ -86,7 +86,7 @@ export default function LandingPage() {
   }, []);
 
   const features = [
-    { icon: MessageCircle, title: 'Encrypted Chats', desc: 'End-to-end encrypted messaging with Double Ratchet protocol. Your conversations stay truly private.', accent: 'linear-gradient(135deg, #5B8CFF, #8FA9FF)' },
+    { icon: MessageCircle, title: 'Encrypted Chats', desc: 'End-to-end encrypted messaging with Double Ratchet protocol. Your conversations stay truly private.', accent: 'linear-gradient(135deg, #3D63F0, #7E9FFF)' },
     { icon: Users, title: 'Social Feed', desc: 'Share moments with your circle. A beautifully crafted feed experience designed for genuine connections.', accent: 'linear-gradient(135deg, #3CCB7F, #5EDBA0)' },
     { icon: Radio, title: 'Broadcasts', desc: 'Reach your audience with powerful broadcast channels. Share updates with everyone who matters.', accent: 'linear-gradient(135deg, #F4C430, #FFD966)' },
     { icon: Shield, title: 'Security Center', desc: 'Full control over your security. Device management, blocked accounts, and threat monitoring built in.', accent: 'linear-gradient(135deg, #E5533D, #FF7B6B)' },
@@ -155,7 +155,7 @@ export default function LandingPage() {
         </div>
 
         {/* Hero bottom fade */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#0C0C0C] to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#080D14] to-transparent" />
       </motion.section>
 
       {/* ═══ FEATURES ═══ */}
@@ -177,7 +177,7 @@ export default function LandingPage() {
 
       {/* ═══ SECURITY ═══ */}
       <section className="landing-section relative">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#5B8CFF]/[0.03] to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#3D63F0]/[0.03] to-transparent pointer-events-none" />
         <div className="landing-container relative z-10">
           <Reveal>
             <p className="landing-section-label">Security</p>

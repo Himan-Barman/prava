@@ -7,9 +7,11 @@ import { ApiException } from '../../adapters/api-client';
 import { smartToast } from '../../ui-system/components/SmartToast';
 import { AuthFrame, AuthSubmitButton } from './AuthFrame';
 
+const IS_DEV = import.meta.env.DEV;
+
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, setUser } = useAuth();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -49,6 +51,18 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDemoLogin = () => {
+    setUser({
+      id: 'demo-user-001',
+      email: 'demo@prava.app',
+      username: 'demouser',
+      displayName: 'Demo User',
+      isVerified: true,
+    });
+    smartToast.success('Logged in as Demo User');
+    navigate('/feed');
   };
 
   return (
@@ -97,6 +111,26 @@ export default function LoginPage() {
 
         <AuthSubmitButton label="Sign In" loading={loading} disabled={!canSubmit} />
       </form>
+
+      {IS_DEV && (
+        <>
+          <div className="auth-divider">
+            <span>dev only</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleDemoLogin}
+            id="demo-login-btn"
+            className="auth-submit"
+            style={{
+              background: 'linear-gradient(135deg, #137A50 0%, #14845D 100%)',
+              boxShadow: '0 8px 28px rgba(19, 122, 80, 0.28)',
+            }}
+          >
+            Demo Login (Skip Auth)
+          </button>
+        </>
+      )}
 
       <div className="auth-divider">
         <span>or</span>

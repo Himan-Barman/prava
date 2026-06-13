@@ -77,7 +77,7 @@
 }
 .p-btn--primary {
   background: var(--p-brand);
-  color: var(--p-text-inverse);
+  color: #FFFFFF;
 }
 .p-btn--primary:hover:not(:disabled) { background: var(--p-brand-hover); }
 .p-btn--primary:active:not(:disabled) { background: var(--p-brand-active); }
@@ -226,7 +226,7 @@
   font-weight: var(--p-weight-bold);
   line-height: 1.4;
 }
-.p-badge--primary { background: var(--p-brand); color: var(--p-text-inverse); }
+.p-badge--primary { background: var(--p-brand); color: #FFFFFF; }
 .p-badge--success { background: var(--p-success-subtle); color: var(--p-success); }
 .p-badge--warning { background: var(--p-warning-subtle); color: var(--p-warning); }
 .p-badge--danger { background: var(--p-danger-subtle); color: var(--p-danger); }
@@ -267,7 +267,7 @@
 .p-tab:hover:not(.p-tab--active) { background: var(--p-bg-hover); }
 .p-tab--active {
   background: var(--p-brand);
-  color: var(--p-text-inverse);
+  color: #FFFFFF;
 }
 .p-tab__count {
   font-size: var(--p-text-section-title);

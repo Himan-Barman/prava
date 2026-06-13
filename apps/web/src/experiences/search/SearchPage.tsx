@@ -308,7 +308,7 @@ function HashtagResults({ hashtags, onOpen }: { hashtags: SmartHashtagResult[]; 
           className="app-list-item"
           style={{ textDecoration: 'none' }}
         >
-          <div className="app-list-item__avatar" style={{ background: 'rgba(91,140,255,0.1)', color: '#5B8CFF' }}>
+          <div className="app-list-item__avatar" style={{ background: 'var(--p-brand-subtle)', color: 'var(--p-brand)' }}>
             <Hash size={16} />
           </div>
           <div className="app-list-item__body">

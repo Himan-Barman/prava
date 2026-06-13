@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/auth-context';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Bell, Edit3, Menu, MoreVertical, Search } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { LenisProvider } from './LenisProvider';
@@ -116,21 +116,18 @@ export default function AppShell({ children }: AppShellProps) {
             paddingBottom: isMainTabRoute ? 78 : 0,
           }}
         >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              className="prava-app-content"
-              style={{
-                padding: '8px 16px 16px',
-              }}
-            >
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="prava-app-content"
+            style={{
+              padding: '8px 16px 16px',
+            }}
+          >
               {children}
-            </motion.div>
-          </AnimatePresence>
+          </motion.div>
         </main>
       </div>
     </LenisProvider>

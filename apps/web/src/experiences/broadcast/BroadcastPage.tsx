@@ -27,7 +27,7 @@ export default function BroadcastPage() {
           border: '1px solid rgba(91,140,255,0.12)',
         }}
       >
-        <Lock size={16} style={{ color: '#5B8CFF', flexShrink: 0, marginTop: 1 }} />
+        <Lock size={16} style={{ color: 'var(--p-brand)', flexShrink: 0, marginTop: 1 }} />
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
           Broadcast messages are individually encrypted for each recipient. Only they can read the message.
         </p>

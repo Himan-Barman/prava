@@ -15,7 +15,7 @@ function AuthParticles() {
           style={{
             width: 3 + Math.random() * 4,
             height: 3 + Math.random() * 4,
-            background: `rgba(91, 140, 255, ${0.12 + Math.random() * 0.18})`,
+            background: `rgba(61, 99, 240, ${0.12 + Math.random() * 0.18})`,
             left: `${10 + Math.random() * 80}%`,
             top: `${10 + Math.random() * 80}%`,
           }}
@@ -120,7 +120,7 @@ export function AuthFrame({
         >
           {/* Badge */}
           <div className="auth-badge">
-            <Sparkles size={13} className="text-[#5B8CFF]" />
+            <Sparkles size={13} className="text-prava-accent" />
             <span>Secure Access</span>
           </div>
 
@@ -138,7 +138,7 @@ export function AuthFrame({
         {footer || (
           <>
             <div className="auth-footer-left">
-              <Lock size={13} className="text-[#5B8CFF]" />
+              <Lock size={13} className="text-prava-accent" />
               <span>End-to-end encrypted</span>
             </div>
             <span>© {new Date().getFullYear()} Prava</span>

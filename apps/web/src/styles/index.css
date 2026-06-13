@@ -1263,7 +1263,7 @@ html, body, #root {
   font-family: inherit;
 }
 .app-tab--active {
-  background: var(--p-brand); color: var(--p-text-inverse);
+  background: var(--p-brand); color: #FFFFFF;
 }
 .app-tab__count {
   font-size: 20px; font-weight: 800; line-height: 1;
@@ -1294,7 +1294,7 @@ html, body, #root {
   width: 40px; height: 40px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 15px; font-weight: 700; flex-shrink: 0;
-  background: var(--p-brand); color: var(--p-text-inverse);
+  background: var(--p-brand); color: #FFFFFF;
 }
 .app-list-item__body {
   flex: 1; min-width: 0;
@@ -1322,7 +1322,7 @@ html, body, #root {
   font-family: inherit;
 }
 .app-btn--primary {
-  background: var(--p-brand); color: var(--p-text-inverse);
+  background: var(--p-brand); color: #FFFFFF;
 }
 .app-btn--primary:hover { opacity: 0.88; }
 .app-btn--ghost {

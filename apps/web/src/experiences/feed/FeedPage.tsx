@@ -449,7 +449,7 @@ export default function FeedPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 24, scale: 0.98 }}
               transition={{ type: 'spring', damping: 28, stiffness: 340 }}
-              className="w-full max-w-2xl rounded-[28px] bg-white dark:bg-[#1D1D1D] p-5 shadow-[0_28px_70px_rgba(0,0,0,0.34)]"
+              className="w-full max-w-2xl rounded-[28px] bg-white dark:bg-[var(--p-bg-surface-elevated)] p-5 shadow-[0_28px_70px_rgba(0,0,0,0.34)]"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mb-5 flex items-center justify-between">
