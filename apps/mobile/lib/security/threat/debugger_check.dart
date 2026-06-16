@@ -25,18 +25,15 @@ final class DebuggerCheck {
 
     checks['debug_mode'] = _isDebugMode();
 
-    final isBeingDebugged = checks. values.any((v) => v);
+    final isBeingDebugged = checks.values.any((v) => v);
 
-    return DebugCheckResult(
-      isBeingDebugged: isBeingDebugged,
-      checks: checks,
-    );
+    return DebugCheckResult(isBeingDebugged: isBeingDebugged, checks: checks);
   }
 
   /// Quick check
   static Future<bool> isBeingDebugged() async {
     final result = await check();
-    return result. isBeingDebugged;
+    return result.isBeingDebugged;
   }
 
   static Future<bool> _checkTracerPid() async {
@@ -44,7 +41,7 @@ final class DebuggerCheck {
       final status = await File('/proc/self/status').readAsString();
       final match = RegExp(r'TracerPid:\s*(\d+)').firstMatch(status);
       if (match != null) {
-        final pid = int.tryParse(match. group(1) ?? '0') ?? 0;
+        final pid = int.tryParse(match.group(1) ?? '0') ?? 0;
         return pid != 0;
       }
     } catch (_) {}
@@ -95,14 +92,12 @@ class DebugCheckResult {
   final bool isBeingDebugged;
   final Map<String, bool> checks;
 
-  const DebugCheckResult({
-    required this.isBeingDebugged,
-    required this.checks,
-  });
+  const DebugCheckResult({required this.isBeingDebugged, required this.checks});
 
   List<String> get detectedMethods =>
       checks.entries.where((e) => e.value).map((e) => e.key).toList();
 
   @override
-  String toString() => 'DebugCheckResult(debugging: $isBeingDebugged, methods: $detectedMethods)';
+  String toString() =>
+      'DebugCheckResult(debugging: $isBeingDebugged, methods: $detectedMethods)';
 }

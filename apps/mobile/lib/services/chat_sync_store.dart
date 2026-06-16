@@ -35,10 +35,7 @@ class ChatSyncStore {
     return state[conversationId] ?? 0;
   }
 
-  Future<void> updateLastDeliveredSeq(
-    String conversationId,
-    int seq,
-  ) async {
+  Future<void> updateLastDeliveredSeq(String conversationId, int seq) async {
     if (conversationId.isEmpty || seq <= 0) return;
     final state = await getLastDeliveredMap();
     final current = state[conversationId] ?? 0;

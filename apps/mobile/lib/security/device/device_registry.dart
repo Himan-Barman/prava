@@ -32,7 +32,7 @@ final class DeviceRegistry {
   }
 
   /// Get device by ID
-  DeviceIdentity?  get(String deviceId) => _devices[deviceId];
+  DeviceIdentity? get(String deviceId) => _devices[deviceId];
 
   /// Check if device exists
   bool hasDevice(String deviceId) => _devices.containsKey(deviceId);
@@ -52,7 +52,7 @@ final class DeviceRegistry {
   }
 
   /// Remove a device completely
-  DeviceIdentity?  remove(String deviceId) {
+  DeviceIdentity? remove(String deviceId) {
     return _devices.remove(deviceId);
   }
 
@@ -66,11 +66,11 @@ final class DeviceRegistry {
 
   /// Get all devices
   List<DeviceIdentity> get allDevices =>
-      UnmodifiableListView(_devices.values. toList());
+      UnmodifiableListView(_devices.values.toList());
 
   /// Get trusted devices (can receive)
   List<DeviceIdentity> get trustedDevices =>
-      UnmodifiableListView(_devices. values.where((d) => d.canReceive).toList());
+      UnmodifiableListView(_devices.values.where((d) => d.canReceive).toList());
 
   /// Get active devices (can send)
   List<DeviceIdentity> get activeDevices =>
@@ -78,13 +78,12 @@ final class DeviceRegistry {
 
   /// Get primary device
   DeviceIdentity? get primaryDevice =>
-      _devices. values.where((d) => d.trust == DeviceTrust.primary).firstOrNull;
+      _devices.values.where((d) => d.trust == DeviceTrust.primary).firstOrNull;
 
   /// Get revoked devices
-  List<DeviceIdentity> get revokedDevices =>
-      UnmodifiableListView(
-        _devices. values.where((d) => d.trust == DeviceTrust.revoked).toList(),
-      );
+  List<DeviceIdentity> get revokedDevices => UnmodifiableListView(
+    _devices.values.where((d) => d.trust == DeviceTrust.revoked).toList(),
+  );
 
   /// Clear all devices
   void clear() {
@@ -93,24 +92,25 @@ final class DeviceRegistry {
 
   /// Serialize to JSON
   Map<String, dynamic> toJson() => {
-        'userId': _userId,
-        'devices': _devices. map((k, v) => MapEntry(k, v.toJson())),
-      };
+    'userId': _userId,
+    'devices': _devices.map((k, v) => MapEntry(k, v.toJson())),
+  };
 
   /// Deserialize from JSON
   factory DeviceRegistry.fromJson(Map<String, dynamic> json) {
     final registry = DeviceRegistry(json['userId'] as String);
     final devices = json['devices'] as Map<String, dynamic>;
-    
+
     for (final entry in devices.entries) {
       registry._devices[entry.key] = DeviceIdentity.fromJson(
         entry.value as Map<String, dynamic>,
       );
     }
-    
+
     return registry;
   }
 
   @override
-  String toString() => 'DeviceRegistry(userId: $_userId, devices: $deviceCount)';
+  String toString() =>
+      'DeviceRegistry(userId: $_userId, devices: $deviceCount)';
 }

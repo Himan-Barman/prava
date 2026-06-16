@@ -306,7 +306,8 @@ class _SignupScreenState extends State<SignupScreen> {
                                           children: [
                                             Text(
                                               "Create your account",
-                                              style: PravaTypography.h1
+                                              style: PravaTypography
+                                                  .displayMedium
                                                   .copyWith(
                                                     letterSpacing: -0.6,
                                                     color: primaryText,
@@ -315,7 +316,7 @@ class _SignupScreenState extends State<SignupScreen> {
                                             const SizedBox(height: 8),
                                             Text(
                                               "Secure signup with verified email and device-bound sessions.",
-                                              style: PravaTypography.body
+                                              style: PravaTypography.bodyMedium
                                                   .copyWith(
                                                     color: secondaryText,
                                                   ),
@@ -411,7 +412,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   children: [
                     Text(
                       "Prava ID",
-                      style: PravaTypography.label.copyWith(
+                      style: PravaTypography.chipLabel.copyWith(
                         color: tertiaryText,
                         fontWeight: FontWeight.w600,
                       ),
@@ -422,15 +423,13 @@ class _SignupScreenState extends State<SignupScreen> {
                       focusNode: _usernameFocus,
                       inputFormatters: _usernameFormatters,
                       primaryText: primaryText,
-                      tertiaryText: tertiaryText,
-                      isDark: isDark,
                       status: usernameStatus,
                       onSubmitted: () => _emailFocus.requestFocus(),
                     ),
                     const SizedBox(height: 16),
                     Text(
                       "Email address",
-                      style: PravaTypography.label.copyWith(
+                      style: PravaTypography.chipLabel.copyWith(
                         color: tertiaryText,
                         fontWeight: FontWeight.w600,
                       ),
@@ -440,6 +439,10 @@ class _SignupScreenState extends State<SignupScreen> {
                       hint: "Email address",
                       controller: _emailController,
                       focusNode: _emailFocus,
+                      fieldType: PravaInputFieldType.email,
+                      variant: PravaInputVariant.auth,
+                      prefixIcon: const Icon(Icons.mail_rounded),
+                      showClearButton: true,
                       keyboardType: TextInputType.emailAddress,
                       autofillHints: const [AutofillHints.email],
                       suffixIcon: emailSuffix,
@@ -543,8 +546,6 @@ class _UsernameField extends StatelessWidget {
     required this.focusNode,
     required this.inputFormatters,
     required this.primaryText,
-    required this.tertiaryText,
-    required this.isDark,
     required this.status,
     required this.onSubmitted,
   });
@@ -553,8 +554,6 @@ class _UsernameField extends StatelessWidget {
   final FocusNode focusNode;
   final List<TextInputFormatter> inputFormatters;
   final Color primaryText;
-  final Color tertiaryText;
-  final bool isDark;
   final Widget? status;
   final VoidCallback onSubmitted;
 
@@ -563,7 +562,6 @@ class _UsernameField extends StatelessWidget {
     final tokens = context.pravaColors;
     final fill = tokens.backgroundSurfaceSubtle;
     final border = tokens.borderSubtle;
-    final hint = tokens.textTertiary;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -576,7 +574,7 @@ class _UsernameField extends StatelessWidget {
         children: [
           Text(
             "@",
-            style: PravaTypography.body.copyWith(
+            style: PravaTypography.bodyMedium.copyWith(
               color: primaryText,
               fontWeight: FontWeight.w600,
             ),
@@ -585,24 +583,17 @@ class _UsernameField extends StatelessWidget {
           Container(width: 1, height: 22, color: border),
           const SizedBox(width: 8),
           Expanded(
-            child: TextField(
+            child: PravaInput(
               controller: controller,
               focusNode: focusNode,
+              hint: "username",
+              fieldType: PravaInputFieldType.username,
+              variant: PravaInputVariant.borderless,
+              size: PravaInputSize.small,
               inputFormatters: inputFormatters,
               textInputAction: TextInputAction.next,
               textCapitalization: TextCapitalization.none,
-              enableSuggestions: false,
-              autocorrect: false,
               autofillHints: const [AutofillHints.username],
-              style: PravaTypography.body.copyWith(color: primaryText),
-              cursorColor: tokens.brandPrimary,
-              decoration: InputDecoration(
-                hintText: "username",
-                hintStyle: PravaTypography.body.copyWith(color: hint),
-                border: InputBorder.none,
-                isCollapsed: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 18),
-              ),
               onSubmitted: (_) => onSubmitted(),
             ),
           ),

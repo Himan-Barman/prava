@@ -10,6 +10,7 @@ import '../../navigation/prava_navigator.dart';
 import '../../ui-system/background.dart';
 import '../../ui-system/colors.dart';
 import '../../ui-system/components/prava_button.dart';
+import '../../ui-system/components/prava_input.dart';
 import '../../ui-system/feedback/prava_toast.dart';
 import '../../ui-system/feedback/toast_type.dart';
 import '../../ui-system/typography.dart';
@@ -272,7 +273,8 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
                                           children: [
                                             Text(
                                               'Verify your email',
-                                              style: PravaTypography.h1
+                                              style: PravaTypography
+                                                  .displayMedium
                                                   .copyWith(
                                                     letterSpacing: -0.6,
                                                     color: primaryText,
@@ -281,7 +283,7 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
                                             const SizedBox(height: 8),
                                             Text(
                                               'Enter the 6-digit code sent to ${widget.email}.',
-                                              style: PravaTypography.body
+                                              style: PravaTypography.bodyMedium
                                                   .copyWith(
                                                     color: secondaryText,
                                                   ),
@@ -379,7 +381,7 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
                   const SizedBox(width: 8),
                   Text(
                     'Email verification',
-                    style: PravaTypography.body.copyWith(
+                    style: PravaTypography.bodyMedium.copyWith(
                       color: primaryText,
                       fontWeight: FontWeight.w600,
                     ),
@@ -403,7 +405,6 @@ class _EmailOtpScreenState extends State<EmailOtpScreen> {
                           width: boxWidth,
                           controller: _controllers[index],
                           focusNode: _nodes[index],
-                          isDark: isDark,
                           onChanged: (value) => _onChanged(value, index),
                         ),
                       );
@@ -520,54 +521,33 @@ class _OtpBox extends StatelessWidget {
     required this.width,
     required this.controller,
     required this.focusNode,
-    required this.isDark,
     required this.onChanged,
   });
 
   final double width;
   final TextEditingController controller;
   final FocusNode focusNode;
-  final bool isDark;
   final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    final fill = tokens.backgroundSurfaceSubtle;
-    final border = tokens.borderSubtle;
-    final textColor = tokens.textPrimary;
-
     return SizedBox(
       width: width,
-      child: TextField(
+      child: PravaInput(
         controller: controller,
+        hint: '',
         focusNode: focusNode,
-        keyboardType: TextInputType.number,
-        textAlign: TextAlign.center,
+        fieldType: PravaInputFieldType.otp,
+        variant: PravaInputVariant.auth,
+        size: PravaInputSize.small,
         maxLength: 1,
-        style: PravaTypography.h2.copyWith(color: textColor),
+        showCounter: false,
+        textAlign: TextAlign.center,
+        keyboardType: TextInputType.number,
         inputFormatters: [
           FilteringTextInputFormatter.digitsOnly,
           LengthLimitingTextInputFormatter(1),
         ],
-        decoration: InputDecoration(
-          counterText: '',
-          filled: true,
-          fillColor: fill,
-          contentPadding: const EdgeInsets.symmetric(vertical: 14),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: border),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: border),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: tokens.focusBorder),
-          ),
-        ),
         onChanged: onChanged,
       ),
     );

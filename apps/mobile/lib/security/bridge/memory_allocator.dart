@@ -60,7 +60,7 @@ final class MemoryAllocator {
     }
 
     // Track allocation
-    _allocations[ptr. address] = _AllocationRecord(
+    _allocations[ptr.address] = _AllocationRecord(
       size: size,
       label: label,
       timestamp: DateTime.now(),
@@ -74,7 +74,7 @@ final class MemoryAllocator {
   }
 
   /// Allocate and copy data securely
-  static Pointer<Uint8> allocateFrom(Uint8List data, {String?  label}) {
+  static Pointer<Uint8> allocateFrom(Uint8List data, {String? label}) {
     final ptr = allocate(data.length, label: label);
 
     // Copy data
@@ -131,8 +131,8 @@ final class MemoryAllocator {
   /// Memory barrier to prevent compiler optimization
   static void _memoryBarrier() {
     final temp = calloc<Uint8>(1);
-    temp. value = 0xFF;
-    final _ = temp. value;
+    temp.value = 0xFF;
+    final _ = temp.value;
     calloc.free(temp);
   }
 
@@ -171,9 +171,9 @@ final class MemoryAllocator {
   static List<LeakInfo> checkLeaks() {
     return _allocations.entries.map((e) {
       return LeakInfo(
-        address: e. key,
-        size: e.value. size,
-        label: e.value. label,
+        address: e.key,
+        size: e.value.size,
+        label: e.value.label,
         age: DateTime.now().difference(e.value.timestamp),
       );
     }).toList();
@@ -181,10 +181,10 @@ final class MemoryAllocator {
 
   /// Force cleanup all allocations (use on app shutdown)
   static void cleanupAll() {
-    final addresses = _allocations. keys.toList();
+    final addresses = _allocations.keys.toList();
     for (final addr in addresses) {
       final record = _allocations[addr]!;
-      final ptr = Pointer<Uint8>. fromAddress(addr);
+      final ptr = Pointer<Uint8>.fromAddress(addr);
       freeSecure(ptr, record.size);
     }
     _allocations.clear();
@@ -193,7 +193,9 @@ final class MemoryAllocator {
 
   static void _ensureInitialized() {
     if (!_initialized) {
-      throw StateError('MemoryAllocator not initialized.  Call initialize() first.');
+      throw StateError(
+        'MemoryAllocator not initialized.  Call initialize() first.',
+      );
     }
   }
 
@@ -216,11 +218,7 @@ class _AllocationRecord {
   final String? label;
   final DateTime timestamp;
 
-  _AllocationRecord({
-    required this.size,
-    this. label,
-    required this.timestamp,
-  });
+  _AllocationRecord({required this.size, this.label, required this.timestamp});
 }
 
 /// Allocation statistics
@@ -236,7 +234,8 @@ class AllocationStats {
   });
 
   @override
-  String toString() => 'AllocationStats('
+  String toString() =>
+      'AllocationStats('
       'active: $activeAllocations, '
       'total: ${totalAllocated ~/ 1024}KB, '
       'peak: ${peakAllocated ~/ 1024}KB)';
@@ -257,7 +256,8 @@ class LeakInfo {
   });
 
   @override
-  String toString() => 'LeakInfo(addr: 0x${address. toRadixString(16)}, '
+  String toString() =>
+      'LeakInfo(addr: 0x${address.toRadixString(16)}, '
       'size:  $size, label: $label, age: ${age.inSeconds}s)';
 }
 

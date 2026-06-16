@@ -68,7 +68,7 @@ class HomeTopBar extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: PravaTypography.h2.copyWith(
+                      style: PravaTypography.titleLarge.copyWith(
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0,
                         color: tokens.textPrimary,
@@ -271,7 +271,10 @@ class _ChatTopMenuButton extends StatelessWidget {
         children: [
           Icon(icon, size: 18, color: accent),
           const SizedBox(width: 10),
-          Text(label, style: PravaTypography.body.copyWith(color: primary)),
+          Text(
+            label,
+            style: PravaTypography.bodyMedium.copyWith(color: primary),
+          ),
         ],
       ),
     );

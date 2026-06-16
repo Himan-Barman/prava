@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../../ui-system/background.dart';
 import '../../../ui-system/colors.dart';
+import '../../../ui-system/components/prava_input.dart';
 import '../../../ui-system/typography.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
@@ -112,14 +113,18 @@ class _BroadcastPageState extends State<BroadcastPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondary =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
-    final surface =
-        isDark ? PravaColors.darkBgSurface : PravaColors.lightBgSurface;
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+    final surface = isDark
+        ? PravaColors.darkBgSurface
+        : PravaColors.lightBgSurface;
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
 
     final selectedRecipients = _seedRecipients
         .where((person) => _selectedIds.contains(person.id))
@@ -257,12 +262,15 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final surface =
-        isDark ? Colors.black.withValues(alpha: 0.45) : Colors.white.withValues(alpha: 0.8);
-    final border =
-        isDark ? PravaColors.darkBorderSubtle : PravaColors.lightBorderSubtle;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final surface = isDark
+        ? Colors.black.withValues(alpha: 0.45)
+        : Colors.white.withValues(alpha: 0.8);
+    final border = isDark
+        ? PravaColors.darkBorderSubtle
+        : PravaColors.lightBorderSubtle;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
@@ -279,15 +287,12 @@ class _TopBar extends StatelessWidget {
             ),
             child: Row(
               children: [
-                _IconPill(
-                  icon: CupertinoIcons.back,
-                  onTap: onBack,
-                ),
+                _IconPill(icon: CupertinoIcons.back, onTap: onBack),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     title,
-                    style: PravaTypography.h3.copyWith(
+                    style: PravaTypography.titleSmall.copyWith(
                       color: primary,
                       fontWeight: FontWeight.w700,
                     ),
@@ -297,7 +302,7 @@ class _TopBar extends StatelessWidget {
                   onPressed: enabled ? onAction : null,
                   child: Text(
                     'Create',
-                    style: PravaTypography.button.copyWith(
+                    style: PravaTypography.buttonMedium.copyWith(
                       color: enabled ? PravaColors.accentPrimary : primary,
                     ),
                   ),
@@ -350,20 +355,16 @@ class _BroadcastDetailsCard extends StatelessWidget {
         children: [
           Text(
             'Broadcast details',
-            style: PravaTypography.h3.copyWith(color: primary),
+            style: PravaTypography.titleSmall.copyWith(color: primary),
           ),
           const SizedBox(height: 8),
-          TextField(
+          PravaInput(
             controller: titleController,
-            style: PravaTypography.body.copyWith(color: primary),
-            decoration: InputDecoration(
-              labelText: 'Broadcast name',
-              hintText: 'Weekly updates',
-              labelStyle: PravaTypography.caption.copyWith(color: secondary),
-              hintStyle: PravaTypography.body.copyWith(color: secondary),
-              border: InputBorder.none,
-              isDense: true,
-            ),
+            label: 'Broadcast name',
+            hint: 'Weekly updates',
+            fieldType: PravaInputFieldType.name,
+            variant: PravaInputVariant.settings,
+            showClearButton: true,
           ),
           const SizedBox(height: 12),
           Divider(height: 1, color: border),
@@ -391,16 +392,14 @@ class _BroadcastDetailsCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+              color: isDark
+                  ? Colors.white10
+                  : Colors.black.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
               children: [
-                Icon(
-                  CupertinoIcons.info,
-                  size: 16,
-                  color: secondary,
-                ),
+                Icon(CupertinoIcons.info, size: 16, color: secondary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -456,10 +455,7 @@ class _ToggleTile extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: PravaTypography.body.copyWith(
-                  color: primary,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: PravaTypography.settingTitle.copyWith(color: primary),
               ),
               const SizedBox(height: 2),
               Text(
@@ -472,7 +468,7 @@ class _ToggleTile extends StatelessWidget {
         Switch.adaptive(
           value: value,
           onChanged: onChanged,
-          activeColor: PravaColors.accentPrimary,
+          activeThumbColor: PravaColors.accentPrimary,
         ),
       ],
     );
@@ -498,7 +494,7 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Text(
           title,
-          style: PravaTypography.h3.copyWith(
+          style: PravaTypography.titleSmall.copyWith(
             color: primary,
             fontWeight: FontWeight.w700,
           ),
@@ -577,14 +573,15 @@ class _SearchField extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
         child: Container(
           decoration: BoxDecoration(
-            color: isDark ? Colors.white10 : Colors.white.withValues(alpha: 0.8),
+            color: isDark
+                ? Colors.white10
+                : Colors.white.withValues(alpha: 0.8),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: border),
           ),
-          child: CupertinoSearchTextField(
+          child: PravaSearchInput(
             controller: controller,
-            placeholder: 'Search recipients',
-            backgroundColor: Colors.transparent,
+            hint: 'Search recipients',
           ),
         ),
       ),
@@ -643,7 +640,7 @@ class _RecipientTile extends StatelessWidget {
                   backgroundColor: accent.withValues(alpha: 0.18),
                   child: Text(
                     recipient.initials,
-                    style: PravaTypography.h3.copyWith(
+                    style: PravaTypography.titleSmall.copyWith(
                       color: accent,
                       fontWeight: FontWeight.w700,
                     ),
@@ -656,7 +653,7 @@ class _RecipientTile extends StatelessWidget {
                     children: [
                       Text(
                         recipient.name,
-                        style: PravaTypography.body.copyWith(
+                        style: PravaTypography.bodyMedium.copyWith(
                           color: primary,
                           fontWeight: FontWeight.w600,
                         ),
@@ -664,7 +661,9 @@ class _RecipientTile extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         recipient.handle,
-                        style: PravaTypography.caption.copyWith(color: secondary),
+                        style: PravaTypography.caption.copyWith(
+                          color: secondary,
+                        ),
                       ),
                     ],
                   ),
@@ -722,10 +721,7 @@ class _PrimaryButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           gradient: enabled
               ? const LinearGradient(
-                  colors: [
-                    PravaColors.accentPrimary,
-                    PravaColors.accentMuted,
-                  ],
+                  colors: [PravaColors.accentPrimary, PravaColors.accentMuted],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 )
@@ -743,7 +739,7 @@ class _PrimaryButton extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: PravaTypography.button.copyWith(color: Colors.white),
+          style: PravaTypography.buttonMedium.copyWith(color: Colors.white),
         ),
       ),
     );
@@ -768,11 +764,7 @@ class _IconPill extends StatelessWidget {
           color: isDark ? Colors.white10 : Colors.black12,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: PravaColors.accentPrimary,
-        ),
+        child: Icon(icon, size: 18, color: PravaColors.accentPrimary),
       ),
     );
   }
@@ -806,8 +798,7 @@ class _Recipient {
     if (parts.length == 1) {
       return parts.first.substring(0, 1).toUpperCase();
     }
-    return (parts[0].substring(0, 1) + parts[1].substring(0, 1))
-        .toUpperCase();
+    return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
   }
 }
 

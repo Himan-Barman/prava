@@ -3,40 +3,75 @@ class ProfileVisibility {
     required Map<String, String> fields,
     required Map<String, bool> visible,
     required this.privateAccount,
-  })  : fields = Map.unmodifiable(_normalizeFields(fields)),
-        visible = Map.unmodifiable(_normalizeVisible(visible));
+  }) : fields = Map.unmodifiable(_normalizeFields(fields)),
+       visible = Map.unmodifiable(_normalizeVisible(visible));
 
   final Map<String, String> fields;
   final Map<String, bool> visible;
   final bool privateAccount;
 
   static const fieldKeys = <String>[
+    'displayName',
+    'username',
+    'avatar',
+    'cover',
     'bio',
     'location',
     'website',
     'joined',
     'posts',
+    'replies',
+    'media',
+    'highlights',
+    'about',
+    'friends',
     'followers',
     'following',
+    'onlineStatus',
+    'lastActive',
     'likes',
+    'saved',
+    'drafts',
+    'archive',
+    'hiddenPosts',
+    'analytics',
   ];
 
   static const levels = <String>[
+    'public',
     'everyone',
     'followers',
     'friends',
+    'closeFriends',
     'onlyMe',
+    'hidden',
   ];
 
   static const defaults = <String, String>{
-    'bio': 'everyone',
+    'displayName': 'public',
+    'username': 'public',
+    'avatar': 'public',
+    'cover': 'public',
+    'bio': 'public',
     'location': 'friends',
-    'website': 'everyone',
-    'joined': 'everyone',
-    'posts': 'everyone',
-    'followers': 'everyone',
-    'following': 'everyone',
+    'website': 'public',
+    'joined': 'public',
+    'posts': 'public',
+    'replies': 'public',
+    'media': 'public',
+    'highlights': 'public',
+    'about': 'public',
+    'friends': 'friends',
+    'followers': 'public',
+    'following': 'public',
+    'onlineStatus': 'friends',
+    'lastActive': 'friends',
     'likes': 'onlyMe',
+    'saved': 'onlyMe',
+    'drafts': 'onlyMe',
+    'archive': 'onlyMe',
+    'hiddenPosts': 'onlyMe',
+    'analytics': 'onlyMe',
   };
 
   static Map<String, String> _normalizeFields(Map<String, String> incoming) {
@@ -47,9 +82,7 @@ class ProfileVisibility {
   }
 
   static Map<String, bool> _normalizeVisible(Map<String, bool> incoming) {
-    return {
-      for (final key in fieldKeys) key: incoming[key] ?? true,
-    };
+    return {for (final key in fieldKeys) key: incoming[key] ?? true};
   }
 
   factory ProfileVisibility.defaultsForOwner() {
@@ -95,9 +128,7 @@ class ProfileVisibility {
     if (raw is! Map) {
       return {for (final key in fieldKeys) key: true};
     }
-    return {
-      for (final key in fieldKeys) key: raw[key] == true,
-    };
+    return {for (final key in fieldKeys) key: raw[key] == true};
   }
 
   bool canSee(String key) => visible[key] ?? true;
@@ -106,10 +137,7 @@ class ProfileVisibility {
 
   ProfileVisibility copyWithField(String key, String level) {
     return ProfileVisibility(
-      fields: {
-        ...fields,
-        key: levels.contains(level) ? level : defaults[key]!,
-      },
+      fields: {...fields, key: levels.contains(level) ? level : defaults[key]!},
       visible: visible,
       privateAccount: privateAccount,
     );
@@ -121,6 +149,14 @@ class ProfileVisibility {
 
   static String fieldLabel(String key) {
     switch (key) {
+      case 'displayName':
+        return 'Display name';
+      case 'username':
+        return 'Username';
+      case 'avatar':
+        return 'Avatar';
+      case 'cover':
+        return 'Cover photo';
       case 'bio':
         return 'Bio';
       case 'location':
@@ -131,12 +167,36 @@ class ProfileVisibility {
         return 'Joined date';
       case 'posts':
         return 'Posts';
+      case 'replies':
+        return 'Replies';
+      case 'media':
+        return 'Media';
+      case 'highlights':
+        return 'Highlights';
+      case 'about':
+        return 'About';
+      case 'friends':
+        return 'Friends list';
       case 'followers':
         return 'Followers count';
       case 'following':
         return 'Following count';
+      case 'onlineStatus':
+        return 'Online status';
+      case 'lastActive':
+        return 'Last active';
       case 'likes':
         return 'Likes count';
+      case 'saved':
+        return 'Saved posts';
+      case 'drafts':
+        return 'Drafts';
+      case 'archive':
+        return 'Archive';
+      case 'hiddenPosts':
+        return 'Hidden posts';
+      case 'analytics':
+        return 'Analytics';
       default:
         return key;
     }
@@ -144,16 +204,22 @@ class ProfileVisibility {
 
   static String levelLabel(String level) {
     switch (level) {
+      case 'public':
+        return 'Public';
       case 'everyone':
-        return 'Everyone';
+        return 'Public';
       case 'followers':
         return 'Followers';
       case 'friends':
         return 'Friends';
+      case 'closeFriends':
+        return 'Close friends';
       case 'onlyMe':
         return 'Only me';
+      case 'hidden':
+        return 'Hidden';
       default:
-        return 'Everyone';
+        return 'Public';
     }
   }
 }

@@ -6,8 +6,8 @@ import '../services/settings_service.dart';
 
 class SettingsController extends ChangeNotifier {
   SettingsController({SettingsService? service})
-      : _service = service ?? SettingsService(),
-        _state = SettingsState.defaults();
+    : _service = service ?? SettingsService(),
+      _state = SettingsState.defaults();
 
   final SettingsService _service;
   SettingsState _state;
@@ -90,8 +90,7 @@ class SettingsScope extends InheritedNotifier<SettingsController> {
   }) : super(notifier: controller);
 
   static SettingsController of(BuildContext context) {
-    final scope =
-        context.dependOnInheritedWidgetOfExactType<SettingsScope>();
+    final scope = context.dependOnInheritedWidgetOfExactType<SettingsScope>();
     assert(scope != null, 'SettingsScope not found in widget tree.');
     return scope!.notifier!;
   }

@@ -9,7 +9,7 @@ import 'vault.dart';
 /// ============================================================
 /// Identity Store
 /// ============================================================
-/// Manages identity key persistence: 
+/// Manages identity key persistence:
 ///
 /// • Local identity (our key pair)
 /// • Remote identities (contacts' public keys)
@@ -25,10 +25,7 @@ final class IdentityStore {
   /// Get local identity
   static Future<IdentityEntity?> getLocalIdentity() async {
     return Vault.read((db) async {
-      return db.identityEntitys
-          .filter()
-          .isLocalEqualTo(true)
-          .findFirst();
+      return db.identityEntitys.filter().isLocalEqualTo(true).findFirst();
     });
   }
 
@@ -44,8 +41,8 @@ final class IdentityStore {
       ..odid = odid
       ..deviceId = deviceId
       ..registrationId = registrationId
-      ..publicKey = publicKey. toList()
-      ..privateKey = privateKey. toList()
+      ..publicKey = publicKey.toList()
+      ..privateKey = privateKey.toList()
       ..isLocal = true
       ..createdAt = DateTime.now().millisecondsSinceEpoch
       ..trustLevel = TrustLevel.trusted;
@@ -64,10 +61,7 @@ final class IdentityStore {
   /// Delete local identity (account reset)
   static Future<void> deleteLocalIdentity() async {
     await Vault.write((db) async {
-      await db.identityEntitys
-          .filter()
-          .isLocalEqualTo(true)
-          .deleteAll();
+      await db.identityEntitys.filter().isLocalEqualTo(true).deleteAll();
     });
   }
 
@@ -82,7 +76,7 @@ final class IdentityStore {
   ) async {
     return Vault.read((db) async {
       return db.identityEntitys
-          . filter()
+          .filter()
           .odidEqualTo(odid)
           .and()
           .deviceIdEqualTo(deviceId)
@@ -97,7 +91,7 @@ final class IdentityStore {
     String odid,
   ) async {
     return Vault.read((db) async {
-      return db. identityEntitys
+      return db.identityEntitys
           .filter()
           .odidEqualTo(odid)
           .and()
@@ -121,13 +115,13 @@ final class IdentityStore {
       final existingKey = Uint8List.fromList(existing.publicKey);
       final keysMatch = _bytesEqual(existingKey, publicKey);
 
-      if (! keysMatch) {
-        // Key changed - security event! 
-        existing.publicKey = publicKey. toList();
+      if (!keysMatch) {
+        // Key changed - security event!
+        existing.publicKey = publicKey.toList();
         existing.trustLevel = TrustLevel.untrusted;
-        existing.keyChangedAt = DateTime. now().millisecondsSinceEpoch;
+        existing.keyChangedAt = DateTime.now().millisecondsSinceEpoch;
 
-        await Vault. write((db) async {
+        await Vault.write((db) async {
           await db.identityEntitys.put(existing);
         });
 
@@ -141,11 +135,11 @@ final class IdentityStore {
     final entity = IdentityEntity()
       ..odid = odid
       ..deviceId = deviceId
-      .. registrationId = registrationId
-      .. publicKey = publicKey.toList()
+      ..registrationId = registrationId
+      ..publicKey = publicKey.toList()
       ..isLocal = false
-      .. createdAt = DateTime.now().millisecondsSinceEpoch
-      .. trustLevel = TrustLevel.untrusted;
+      ..createdAt = DateTime.now().millisecondsSinceEpoch
+      ..trustLevel = TrustLevel.untrusted;
 
     await Vault.write((db) async {
       await db.identityEntitys.put(entity);
@@ -169,7 +163,7 @@ final class IdentityStore {
           .findFirst();
 
       if (entity != null) {
-        entity. trustLevel = trustLevel;
+        entity.trustLevel = trustLevel;
         entity.verifiedAt = trustLevel == TrustLevel.verified
             ? DateTime.now().millisecondsSinceEpoch
             : null;
@@ -179,10 +173,7 @@ final class IdentityStore {
   }
 
   /// Delete remote identity
-  static Future<void> deleteRemoteIdentity(
-    String odid,
-    String deviceId,
-  ) async {
+  static Future<void> deleteRemoteIdentity(String odid, String deviceId) async {
     await Vault.write((db) async {
       await db.identityEntitys
           .filter()
@@ -211,8 +202,8 @@ final class IdentityStore {
   static Future<List<IdentityEntity>> getTrustedIdentities() async {
     return Vault.read((db) async {
       return db.identityEntitys
-          . filter()
-          .trustLevelEqualTo(TrustLevel. trusted)
+          .filter()
+          .trustLevelEqualTo(TrustLevel.trusted)
           .or()
           .trustLevelEqualTo(TrustLevel.verified)
           .findAll();
@@ -222,12 +213,12 @@ final class IdentityStore {
   /// Get count of identities
   static Future<int> getCount() async {
     return Vault.read((db) async {
-      return db. identityEntitys. count();
+      return db.identityEntitys.count();
     });
   }
 
   static bool _bytesEqual(Uint8List a, Uint8List b) {
-    if (a. length != b.length) return false;
+    if (a.length != b.length) return false;
     var result = 0;
     for (var i = 0; i < a.length; i++) {
       result |= a[i] ^ b[i];

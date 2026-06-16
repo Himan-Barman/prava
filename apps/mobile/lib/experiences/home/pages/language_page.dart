@@ -53,7 +53,7 @@ class LanguagePage extends StatelessWidget {
                     },
                     title: Text(
                       language,
-                      style: PravaTypography.body.copyWith(
+                      style: PravaTypography.bodyMedium.copyWith(
                         color: primary,
                         fontWeight: selected
                             ? FontWeight.w600

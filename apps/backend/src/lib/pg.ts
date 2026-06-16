@@ -193,6 +193,38 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_user_blocks_blocker ON user_blocks (blocker_id, created_at DESC);
 
+    CREATE TABLE IF NOT EXISTS follow_requests (
+      requester_id    TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      target_id       TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      status          TEXT NOT NULL DEFAULT 'pending',
+      message         TEXT NOT NULL DEFAULT '',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      responded_at    TIMESTAMPTZ DEFAULT NULL,
+      PRIMARY KEY (requester_id, target_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_follow_requests_target_status
+      ON follow_requests (target_id, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_follow_requests_requester_status
+      ON follow_requests (requester_id, status, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS close_friends (
+      owner_id        TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (owner_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_close_friends_user ON close_friends (user_id, owner_id);
+
+    CREATE TABLE IF NOT EXISTS restricted_users (
+      owner_id        TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      restricted_id   TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      reason          TEXT NOT NULL DEFAULT '',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (owner_id, restricted_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_restricted_users_restricted ON restricted_users (restricted_id, owner_id);
+
     CREATE TABLE IF NOT EXISTS user_muted_words (
       id              BIGSERIAL PRIMARY KEY,
       muted_word_id   TEXT NOT NULL,
@@ -230,11 +262,23 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     ALTER TABLE posts ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT '';
     ALTER TABLE posts ADD COLUMN IF NOT EXISTS quality_score DOUBLE PRECISION NOT NULL DEFAULT 1;
     ALTER TABLE posts ADD COLUMN IF NOT EXISTS impression_count INT NOT NULL DEFAULT 0;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS post_type TEXT NOT NULL DEFAULT 'post';
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS parent_post_id TEXT DEFAULT NULL;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS original_post_id TEXT DEFAULT NULL;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS quote_post_id TEXT DEFAULT NULL;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS duplicate_fingerprint TEXT NOT NULL DEFAULT '';
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public';
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS sensitive_label TEXT NOT NULL DEFAULT '';
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS spam_score DOUBLE PRECISION NOT NULL DEFAULT 0;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS toxicity_score DOUBLE PRECISION NOT NULL DEFAULT 0;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS clickbait_score DOUBLE PRECISION NOT NULL DEFAULT 0;
     CREATE INDEX IF NOT EXISTS idx_posts_author ON posts (author_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_posts_created ON posts (created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_posts_share ON posts (share_of_post_id, author_id);
     CREATE INDEX IF NOT EXISTS idx_posts_recommendable ON posts (created_at DESC, author_id)
       WHERE deleted_at IS NULL AND moderation_state = 'active';
+    CREATE INDEX IF NOT EXISTS idx_posts_language_created ON posts (language, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_posts_conversation ON posts (original_post_id, parent_post_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS post_tags (
       post_id         TEXT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
@@ -281,6 +325,14 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       PRIMARY KEY (user_id, post_id)
     );
     CREATE INDEX IF NOT EXISTS idx_post_hidden_user_created ON post_hidden (user_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS post_saves (
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      post_id         TEXT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, post_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_post_saves_user_created ON post_saves (user_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS post_not_interested (
       user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
@@ -444,6 +496,194 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       config          JSONB NOT NULL DEFAULT '{}',
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS topics (
+      topic_id        TEXT PRIMARY KEY,
+      slug            TEXT NOT NULL UNIQUE,
+      name            TEXT NOT NULL,
+      category        TEXT NOT NULL DEFAULT 'general',
+      language        TEXT NOT NULL DEFAULT '',
+      description     TEXT NOT NULL DEFAULT '',
+      is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+      admin_curated   BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_topics_active_category ON topics (is_active, category, slug);
+
+    CREATE TABLE IF NOT EXISTS user_followed_topics (
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      topic           TEXT NOT NULL,
+      followed_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, topic)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_followed_topics_user ON user_followed_topics (user_id, followed_at DESC);
+
+    CREATE TABLE IF NOT EXISTS feed_muted_topics (
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      topic           TEXT NOT NULL,
+      reason          TEXT NOT NULL DEFAULT 'muted',
+      snoozed_until   TIMESTAMPTZ DEFAULT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, topic)
+    );
+    CREATE INDEX IF NOT EXISTS idx_feed_muted_topics_user ON feed_muted_topics (user_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS feed_preferences (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      lens            TEXT NOT NULL DEFAULT 'balanced',
+      discovery_intensity DOUBLE PRECISION NOT NULL DEFAULT 0.22,
+      friend_priority DOUBLE PRECISION NOT NULL DEFAULT 0.35,
+      latest_priority DOUBLE PRECISION NOT NULL DEFAULT 0.15,
+      reduce_reposts  BOOLEAN NOT NULL DEFAULT FALSE,
+      reduce_political_content BOOLEAN NOT NULL DEFAULT FALSE,
+      reduce_sensitive_content BOOLEAN NOT NULL DEFAULT TRUE,
+      prefer_professional_content BOOLEAN NOT NULL DEFAULT FALSE,
+      prefer_local_content BOOLEAN NOT NULL DEFAULT FALSE,
+      local_discovery_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      perspective_broadening_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      preferred_languages JSONB NOT NULL DEFAULT '[]',
+      muted_keywords  JSONB NOT NULL DEFAULT '[]',
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS feed_custom_feeds (
+      feed_id         TEXT PRIMARY KEY,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      name            TEXT NOT NULL,
+      definition      JSONB NOT NULL DEFAULT '{}',
+      is_public       BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_feed_custom_feeds_user ON feed_custom_feeds (user_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS feed_sessions (
+      session_id      TEXT NOT NULL,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      mode            TEXT NOT NULL,
+      lens            TEXT NOT NULL DEFAULT 'balanced',
+      config_hash     TEXT NOT NULL DEFAULT 'default',
+      post_ids        JSONB NOT NULL DEFAULT '[]',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at      TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 minutes'),
+      PRIMARY KEY (session_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_feed_sessions_expiry ON feed_sessions (expires_at);
+
+    CREATE TABLE IF NOT EXISTS feed_feedback (
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      post_id         TEXT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+      feedback_type   TEXT NOT NULL,
+      feedback_value  DOUBLE PRECISION NOT NULL DEFAULT 1,
+      metadata        JSONB NOT NULL DEFAULT '{}',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, post_id, feedback_type)
+    );
+    CREATE INDEX IF NOT EXISTS idx_feed_feedback_user_created ON feed_feedback (user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_feed_feedback_post_type ON feed_feedback (post_id, feedback_type);
+
+    CREATE TABLE IF NOT EXISTS profile_links (
+      link_id         TEXT PRIMARY KEY,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      title           TEXT NOT NULL DEFAULT '',
+      url             TEXT NOT NULL,
+      position        INT NOT NULL DEFAULT 0,
+      visibility      TEXT NOT NULL DEFAULT 'public',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_profile_links_user_position
+      ON profile_links (user_id, position ASC, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS profile_badges (
+      badge_id        TEXT PRIMARY KEY,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      badge_type      TEXT NOT NULL,
+      label           TEXT NOT NULL,
+      icon            TEXT NOT NULL DEFAULT '',
+      awarded_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at      TIMESTAMPTZ DEFAULT NULL,
+      visibility      TEXT NOT NULL DEFAULT 'public'
+    );
+    CREATE INDEX IF NOT EXISTS idx_profile_badges_user_awarded
+      ON profile_badges (user_id, awarded_at DESC);
+
+    CREATE TABLE IF NOT EXISTS profile_views (
+      viewer_id       TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      profile_user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      view_count      INT NOT NULL DEFAULT 1,
+      first_viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_viewed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (viewer_id, profile_user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_profile_views_profile_last
+      ON profile_views (profile_user_id, last_viewed_at DESC);
+
+    CREATE TABLE IF NOT EXISTS profile_highlights (
+      highlight_id    TEXT PRIMARY KEY,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      title           TEXT NOT NULL DEFAULT '',
+      description     TEXT NOT NULL DEFAULT '',
+      cover_url       TEXT NOT NULL DEFAULT '',
+      post_ids        JSONB NOT NULL DEFAULT '[]',
+      media_urls      JSONB NOT NULL DEFAULT '[]',
+      visibility      TEXT NOT NULL DEFAULT 'public',
+      position        INT NOT NULL DEFAULT 0,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_profile_highlights_user_position
+      ON profile_highlights (user_id, position ASC, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS profile_pinned_posts (
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      post_id         TEXT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+      position        INT NOT NULL DEFAULT 0,
+      pinned_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, post_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_profile_pinned_posts_user_position
+      ON profile_pinned_posts (user_id, position ASC, pinned_at DESC);
+
+    CREATE TABLE IF NOT EXISTS profile_reports (
+      report_id       TEXT PRIMARY KEY,
+      reporter_user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      profile_user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      reason          TEXT NOT NULL DEFAULT 'other',
+      details         TEXT NOT NULL DEFAULT '',
+      status          TEXT NOT NULL DEFAULT 'open',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_profile_reports_profile_status
+      ON profile_reports (profile_user_id, status, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS editorial_feed_items (
+      item_id         TEXT PRIMARY KEY,
+      post_id         TEXT NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+      label           TEXT NOT NULL DEFAULT 'editorial',
+      priority        DOUBLE PRECISION NOT NULL DEFAULT 0.5,
+      starts_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      ends_at         TIMESTAMPTZ DEFAULT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_editorial_feed_active ON editorial_feed_items (starts_at, ends_at, priority DESC);
+
+    INSERT INTO topics (topic_id, slug, name, category, language, admin_curated, created_at, updated_at)
+    VALUES
+      ('topic_technology', 'technology', 'Technology', 'professional', '', TRUE, NOW(), NOW()),
+      ('topic_startups', 'startups', 'Startups', 'professional', '', TRUE, NOW(), NOW()),
+      ('topic_coding', 'coding', 'Coding', 'professional', '', TRUE, NOW(), NOW()),
+      ('topic_careers', 'careers', 'Careers', 'professional', '', TRUE, NOW(), NOW()),
+      ('topic_sports', 'sports', 'Sports', 'general', '', TRUE, NOW(), NOW()),
+      ('topic_entertainment', 'entertainment', 'Entertainment', 'general', '', TRUE, NOW(), NOW()),
+      ('topic_education', 'education', 'Education', 'professional', '', TRUE, NOW(), NOW()),
+      ('topic_local_news', 'local_news', 'Local News', 'local', '', TRUE, NOW(), NOW()),
+      ('topic_art', 'art', 'Art', 'creative', '', TRUE, NOW(), NOW()),
+      ('topic_literature', 'literature', 'Literature', 'creative', '', TRUE, NOW(), NOW()),
+      ('topic_bengali_literature', 'bengali_literature', 'Bengali Literature', 'creative', 'bn', TRUE, NOW(), NOW())
+    ON CONFLICT (slug) DO NOTHING;
 
     CREATE TABLE IF NOT EXISTS comments (
       comment_id      TEXT PRIMARY KEY,

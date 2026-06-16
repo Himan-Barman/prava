@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../../ui-system/colors.dart';
+import '../../../../ui-system/components/prava_input.dart';
 import '../../../../ui-system/typography.dart';
 import '../../../../ui-system/background.dart';
 import '../../../../navigation/prava_navigator.dart';
@@ -2541,7 +2542,7 @@ class _ChatHeader extends StatelessWidget {
                             child: Center(
                               child: Text(
                                 initial,
-                                style: PravaTypography.h3.copyWith(
+                                style: PravaTypography.titleSmall.copyWith(
                                   color: PravaColors.accentPrimary,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -2557,7 +2558,7 @@ class _ChatHeader extends StatelessWidget {
                     children: [
                       Text(
                         name,
-                        style: PravaTypography.body.copyWith(
+                        style: PravaTypography.bodyMedium.copyWith(
                           color: primary,
                           fontWeight: FontWeight.w700,
                         ),
@@ -2643,7 +2644,7 @@ class _PinnedBanner extends StatelessWidget {
             Expanded(
               child: Text(
                 count == 1 ? '1 pinned message' : '$count pinned messages',
-                style: PravaTypography.body.copyWith(
+                style: PravaTypography.bodyMedium.copyWith(
                   color: primary,
                   fontWeight: FontWeight.w700,
                 ),
@@ -2721,7 +2722,9 @@ class _MessageDetailsSheet extends StatelessWidget {
                     Expanded(
                       child: Text(
                         'Message details',
-                        style: PravaTypography.h3.copyWith(color: primary),
+                        style: PravaTypography.titleSmall.copyWith(
+                          color: primary,
+                        ),
                       ),
                     ),
                     IconButton(
@@ -2759,7 +2762,7 @@ class _MessageDetailsSheet extends StatelessWidget {
                 const SizedBox(height: 12),
                 Text(
                   'Receipts',
-                  style: PravaTypography.label.copyWith(color: secondary),
+                  style: PravaTypography.chipLabel.copyWith(color: secondary),
                 ),
                 const SizedBox(height: 8),
                 if (snapshot.connectionState == ConnectionState.waiting)
@@ -2774,7 +2777,9 @@ class _MessageDetailsSheet extends StatelessWidget {
                 else if (rows.isEmpty)
                   Text(
                     'No receipt data yet',
-                    style: PravaTypography.body.copyWith(color: secondary),
+                    style: PravaTypography.bodyMedium.copyWith(
+                      color: secondary,
+                    ),
                   )
                 else
                   Flexible(
@@ -2808,7 +2813,7 @@ class _MessageDetailsSheet extends StatelessWidget {
                             userId,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: PravaTypography.body.copyWith(
+                            style: PravaTypography.bodyMedium.copyWith(
                               color: primary,
                             ),
                           ),
@@ -2861,7 +2866,7 @@ class _DetailMetricRow extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: PravaTypography.body.copyWith(color: primary),
+              style: PravaTypography.bodyMedium.copyWith(color: primary),
             ),
           ),
           Text(
@@ -2950,9 +2955,9 @@ class _MessageSearchSheetState extends State<_MessageSearchSheet> {
       title: widget.title,
       child: Column(
         children: [
-          CupertinoSearchTextField(
+          PravaSearchInput(
             controller: _controller,
-            placeholder: 'Search messages',
+            hint: 'Search messages',
             onChanged: _onChanged,
           ),
           const SizedBox(height: 14),
@@ -3130,7 +3135,7 @@ class _MessageListSheetFrame extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: PravaTypography.h3.copyWith(color: primary),
+                    style: PravaTypography.titleSmall.copyWith(color: primary),
                   ),
                 ),
                 IconButton(
@@ -3182,7 +3187,7 @@ class _MessageResultTile extends StatelessWidget {
         body,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: PravaTypography.body.copyWith(color: primary),
+        style: PravaTypography.bodyMedium.copyWith(color: primary),
       ),
       subtitle: Text(
         _compactDateTime(message.createdAt),
@@ -3203,7 +3208,10 @@ class _SheetEmptyState extends StatelessWidget {
         ? PravaColors.darkTextSecondary
         : PravaColors.lightTextSecondary;
     return Center(
-      child: Text(text, style: PravaTypography.body.copyWith(color: secondary)),
+      child: Text(
+        text,
+        style: PravaTypography.bodyMedium.copyWith(color: secondary),
+      ),
     );
   }
 }
@@ -3383,7 +3391,7 @@ class _MessageBubble extends StatelessWidget {
           else
             Text(
               displayBody,
-              style: PravaTypography.body.copyWith(
+              style: PravaTypography.bodyMedium.copyWith(
                 color: isOutgoing ? Colors.white : primary,
               ),
             ),
@@ -3544,7 +3552,7 @@ class _MediaMessageContent extends StatelessWidget {
             label,
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
-            style: PravaTypography.body.copyWith(color: color),
+            style: PravaTypography.bodyMedium.copyWith(color: color),
           ),
         ),
       ],
@@ -3606,9 +3614,6 @@ class _ComposerBar extends StatelessWidget {
     final border = isDark
         ? PravaColors.darkBorderSubtle
         : PravaColors.lightBorderSubtle;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
     final secondary = isDark
         ? PravaColors.darkTextSecondary
         : PravaColors.lightTextSecondary;
@@ -3635,23 +3640,17 @@ class _ComposerBar extends StatelessWidget {
                       onTap: isUploading ? () {} : onAttach,
                     ),
                     Expanded(
-                      child: TextField(
+                      child: PravaInput(
                         controller: controller,
+                        hint: 'Message',
                         focusNode: focusNode,
+                        fieldType: PravaInputFieldType.chat,
+                        variant: PravaInputVariant.borderless,
+                        size: PravaInputSize.small,
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => onSend(),
                         onChanged: onChanged,
-                        minLines: 1,
                         maxLines: 4,
-                        style: PravaTypography.body.copyWith(color: primary),
-                        decoration: InputDecoration(
-                          hintText: 'Message',
-                          hintStyle: PravaTypography.body.copyWith(
-                            color: secondary,
-                          ),
-                          border: InputBorder.none,
-                          isDense: true,
-                        ),
                       ),
                     ),
                     if (isUploading)
@@ -3859,7 +3858,7 @@ class _ReactionPicker extends StatelessWidget {
           .map(
             (emoji) => GestureDetector(
               onTap: () => onSelect(emoji),
-              child: Text(emoji, style: const TextStyle(fontSize: 22)),
+              child: Text(emoji, style: PravaTypography.emojiReaction),
             ),
           )
           .toList(),
@@ -3962,7 +3961,9 @@ class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
                   ? Center(
                       child: Text(
                         'Recently used emojis appear here',
-                        style: PravaTypography.body.copyWith(color: secondary),
+                        style: PravaTypography.bodyMedium.copyWith(
+                          color: secondary,
+                        ),
                       ),
                     )
                   : GridView.builder(
@@ -3983,7 +3984,8 @@ class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
                           child: Center(
                             child: Text(
                               emoji,
-                              style: TextStyle(fontSize: 26, color: primary),
+                              style: PravaTypography.emojiReactionLarge
+                                  .copyWith(color: primary),
                             ),
                           ),
                         );
@@ -4806,7 +4808,7 @@ class _SheetAction extends StatelessWidget {
       leading: Icon(icon, color: color),
       title: Text(
         label,
-        style: PravaTypography.body.copyWith(
+        style: PravaTypography.bodyMedium.copyWith(
           color: color,
           fontWeight: FontWeight.w600,
         ),

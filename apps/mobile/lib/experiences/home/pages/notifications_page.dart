@@ -253,7 +253,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                   'Notifications',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: PravaTypography.h2.copyWith(
+                                  style: PravaTypography.titleLarge.copyWith(
                                     color: primary,
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -588,7 +588,7 @@ class _NotificationCard extends StatelessWidget {
                         ? Icon(_iconForType(item.type), size: 18, color: accent)
                         : Text(
                             avatarLabel,
-                            style: PravaTypography.body.copyWith(
+                            style: PravaTypography.bodyMedium.copyWith(
                               color: accent,
                               fontWeight: FontWeight.w800,
                             ),
@@ -624,7 +624,7 @@ class _NotificationCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             item.title,
-                            style: PravaTypography.body.copyWith(
+                            style: PravaTypography.bodyMedium.copyWith(
                               color: primary,
                               fontWeight: FontWeight.w600,
                             ),

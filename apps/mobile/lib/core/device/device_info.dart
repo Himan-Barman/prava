@@ -3,10 +3,7 @@ import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 
 class DeviceDescriptor {
-  DeviceDescriptor({
-    required this.platform,
-    required this.name,
-  });
+  DeviceDescriptor({required this.platform, required this.name});
 
   final String platform;
   final String name;
@@ -31,10 +28,10 @@ class DeviceInfoSnapshot {
 
       if (Platform.isIOS) {
         final info = await _plugin.iosInfo;
-        final name = _joinParts(
-          [info.name.trim(), info.model.trim()],
-          fallback: 'iOS device',
-        );
+        final name = _joinParts([
+          info.name.trim(),
+          info.model.trim(),
+        ], fallback: 'iOS device');
         _cached = DeviceDescriptor(platform: 'ios', name: name);
         return _cached;
       }
@@ -48,10 +45,7 @@ class DeviceInfoSnapshot {
     return null;
   }
 
-  static String _joinParts(
-    List<String> parts, {
-    required String fallback,
-  }) {
+  static String _joinParts(List<String> parts, {required String fallback}) {
     final filtered = parts.where((part) => part.isNotEmpty).toList();
     if (filtered.isEmpty) return fallback;
     return filtered.join(' ');

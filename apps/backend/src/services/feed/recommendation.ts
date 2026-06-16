@@ -1,14 +1,41 @@
 import { query, queryMany, queryOne } from "../../lib/pg.js";
-import { generateId, now, toIso } from "../../lib/security.js";
+import { generateId, HttpError, now, toIso } from "../../lib/security.js";
 
-export type FeedMode = "for-you" | "following";
+export type FeedMode =
+  | "for-you"
+  | "following"
+  | "friends"
+  | "latest"
+  | "topics"
+  | "conversations"
+  | "explore"
+  | "catch-up"
+  | "custom";
+
+export type FeedLens =
+  | "balanced"
+  | "latest"
+  | "deep_reads"
+  | "conversations"
+  | "friends_first"
+  | "discover"
+  | "professional"
+  | "local";
 
 type CandidateSource =
   | "in_network"
+  | "friend_recent"
   | "interest"
+  | "topic_affinity"
+  | "semantic_similarity"
   | "social_proof"
+  | "trusted_network"
   | "trending"
   | "exploration"
+  | "emerging_creator"
+  | "conversation"
+  | "language_affinity"
+  | "editorial"
   | "interacted_authors"
   | "cold_start";
 
@@ -22,6 +49,25 @@ type Candidate = {
   post: any;
   sources: Set<CandidateSource>;
   reasons: Set<string>;
+  sourceScore?: number;
+  exploration?: boolean;
+  editorialLabel?: string;
+};
+
+type FeedPreferences = {
+  lens: FeedLens;
+  discoveryIntensity: number;
+  friendPriority: number;
+  latestPriority: number;
+  reduceReposts: boolean;
+  reducePoliticalContent: boolean;
+  reduceSensitiveContent: boolean;
+  preferProfessionalContent: boolean;
+  preferLocalContent: boolean;
+  localDiscoveryEnabled: boolean;
+  perspectiveBroadeningEnabled: boolean;
+  preferredLanguages: string[];
+  mutedKeywords: string[];
 };
 
 type FeatureBundle = {
@@ -44,8 +90,10 @@ export type RankedFeedPost = any & {
 export type FeedPageResult = {
   items: RankedFeedPost[];
   nextCursor: string | null;
+  sessionId: string;
   metrics: {
     mode: FeedMode;
+    lens: FeedLens;
     candidateCount: number;
     filteredCount: number;
     fallbackUsed: string | null;
@@ -89,6 +137,13 @@ type RankingConfig = {
     authorRepeatPenalty: number;
     sameAuthorConsecutivePenalty: number;
     topicRepeatPenalty: number;
+  };
+  quotas: {
+    exploration: number;
+    emergingCreator: number;
+    outOfNetwork: number;
+    trend: number;
+    repost: number;
   };
 };
 
@@ -148,10 +203,18 @@ const DEFAULT_CONFIG: RankingConfig = {
   cursorEpsilon: 0.000001,
   sourceAllocation: {
     in_network: 0.4,
+    friend_recent: 0.18,
     interest: 0.2,
+    topic_affinity: 0.18,
+    semantic_similarity: 0.08,
     social_proof: 0.15,
+    trusted_network: 0.12,
     trending: 0.15,
     exploration: 0.1,
+    emerging_creator: 0.08,
+    conversation: 0.12,
+    language_affinity: 0.08,
+    editorial: 0.04,
     interacted_authors: 0.1,
     cold_start: 0.1,
   },
@@ -173,6 +236,29 @@ const DEFAULT_CONFIG: RankingConfig = {
     sameAuthorConsecutivePenalty: 0.24,
     topicRepeatPenalty: 0.05,
   },
+  quotas: {
+    exploration: 0.14,
+    emergingCreator: 0.08,
+    outOfNetwork: 0.45,
+    trend: 0.22,
+    repost: 0.25,
+  },
+};
+
+const DEFAULT_FEED_PREFERENCES: FeedPreferences = {
+  lens: "balanced",
+  discoveryIntensity: 0.22,
+  friendPriority: 0.35,
+  latestPriority: 0.15,
+  reduceReposts: false,
+  reducePoliticalContent: false,
+  reduceSensitiveContent: true,
+  preferProfessionalContent: false,
+  preferLocalContent: false,
+  localDiscoveryEnabled: false,
+  perspectiveBroadeningEnabled: false,
+  preferredLanguages: [],
+  mutedKeywords: [],
 };
 
 function clamp(value: number, min = 0, max = 1): number {
@@ -183,6 +269,165 @@ function clamp(value: number, min = 0, max = 1): number {
 function parsePositiveNumber(value: string | undefined, fallback: number): number {
   const parsed = Number.parseFloat(String(value || ""));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function clamp01(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return clamp(parsed, 0, 1);
+}
+
+export function normalizeFeedMode(value: unknown): FeedMode {
+  const mode = String(value || "for-you").trim().toLowerCase();
+  if (
+    mode === "for-you"
+    || mode === "following"
+    || mode === "friends"
+    || mode === "latest"
+    || mode === "topics"
+    || mode === "conversations"
+    || mode === "explore"
+    || mode === "catch-up"
+    || mode === "custom"
+  ) {
+    return mode;
+  }
+  return "for-you";
+}
+
+export function normalizeFeedLens(value: unknown): FeedLens {
+  const lens = String(value || "").trim().toLowerCase().replace(/-/g, "_");
+  if (
+    lens === "balanced"
+    || lens === "latest"
+    || lens === "deep_reads"
+    || lens === "conversations"
+    || lens === "friends_first"
+    || lens === "discover"
+    || lens === "professional"
+    || lens === "local"
+  ) {
+    return lens;
+  }
+  return "balanced";
+}
+
+function normalizeTopic(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .replace(/^#/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_ -]/g, "")
+    .replace(/\s+/g, "_")
+    .slice(0, 64);
+}
+
+function normalizeLanguage(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z-]/g, "")
+    .slice(0, 12);
+}
+
+function jsonArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeStringList(value: unknown, max = 50): string[] {
+  return [...new Set(jsonArray(value).map((item) => String(item || "").trim().toLowerCase()).filter(Boolean))]
+    .slice(0, max);
+}
+
+export async function getFeedPreferences(userId: string): Promise<FeedPreferences> {
+  const row = await queryOne(
+    `SELECT lens, discovery_intensity, friend_priority, latest_priority,
+            reduce_reposts, reduce_political_content, reduce_sensitive_content,
+            prefer_professional_content, prefer_local_content, local_discovery_enabled,
+            perspective_broadening_enabled, preferred_languages, muted_keywords
+     FROM feed_preferences
+     WHERE user_id = $1`,
+    [userId]
+  );
+  if (!row) return { ...DEFAULT_FEED_PREFERENCES };
+  return {
+    lens: normalizeFeedLens(row.lens),
+    discoveryIntensity: clamp01(row.discovery_intensity, DEFAULT_FEED_PREFERENCES.discoveryIntensity),
+    friendPriority: clamp01(row.friend_priority, DEFAULT_FEED_PREFERENCES.friendPriority),
+    latestPriority: clamp01(row.latest_priority, DEFAULT_FEED_PREFERENCES.latestPriority),
+    reduceReposts: row.reduce_reposts === true,
+    reducePoliticalContent: row.reduce_political_content === true,
+    reduceSensitiveContent: row.reduce_sensitive_content !== false,
+    preferProfessionalContent: row.prefer_professional_content === true,
+    preferLocalContent: row.prefer_local_content === true,
+    localDiscoveryEnabled: row.local_discovery_enabled === true,
+    perspectiveBroadeningEnabled: row.perspective_broadening_enabled === true,
+    preferredLanguages: normalizeStringList(row.preferred_languages, 12).map(normalizeLanguage).filter(Boolean),
+    mutedKeywords: normalizeStringList(row.muted_keywords, 100),
+  };
+}
+
+export async function updateFeedPreferences(userId: string, input: Record<string, unknown>) {
+  const existing = await getFeedPreferences(userId);
+  const next: FeedPreferences = {
+    lens: input.lens === undefined ? existing.lens : normalizeFeedLens(input.lens),
+    discoveryIntensity: input.discoveryIntensity === undefined ? existing.discoveryIntensity : clamp01(input.discoveryIntensity, existing.discoveryIntensity),
+    friendPriority: input.friendPriority === undefined ? existing.friendPriority : clamp01(input.friendPriority, existing.friendPriority),
+    latestPriority: input.latestPriority === undefined ? existing.latestPriority : clamp01(input.latestPriority, existing.latestPriority),
+    reduceReposts: input.reduceReposts === undefined ? existing.reduceReposts : input.reduceReposts === true,
+    reducePoliticalContent: input.reducePoliticalContent === undefined ? existing.reducePoliticalContent : input.reducePoliticalContent === true,
+    reduceSensitiveContent: input.reduceSensitiveContent === undefined ? existing.reduceSensitiveContent : input.reduceSensitiveContent === true,
+    preferProfessionalContent: input.preferProfessionalContent === undefined ? existing.preferProfessionalContent : input.preferProfessionalContent === true,
+    preferLocalContent: input.preferLocalContent === undefined ? existing.preferLocalContent : input.preferLocalContent === true,
+    localDiscoveryEnabled: input.localDiscoveryEnabled === undefined ? existing.localDiscoveryEnabled : input.localDiscoveryEnabled === true,
+    perspectiveBroadeningEnabled: input.perspectiveBroadeningEnabled === undefined ? existing.perspectiveBroadeningEnabled : input.perspectiveBroadeningEnabled === true,
+    preferredLanguages: input.preferredLanguages === undefined
+      ? existing.preferredLanguages
+      : normalizeStringList(input.preferredLanguages, 12).map(normalizeLanguage).filter(Boolean),
+    mutedKeywords: input.mutedKeywords === undefined ? existing.mutedKeywords : normalizeStringList(input.mutedKeywords, 100),
+  };
+
+  await query(
+    `INSERT INTO feed_preferences (
+       user_id, lens, discovery_intensity, friend_priority, latest_priority,
+       reduce_reposts, reduce_political_content, reduce_sensitive_content,
+       prefer_professional_content, prefer_local_content, local_discovery_enabled,
+       perspective_broadening_enabled, preferred_languages, muted_keywords, updated_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+     ON CONFLICT (user_id)
+     DO UPDATE SET lens = EXCLUDED.lens,
+                   discovery_intensity = EXCLUDED.discovery_intensity,
+                   friend_priority = EXCLUDED.friend_priority,
+                   latest_priority = EXCLUDED.latest_priority,
+                   reduce_reposts = EXCLUDED.reduce_reposts,
+                   reduce_political_content = EXCLUDED.reduce_political_content,
+                   reduce_sensitive_content = EXCLUDED.reduce_sensitive_content,
+                   prefer_professional_content = EXCLUDED.prefer_professional_content,
+                   prefer_local_content = EXCLUDED.prefer_local_content,
+                   local_discovery_enabled = EXCLUDED.local_discovery_enabled,
+                   perspective_broadening_enabled = EXCLUDED.perspective_broadening_enabled,
+                   preferred_languages = EXCLUDED.preferred_languages,
+                   muted_keywords = EXCLUDED.muted_keywords,
+                   updated_at = EXCLUDED.updated_at`,
+    [
+      userId,
+      next.lens,
+      next.discoveryIntensity,
+      next.friendPriority,
+      next.latestPriority,
+      next.reduceReposts,
+      next.reducePoliticalContent,
+      next.reduceSensitiveContent,
+      next.preferProfessionalContent,
+      next.preferLocalContent,
+      next.localDiscoveryEnabled,
+      next.perspectiveBroadeningEnabled,
+      JSON.stringify(next.preferredLanguages),
+      JSON.stringify(next.mutedKeywords),
+    ]
+  );
+  return next;
 }
 
 function safeDate(value: unknown): Date | null {
@@ -205,6 +450,16 @@ function decodeCursor(raw: unknown): FeedCursor | null {
   } catch {
     return null;
   }
+}
+
+function decodeCursorOrThrow(raw: unknown): FeedCursor | null {
+  const value = String(raw || "").trim();
+  if (!value) return null;
+  const cursor = decodeCursor(value);
+  if (!cursor || !cursor.postId || !safeDate(cursor.createdAt)) {
+    throw new HttpError(400, "Invalid feed cursor");
+  }
+  return cursor;
 }
 
 async function loadRankingConfig(): Promise<RankingConfig> {
@@ -239,6 +494,7 @@ async function loadRankingConfig(): Promise<RankingConfig> {
       Object.assign(config.weights, dbConfig.weights || {});
       Object.assign(config.sourceAllocation, dbConfig.sourceAllocation || {});
       Object.assign(config.diversity, dbConfig.diversity || {});
+      Object.assign(config.quotas, dbConfig.quotas || {});
       if (Number.isFinite(Number(dbConfig.candidateMultiplier))) {
         config.candidateMultiplier = Number(dbConfig.candidateMultiplier);
       }
@@ -313,14 +569,28 @@ function sourceReason(source: CandidateSource): string {
   switch (source) {
     case "in_network":
       return "from_followed_author";
+    case "friend_recent":
+      return "friend_recent";
     case "interest":
+    case "topic_affinity":
       return "because_you_liked_similar_posts";
+    case "semantic_similarity":
+      return "similar_to_posts_you_engaged_with";
     case "social_proof":
+    case "trusted_network":
       return "trending_in_your_network";
     case "trending":
       return "popular_in_topic";
     case "exploration":
       return "exploration";
+    case "emerging_creator":
+      return "fresh_voice";
+    case "conversation":
+      return "active_conversation";
+    case "language_affinity":
+      return "matches_your_language";
+    case "editorial":
+      return "editorial";
     case "interacted_authors":
       return "because_you_engaged_with_author";
     case "cold_start":
@@ -328,6 +598,58 @@ function sourceReason(source: CandidateSource): string {
     default:
       return "recommended";
   }
+}
+
+function humanExplanation(reason: string, post?: any): string {
+  const topic = Array.isArray(post?.hashtags) && post.hashtags.length > 0
+    ? String(post.hashtags[0]).replace(/^#/, "")
+    : "";
+  switch (reason) {
+    case "from_followed_author":
+      return "Because you follow this account";
+    case "friend_recent":
+      return "Recent post from a friend";
+    case "because_you_liked_similar_posts":
+      return topic ? `Recommended from your interest in ${topic}` : "Because you read similar posts";
+    case "similar_to_posts_you_engaged_with":
+      return "Similar to posts you engaged with";
+    case "trending_in_your_network":
+      return "Popular among people you follow";
+    case "popular_in_topic":
+      return topic ? `Trending in ${topic}` : "Trending on Prava";
+    case "exploration":
+      return "New post you may like";
+    case "fresh_voice":
+      return "Fresh voice you may like";
+    case "active_conversation":
+      return "Active conversation in your network";
+    case "matches_your_language":
+      return "Matches your language preference";
+    case "editorial":
+      return "Curated by Prava";
+    case "because_you_engaged_with_author":
+      return "Because you engaged with this author before";
+    case "cold_start_popular":
+      return "Popular quality post to get you started";
+    default:
+      return "Recommended for you";
+  }
+}
+
+function recommendationMetadata(candidate: Candidate, reason: string, post: any) {
+  const sources = [...candidate.sources];
+  return {
+    reasonCode: reason,
+    explanation: humanExplanation(reason, post),
+    feedSource: sources[0] || "recommended",
+    topicMatch: Array.isArray(post.hashtags) && post.hashtags.length > 0 ? String(post.hashtags[0]) : null,
+    fromFollowedAccount: candidate.sources.has("in_network"),
+    fromFriend: candidate.sources.has("friend_recent"),
+    trending: candidate.sources.has("trending"),
+    exploration: candidate.sources.has("exploration") || candidate.sources.has("emerging_creator"),
+    editorial: candidate.sources.has("editorial"),
+    sponsored: false,
+  };
 }
 
 async function fetchInNetworkCandidates(viewerId: string, limit: number, config: RankingConfig, before?: Date | null) {
@@ -341,6 +663,28 @@ async function fetchInNetworkCandidates(viewerId: string, limit: number, config:
        ON f.follower_id = $1 AND f.following_id = p.author_id
      WHERE (p.author_id = $1 OR f.following_id IS NOT NULL)
        AND p.created_at > $2
+       AND p.body <> ''
+       AND p.deleted_at IS NULL
+       AND p.moderation_state = 'active'
+       ${beforeSql}
+     ORDER BY p.created_at DESC, p.post_id DESC
+     LIMIT $${params.length}`,
+    params
+  );
+}
+
+async function fetchFriendRecentCandidates(viewerId: string, limit: number, config: RankingConfig, before?: Date | null) {
+  const params: unknown[] = [viewerId, daysAgo(Math.ceil(config.maxAgeDays))];
+  const beforeSql = withBefore(params, before);
+  params.push(limit);
+  return queryMany(
+    `SELECT p.*
+     FROM posts p
+     JOIN follows outgoing
+       ON outgoing.follower_id = $1 AND outgoing.following_id = p.author_id
+     JOIN follows incoming
+       ON incoming.follower_id = p.author_id AND incoming.following_id = $1
+     WHERE p.created_at > $2
        AND p.body <> ''
        AND p.deleted_at IS NULL
        AND p.moderation_state = 'active'
@@ -438,6 +782,52 @@ async function fetchInterestCandidates(viewerId: string, limit: number, config: 
   );
 }
 
+async function fetchTopicCandidates(
+  viewerId: string,
+  topics: string[],
+  limit: number,
+  config: RankingConfig,
+  before?: Date | null
+) {
+  const normalizedTopics = [...new Set(topics.map(normalizeTopic).filter(Boolean))].slice(0, 40);
+  if (normalizedTopics.length === 0) return [];
+  const params: unknown[] = [viewerId, normalizedTopics, daysAgo(Math.ceil(config.maxAgeDays))];
+  const beforeSql = withBefore(params, before);
+  params.push(limit);
+  return queryMany(
+    `WITH topic_posts AS (
+       SELECT post_id, topic, weight, created_at FROM post_topics WHERE topic = ANY($2::text[])
+       UNION ALL
+       SELECT post_id, tag AS topic, 1::double precision AS weight, created_at FROM post_tags WHERE tag = ANY($2::text[])
+     )
+     SELECT p.*
+     FROM topic_posts pt
+     JOIN posts p ON p.post_id = pt.post_id
+     WHERE pt.topic = ANY($2::text[])
+       AND p.author_id <> $1
+       AND p.created_at > $3
+       AND p.body <> ''
+       AND p.deleted_at IS NULL
+       AND p.moderation_state = 'active'
+       ${beforeSql}
+     ORDER BY pt.weight DESC, p.created_at DESC, p.post_id DESC
+     LIMIT $${params.length}`,
+    params
+  );
+}
+
+async function fetchFollowedTopicCandidates(viewerId: string, limit: number, config: RankingConfig, before?: Date | null) {
+  const rows = await queryMany(
+    `SELECT topic
+     FROM user_followed_topics
+     WHERE user_id = $1
+     ORDER BY followed_at DESC
+     LIMIT 40`,
+    [viewerId]
+  );
+  return fetchTopicCandidates(viewerId, rows.map((row) => row.topic), limit, config, before);
+}
+
 async function fetchSocialProofCandidates(viewerId: string, limit: number, config: RankingConfig, before?: Date | null) {
   const params: unknown[] = [viewerId, daysAgo(Math.ceil(config.maxAgeDays))];
   const beforeSql = withBefore(params, before);
@@ -475,6 +865,60 @@ async function fetchSocialProofCandidates(viewerId: string, limit: number, confi
        AND p.moderation_state = 'active'
        ${beforeSql}
      ORDER BY ne.proof_score DESC, ne.last_signal_at DESC, p.created_at DESC
+     LIMIT $${params.length}`,
+    params
+  );
+}
+
+async function fetchConversationCandidates(viewerId: string, limit: number, config: RankingConfig, before?: Date | null) {
+  const params: unknown[] = [viewerId, daysAgo(Math.ceil(config.maxAgeDays))];
+  const beforeSql = withBefore(params, before);
+  params.push(limit);
+  return queryMany(
+    `SELECT p.*
+     FROM posts p
+     LEFT JOIN post_engagement_stats pes ON pes.post_id = p.post_id
+     LEFT JOIN follows f ON f.follower_id = $1 AND f.following_id = p.author_id
+     WHERE p.created_at > $2
+       AND p.body <> ''
+       AND p.deleted_at IS NULL
+       AND p.moderation_state = 'active'
+       AND (
+         p.comment_count > 0
+         OR COALESCE(pes.reply_count, 0) > 0
+         OR p.parent_post_id IS NOT NULL
+       )
+       ${beforeSql}
+     ORDER BY (p.comment_count + COALESCE(pes.reply_count, 0) * 2 + CASE WHEN f.following_id IS NOT NULL THEN 5 ELSE 0 END) DESC,
+              p.created_at DESC
+     LIMIT $${params.length}`,
+    params
+  );
+}
+
+async function fetchLanguageAffinityCandidates(
+  viewerId: string,
+  languages: string[],
+  limit: number,
+  config: RankingConfig,
+  before?: Date | null
+) {
+  const normalized = [...new Set(languages.map(normalizeLanguage).filter(Boolean))].slice(0, 8);
+  if (normalized.length === 0) return [];
+  const params: unknown[] = [viewerId, normalized, daysAgo(Math.ceil(config.maxAgeDays))];
+  const beforeSql = withBefore(params, before);
+  params.push(limit);
+  return queryMany(
+    `SELECT p.*
+     FROM posts p
+     WHERE p.author_id <> $1
+       AND p.language = ANY($2::text[])
+       AND p.created_at > $3
+       AND p.body <> ''
+       AND p.deleted_at IS NULL
+       AND p.moderation_state = 'active'
+       ${beforeSql}
+     ORDER BY p.quality_score DESC, p.created_at DESC
      LIMIT $${params.length}`,
     params
   );
@@ -524,6 +968,50 @@ async function fetchExplorationCandidates(viewerId: string, limit: number, confi
   );
 }
 
+async function fetchEmergingCreatorCandidates(viewerId: string, limit: number, config: RankingConfig, before?: Date | null) {
+  const params: unknown[] = [viewerId, daysAgo(Math.ceil(config.maxAgeDays))];
+  const beforeSql = withBefore(params, before);
+  params.push(limit);
+  return queryMany(
+    `SELECT p.*
+     FROM posts p
+     LEFT JOIN follows f
+       ON f.follower_id = $1 AND f.following_id = p.author_id
+     WHERE p.author_id <> $1
+       AND f.following_id IS NULL
+       AND p.created_at > $2
+       AND p.body <> ''
+       AND p.deleted_at IS NULL
+       AND p.moderation_state = 'active'
+       AND p.quality_score >= 0.55
+       AND COALESCE(p.impression_count, 0) < 500
+       ${beforeSql}
+     ORDER BY p.quality_score DESC, p.created_at DESC
+     LIMIT $${params.length}`,
+    params
+  );
+}
+
+async function fetchEditorialCandidates(limit: number, before?: Date | null) {
+  const params: unknown[] = [];
+  const beforeSql = withBefore(params, before);
+  params.push(limit);
+  return queryMany(
+    `SELECT p.*, e.label AS editorial_label, e.priority AS editorial_priority
+     FROM editorial_feed_items e
+     JOIN posts p ON p.post_id = e.post_id
+     WHERE e.starts_at <= NOW()
+       AND (e.ends_at IS NULL OR e.ends_at > NOW())
+       AND p.body <> ''
+       AND p.deleted_at IS NULL
+       AND p.moderation_state = 'active'
+       ${beforeSql}
+     ORDER BY e.priority DESC, p.created_at DESC
+     LIMIT $${params.length}`,
+    params
+  );
+}
+
 async function fetchColdStartCandidates(limit: number, config: RankingConfig, before?: Date | null) {
   const params: unknown[] = [daysAgo(Math.ceil(config.maxAgeDays * 2))];
   const beforeSql = withBefore(params, before);
@@ -568,31 +1056,56 @@ async function collectCandidates(
   viewerId: string,
   limit: number,
   config: RankingConfig,
-  before?: Date | null
+  before?: Date | null,
+  preferences: FeedPreferences = DEFAULT_FEED_PREFERENCES,
+  mode: FeedMode = "for-you"
 ): Promise<{ candidates: Candidate[]; sourceCounts: Record<string, number> }> {
   const [
     inNetwork,
+    friends,
     interacted,
     interest,
+    followedTopics,
     socialProof,
     trending,
     exploration,
+    emergingCreators,
+    conversations,
+    languageAffinity,
+    editorial,
   ] = await Promise.all([
     fetchInNetworkCandidates(viewerId, sourceLimit(limit, config, "in_network"), config, before),
+    fetchFriendRecentCandidates(viewerId, sourceLimit(limit, config, "friend_recent"), config, before),
     fetchInteractedAuthorCandidates(viewerId, sourceLimit(limit, config, "interacted_authors"), config, before),
     fetchInterestCandidates(viewerId, sourceLimit(limit, config, "interest"), config, before),
+    fetchFollowedTopicCandidates(viewerId, sourceLimit(limit, config, "topic_affinity"), config, before),
     fetchSocialProofCandidates(viewerId, sourceLimit(limit, config, "social_proof"), config, before),
     fetchTrendingCandidates(viewerId, sourceLimit(limit, config, "trending"), config, before),
-    fetchExplorationCandidates(viewerId, sourceLimit(limit, config, "exploration"), config, before),
+    fetchExplorationCandidates(
+      viewerId,
+      Math.ceil(sourceLimit(limit, config, "exploration") * (mode === "explore" ? 2.2 : 1 + preferences.discoveryIntensity)),
+      config,
+      before
+    ),
+    fetchEmergingCreatorCandidates(viewerId, sourceLimit(limit, config, "emerging_creator"), config, before),
+    fetchConversationCandidates(viewerId, sourceLimit(limit, config, "conversation"), config, before),
+    fetchLanguageAffinityCandidates(viewerId, preferences.preferredLanguages, sourceLimit(limit, config, "language_affinity"), config, before),
+    fetchEditorialCandidates(sourceLimit(limit, config, "editorial"), before),
   ]);
 
   const map = new Map<string, Candidate>();
   mergeCandidateRows(map, inNetwork, "in_network");
+  mergeCandidateRows(map, friends, "friend_recent");
   mergeCandidateRows(map, interacted, "interacted_authors");
   mergeCandidateRows(map, interest, "interest");
+  mergeCandidateRows(map, followedTopics, "topic_affinity");
   mergeCandidateRows(map, socialProof, "social_proof");
   mergeCandidateRows(map, trending, "trending");
   mergeCandidateRows(map, exploration, "exploration");
+  mergeCandidateRows(map, emergingCreators, "emerging_creator");
+  mergeCandidateRows(map, conversations, "conversation");
+  mergeCandidateRows(map, languageAffinity, "language_affinity");
+  mergeCandidateRows(map, editorial, "editorial");
 
   if (map.size < limit) {
     mergeCandidateRows(
@@ -606,12 +1119,33 @@ async function collectCandidates(
     candidates: [...map.values()],
     sourceCounts: {
       in_network: inNetwork.length,
+      friend_recent: friends.length,
       interacted_authors: interacted.length,
       interest: interest.length,
+      topic_affinity: followedTopics.length,
       social_proof: socialProof.length,
       trending: trending.length,
       exploration: exploration.length,
-      cold_start: Math.max(0, map.size - inNetwork.length - interacted.length - interest.length - socialProof.length - trending.length - exploration.length),
+      emerging_creator: emergingCreators.length,
+      conversation: conversations.length,
+      language_affinity: languageAffinity.length,
+      editorial: editorial.length,
+      cold_start: Math.max(
+        0,
+        map.size
+          - inNetwork.length
+          - friends.length
+          - interacted.length
+          - interest.length
+          - followedTopics.length
+          - socialProof.length
+          - trending.length
+          - exploration.length
+          - emergingCreators.length
+          - conversations.length
+          - languageAffinity.length
+          - editorial.length
+      ),
     },
   };
 }
@@ -620,7 +1154,9 @@ async function hardFilterCandidates(
   viewerId: string,
   candidates: Candidate[],
   config: RankingConfig,
-  sessionId?: string
+  sessionId?: string,
+  preferences: FeedPreferences = DEFAULT_FEED_PREFERENCES,
+  options: { allowRecentlyServed?: boolean; strictOutOfNetwork?: boolean } = {}
 ): Promise<{ candidates: Candidate[]; filteredCount: number }> {
   if (candidates.length === 0) {
     return { candidates: [], filteredCount: 0 };
@@ -629,8 +1165,10 @@ async function hardFilterCandidates(
   const ids = candidates.map((candidate) => String(candidate.post.post_id));
   const idSql = placeholders(ids.length);
   const postRows = await queryMany(
-    `SELECT p.post_id, p.author_id, p.body, p.hashtags, p.deleted_at,
-            p.moderation_state, author.deleted_at AS author_deleted_at,
+    `SELECT p.post_id, p.author_id, p.body, p.hashtags, p.share_of_post_id,
+            p.deleted_at, p.moderation_state, p.visibility, p.sensitive_label,
+            p.spam_score, p.toxicity_score, p.clickbait_score, p.quality_score,
+            author.deleted_at AS author_deleted_at,
             author_settings.settings AS author_settings
      FROM posts p
      JOIN users author ON author.user_id = p.author_id
@@ -649,6 +1187,7 @@ async function hardFilterCandidates(
     hiddenRows,
     notInterestedRows,
     mutedWords,
+    mutedTopicRows,
     servedRows,
   ] = await Promise.all([
     authorIds.length
@@ -684,7 +1223,14 @@ async function hardFilterCandidates(
       `SELECT phrase_lower FROM user_muted_words WHERE user_id = $1`,
       [viewerId]
     ),
-    sessionId
+    queryMany(
+      `SELECT topic, snoozed_until
+       FROM feed_muted_topics
+       WHERE user_id = $1
+         AND (snoozed_until IS NULL OR snoozed_until > NOW())`,
+      [viewerId]
+    ),
+    sessionId && !options.allowRecentlyServed
       ? queryMany(
           `SELECT post_id
            FROM feed_served_history
@@ -710,6 +1256,8 @@ async function hardFilterCandidates(
   const mutedPhrases = mutedWords
     .map((row) => String(row.phrase_lower || "").trim().toLowerCase())
     .filter(Boolean);
+  const preferenceMutedPhrases = preferences.mutedKeywords.map((word) => word.toLowerCase()).filter(Boolean);
+  const mutedTopics = new Set(mutedTopicRows.map((row) => normalizeTopic(row.topic)).filter(Boolean));
 
   const filtered = candidates.filter((candidate) => {
     const post = postMap.get(candidate.post.post_id);
@@ -721,15 +1269,27 @@ async function hardFilterCandidates(
     if (!String(post.body || "").trim()) return false;
     if (blockedAuthors.has(authorId) || mutedAuthors.has(authorId)) return false;
     if (hidden.has(postId) || notInterested.has(postId) || served.has(postId)) return false;
+    if (preferences.reduceReposts && post.share_of_post_id) return false;
+    if (String(post.visibility || "public") !== "public" && authorId !== viewerId && !following.has(authorId)) return false;
+    if (preferences.reduceSensitiveContent && String(post.sensitive_label || "")) return false;
+    if (Number(post.toxicity_score || 0) >= 0.82 || Number(post.spam_score || 0) >= 0.78) return false;
+    if (options.strictOutOfNetwork && !following.has(authorId) && authorId !== viewerId) {
+      if (Number(post.quality_score || 0) < 0.35) return false;
+      if (Number(post.spam_score || 0) >= 0.35 || Number(post.clickbait_score || 0) >= 0.6) return false;
+    }
 
     const settings = post.author_settings || {};
     const privateAccount = settings?.privateAccount === true;
     if (privateAccount && authorId !== viewerId && !following.has(authorId)) return false;
 
-    if (mutedPhrases.length > 0) {
+    const hashtags = Array.isArray(post.hashtags) ? post.hashtags.map(normalizeTopic).filter(Boolean) : [];
+    if (hashtags.some((tag: string) => mutedTopics.has(tag))) return false;
+
+    const allMutedPhrases = [...mutedPhrases, ...preferenceMutedPhrases];
+    if (allMutedPhrases.length > 0) {
       const body = String(post.body || "").toLowerCase();
-      const hashtags = JSON.stringify(post.hashtags || []).toLowerCase();
-      if (mutedPhrases.some((phrase) => body.includes(phrase) || hashtags.includes(phrase))) {
+      const hashtagText = JSON.stringify(post.hashtags || []).toLowerCase();
+      if (allMutedPhrases.some((phrase) => body.includes(phrase) || hashtagText.includes(phrase))) {
         return false;
       }
     }
@@ -879,9 +1439,14 @@ export class HeuristicScoringProvider implements ScoringProvider {
     const recency = recencyScore(post.created_at);
     const affinity = clamp(
       (candidate.sources.has("in_network") ? 0.32 : 0)
+      + (candidate.sources.has("friend_recent") ? 0.35 : 0)
       + Math.max(0, Number(authorAffinity.score || 0)) / 16
     );
-    const interest = interestScore(post.post_id, features);
+    const interest = clamp(
+      interestScore(post.post_id, features)
+      + (candidate.sources.has("topic_affinity") ? 0.18 : 0)
+      + (candidate.sources.has("language_affinity") ? 0.12 : 0)
+    );
 
     const weightedEngagement =
       Number(stats.like_count ?? post.like_count ?? 0)
@@ -899,12 +1464,16 @@ export class HeuristicScoringProvider implements ScoringProvider {
     const bayesianRate = (weightedEngagement + 8 * 0.04) / (impressions + 8);
     const engagement = clamp(bayesianRate * 2 + Math.log1p(weightedEngagement) / 8);
 
-    const trend = clamp(Number(stats.trend_velocity_score || 0) / 25);
-    const socialProof = clamp(Math.log1p(features.socialProof.get(post.post_id) || 0) / Math.log(12));
+    const trend = clamp(Number(stats.trend_velocity_score || 0) / 25 + (candidate.sources.has("trending") ? 0.08 : 0));
+    const socialProof = clamp(Math.log1p(features.socialProof.get(post.post_id) || 0) / Math.log(12) + (candidate.sources.has("trusted_network") ? 0.1 : 0));
     const reportRatio = Number(stats.report_count || 0) / Math.max(1, impressions);
     const negativeRate = Number(stats.negative_count || 0) / Math.max(1, impressions);
     const quality = clamp(Number(stats.quality_score ?? post.quality_score ?? 1) - reportRatio * 2 - negativeRate);
-    const exploration = candidate.sources.has("exploration") || candidate.sources.has("cold_start") ? 1 : 0;
+    const exploration = candidate.sources.has("exploration")
+      || candidate.sources.has("emerging_creator")
+      || candidate.sources.has("cold_start")
+      ? 1
+      : 0;
     const negativeFeedback = clamp(
       negativeRate
       + Math.max(0, Number(authorAffinity.negative_count || 0) - Number(authorAffinity.positive_count || 0)) / 20
@@ -934,6 +1503,8 @@ export class HeuristicScoringProvider implements ScoringProvider {
       + config.weights.socialProof * socialProof
       + config.weights.quality * quality
       + config.weights.exploration * exploration
+      + (candidate.sources.has("conversation") ? 0.04 : 0)
+      + (candidate.sources.has("editorial") ? 0.03 : 0)
       - config.weights.negativeFeedback * negativeFeedback
       - config.weights.spam * spam;
 
@@ -992,10 +1563,13 @@ function rankCandidates(
   const ranked = candidates.map((candidate) => {
     const result = provider.score({ viewerId, candidate, features, config });
     const reasons = [...candidate.reasons];
+    const primaryReason = reasons[0] || "recommended";
     return {
       ...candidate.post,
       rank_score: result.score,
-      recommendation_reason: reasons[0] || "recommended",
+      recommendation_reason: primaryReason,
+      recommendation_explanation: humanExplanation(primaryReason, candidate.post),
+      recommendation_metadata: recommendationMetadata(candidate, primaryReason, candidate.post),
       recommendation_reasons: reasons,
       candidate_sources: [...candidate.sources],
       score_breakdown: result.breakdown,
@@ -1011,19 +1585,25 @@ async function buildFollowingPage(
   limit: number,
   cursor: FeedCursor | null,
   before?: Date | null,
-  sessionId?: string
+  sessionId?: string,
+  preferences: FeedPreferences = DEFAULT_FEED_PREFERENCES
 ): Promise<FeedPageResult> {
   const started = Date.now();
   const config = await loadRankingConfig();
+  const effectiveSessionId = sessionId || generateId();
   const rows = await fetchInNetworkCandidates(viewerId, Math.min(config.maxCandidatePool, limit * 4), config, before);
   const map = new Map<string, Candidate>();
   mergeCandidateRows(map, rows, "in_network");
-  const hardFiltered = await hardFilterCandidates(viewerId, [...map.values()], config, sessionId);
+  const hardFiltered = await hardFilterCandidates(viewerId, [...map.values()], config, undefined, preferences, {
+    allowRecentlyServed: true,
+  });
   const ranked = hardFiltered.candidates
     .map((candidate) => ({
       ...candidate.post,
       rank_score: new Date(candidate.post.created_at).getTime() / 1000,
       recommendation_reason: "from_followed_author",
+      recommendation_explanation: humanExplanation("from_followed_author", candidate.post),
+      recommendation_metadata: recommendationMetadata(candidate, "from_followed_author", candidate.post),
       recommendation_reasons: [...candidate.reasons],
       candidate_sources: [...candidate.sources],
       score_breakdown: {
@@ -1034,12 +1614,15 @@ async function buildFollowingPage(
   const items = ranked
     .filter((post) => cursorPredicate(cursor, post, "following", config.cursorEpsilon))
     .slice(0, limit);
-  await recordServedPosts(viewerId, items, sessionId || "", "following");
+  await recordServedPosts(viewerId, items, effectiveSessionId, "following");
+  await persistFeedSession(viewerId, effectiveSessionId, "following", preferences.lens, items);
   return {
     items,
     nextCursor: buildNextCursor(items, "following"),
+    sessionId: effectiveSessionId,
     metrics: {
       mode: "following",
+      lens: preferences.lens,
       candidateCount: rows.length,
       filteredCount: hardFiltered.filteredCount,
       fallbackUsed: null,
@@ -1049,6 +1632,304 @@ async function buildFollowingPage(
   };
 }
 
+async function persistFeedSession(
+  viewerId: string,
+  sessionId: string,
+  mode: FeedMode,
+  lens: FeedLens,
+  posts: RankedFeedPost[]
+) {
+  if (!sessionId) return;
+  await query(
+    `INSERT INTO feed_sessions (session_id, user_id, mode, lens, config_hash, post_ids, created_at, expires_at)
+     VALUES ($1, $2, $3, $4, 'heuristic_v1', $5, NOW(), NOW() + INTERVAL '30 minutes')
+     ON CONFLICT (session_id, user_id)
+     DO UPDATE SET mode = EXCLUDED.mode,
+                   lens = EXCLUDED.lens,
+                   post_ids = EXCLUDED.post_ids,
+                   expires_at = EXCLUDED.expires_at`,
+    [sessionId, viewerId, mode, lens, JSON.stringify(posts.map((post) => String(post.post_id)))]
+  );
+}
+
+async function buildChronologicalPageFromRows({
+  viewerId,
+  mode,
+  rows,
+  source,
+  limit,
+  cursor,
+  sessionId,
+  preferences,
+  started,
+}: {
+  viewerId: string;
+  mode: FeedMode;
+  rows: any[];
+  source: CandidateSource;
+  limit: number;
+  cursor: FeedCursor | null;
+  sessionId: string;
+  preferences: FeedPreferences;
+  started: number;
+}): Promise<FeedPageResult> {
+  const config = await loadRankingConfig();
+  const map = new Map<string, Candidate>();
+  mergeCandidateRows(map, rows, source);
+  const hardFiltered = await hardFilterCandidates(viewerId, [...map.values()], config, undefined, preferences, {
+    allowRecentlyServed: true,
+    strictOutOfNetwork: mode === "explore",
+  });
+  const ranked = hardFiltered.candidates
+    .map((candidate) => {
+      const reason = [...candidate.reasons][0] || sourceReason(source);
+      return {
+        ...candidate.post,
+        rank_score: new Date(candidate.post.created_at).getTime() / 1000,
+        recommendation_reason: reason,
+        recommendation_explanation: humanExplanation(reason, candidate.post),
+        recommendation_metadata: recommendationMetadata(candidate, reason, candidate.post),
+        recommendation_reasons: [...candidate.reasons],
+        candidate_sources: [...candidate.sources],
+        score_breakdown: {
+          recency: recencyScore(candidate.post.created_at),
+        },
+      };
+    })
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime() || String(b.post_id).localeCompare(String(a.post_id)));
+  const items = ranked
+    .filter((post) => cursorPredicate(cursor, post, "following", config.cursorEpsilon))
+    .slice(0, limit);
+  await recordServedPosts(viewerId, items, sessionId, mode);
+  await persistFeedSession(viewerId, sessionId, mode, preferences.lens, items);
+  return {
+    items,
+    nextCursor: buildNextCursor(items, "following"),
+    sessionId,
+    metrics: {
+      mode,
+      lens: preferences.lens,
+      candidateCount: rows.length,
+      filteredCount: hardFiltered.filteredCount,
+      fallbackUsed: null,
+      sourceCounts: { [source]: rows.length },
+      durationMs: Date.now() - started,
+    },
+  };
+}
+
+async function buildFriendsPage(viewerId: string, limit: number, cursor: FeedCursor | null, before: Date | null | undefined, sessionId: string, preferences: FeedPreferences) {
+  const started = Date.now();
+  const config = await loadRankingConfig();
+  const rows = await fetchFriendRecentCandidates(viewerId, Math.min(config.maxCandidatePool, limit * 4), config, before);
+  return buildChronologicalPageFromRows({
+    viewerId,
+    mode: "friends",
+    rows,
+    source: "friend_recent",
+    limit,
+    cursor,
+    sessionId,
+    preferences,
+    started,
+  });
+}
+
+async function buildTopicPage(viewerId: string, topic: string, limit: number, cursor: FeedCursor | null, before: Date | null | undefined, sessionId: string, preferences: FeedPreferences) {
+  const started = Date.now();
+  const config = await loadRankingConfig();
+  const rows = await fetchTopicCandidates(viewerId, [topic], Math.min(config.maxCandidatePool, limit * 5), config, before);
+  return buildChronologicalPageFromRows({
+    viewerId,
+    mode: "topics",
+    rows,
+    source: "topic_affinity",
+    limit,
+    cursor,
+    sessionId,
+    preferences,
+    started,
+  });
+}
+
+async function buildConversationsPage(viewerId: string, limit: number, cursor: FeedCursor | null, before: Date | null | undefined, sessionId: string, preferences: FeedPreferences) {
+  const started = Date.now();
+  const config = await loadRankingConfig();
+  const rows = await fetchConversationCandidates(viewerId, Math.min(config.maxCandidatePool, limit * 6), config, before);
+  return buildChronologicalPageFromRows({
+    viewerId,
+    mode: "conversations",
+    rows,
+    source: "conversation",
+    limit,
+    cursor,
+    sessionId,
+    preferences: { ...preferences, lens: "conversations" },
+    started,
+  });
+}
+
+async function buildLatestPage(
+  viewerId: string,
+  limit: number,
+  cursor: FeedCursor | null,
+  before: Date | null | undefined,
+  sessionId: string,
+  preferences: FeedPreferences,
+  scope = "network"
+) {
+  const started = Date.now();
+  const config = await loadRankingConfig();
+  const params: unknown[] = [viewerId, daysAgo(Math.ceil(config.maxAgeDays * 2))];
+  const beforeSql = withBefore(params, before);
+  params.push(Math.min(config.maxCandidatePool, limit * 6));
+  const scopeSql = scope === "broad"
+    ? ""
+    : `AND (
+         p.author_id = $1
+         OR EXISTS (SELECT 1 FROM follows f WHERE f.follower_id = $1 AND f.following_id = p.author_id)
+         OR EXISTS (
+           SELECT 1
+           FROM user_followed_topics uft
+           JOIN post_topics pt ON pt.post_id = p.post_id AND pt.topic = uft.topic
+           WHERE uft.user_id = $1
+         )
+       )`;
+  const rows = await queryMany(
+    `SELECT p.*
+     FROM posts p
+     WHERE p.created_at > $2
+       AND p.body <> ''
+       AND p.deleted_at IS NULL
+       AND p.moderation_state = 'active'
+       ${scopeSql}
+       ${beforeSql}
+     ORDER BY p.created_at DESC, p.post_id DESC
+     LIMIT $${params.length}`,
+    params
+  );
+  return buildChronologicalPageFromRows({
+    viewerId,
+    mode: "latest",
+    rows,
+    source: scope === "broad" ? "trending" : "in_network",
+    limit,
+    cursor,
+    sessionId,
+    preferences: { ...preferences, lens: "latest" },
+    started,
+  });
+}
+
+async function buildCustomFeedPage(
+  viewerId: string,
+  feedId: string,
+  limit: number,
+  cursor: FeedCursor | null,
+  before: Date | null | undefined,
+  sessionId: string,
+  preferences: FeedPreferences
+) {
+  const row = await queryOne(
+    `SELECT definition
+     FROM feed_custom_feeds
+     WHERE feed_id = $1 AND user_id = $2`,
+    [feedId, viewerId]
+  );
+  if (!row) {
+    throw new HttpError(404, "Custom feed not found");
+  }
+  const definition = row.definition || {};
+  const includeTopics = normalizeStringList(definition.includeTopics || definition.topics || [], 40).map(normalizeTopic).filter(Boolean);
+  const languageFilters = normalizeStringList(definition.languages || [], 12).map(normalizeLanguage).filter(Boolean);
+  if (includeTopics.length > 0) {
+    return buildTopicPage(viewerId, includeTopics[0], limit, cursor, before, sessionId, preferences);
+  }
+  if (definition.friendsOnly === true) {
+    return buildFriendsPage(viewerId, limit, cursor, before, sessionId, preferences);
+  }
+  if (definition.latestOnly === true) {
+    return buildLatestPage(viewerId, limit, cursor, before, sessionId, preferences, definition.broadNetwork === true ? "broad" : "network");
+  }
+
+  const started = Date.now();
+  const config = await loadRankingConfig();
+  const rows = languageFilters.length > 0
+    ? await fetchLanguageAffinityCandidates(viewerId, languageFilters, Math.min(config.maxCandidatePool, limit * 5), config, before)
+    : await fetchInterestCandidates(viewerId, Math.min(config.maxCandidatePool, limit * 5), config, before);
+  return buildChronologicalPageFromRows({
+    viewerId,
+    mode: "custom",
+    rows,
+    source: languageFilters.length > 0 ? "language_affinity" : "topic_affinity",
+    limit,
+    cursor,
+    sessionId,
+    preferences,
+    started,
+  });
+}
+
+async function buildCatchUpPage(
+  viewerId: string,
+  limit: number,
+  cursor: FeedCursor | null,
+  before: Date | null | undefined,
+  sessionId: string,
+  preferences: FeedPreferences
+) {
+  const started = Date.now();
+  const config = await loadRankingConfig();
+  const lastSeen = await queryOne(
+    `SELECT MAX(last_seen_at) AS last_seen_at
+     FROM feed_impressions
+     WHERE user_id = $1`,
+    [viewerId]
+  );
+  const since = safeDate(lastSeen?.last_seen_at) || daysAgo(7);
+  const params: unknown[] = [viewerId, since];
+  const beforeSql = withBefore(params, before);
+  params.push(Math.min(config.maxCandidatePool, limit * 8));
+  const rows = await queryMany(
+    `SELECT p.*
+     FROM posts p
+     LEFT JOIN follows f ON f.follower_id = $1 AND f.following_id = p.author_id
+     LEFT JOIN post_engagement_stats pes ON pes.post_id = p.post_id
+     WHERE p.created_at > $2
+       AND p.body <> ''
+       AND p.deleted_at IS NULL
+       AND p.moderation_state = 'active'
+       AND (
+         f.following_id IS NOT NULL
+         OR EXISTS (
+           SELECT 1
+           FROM user_followed_topics uft
+           JOIN post_topics pt ON pt.post_id = p.post_id AND pt.topic = uft.topic
+           WHERE uft.user_id = $1
+         )
+         OR p.comment_count > 0
+       )
+       ${beforeSql}
+     ORDER BY CASE WHEN f.following_id IS NOT NULL THEN 6 ELSE 0 END
+              + COALESCE(pes.quality_score, p.quality_score, 1) * 3
+              + COALESCE(pes.trend_velocity_score, 0) DESC,
+              p.created_at DESC
+     LIMIT $${params.length}`,
+    params
+  );
+  return buildChronologicalPageFromRows({
+    viewerId,
+    mode: "catch-up",
+    rows,
+    source: "conversation",
+    limit,
+    cursor,
+    sessionId,
+    preferences,
+    started,
+  });
+}
+
 export async function buildFeedPage({
   viewerId,
   mode,
@@ -1056,6 +1937,10 @@ export async function buildFeedPage({
   cursor,
   before,
   sessionId,
+  lens,
+  topic,
+  customFeedId,
+  scope,
 }: {
   viewerId: string;
   mode: FeedMode;
@@ -1063,21 +1948,56 @@ export async function buildFeedPage({
   cursor?: string | null;
   before?: Date | null;
   sessionId?: string;
+  lens?: FeedLens | string | null;
+  topic?: string | null;
+  customFeedId?: string | null;
+  scope?: string | null;
 }): Promise<FeedPageResult> {
   const normalizedLimit = Math.max(1, Math.min(50, limit));
-  const decodedCursor = decodeCursor(cursor);
+  const decodedCursor = decodeCursorOrThrow(cursor);
+  const storedPreferences = await getFeedPreferences(viewerId);
+  const preferences: FeedPreferences = {
+    ...storedPreferences,
+    lens: lens ? normalizeFeedLens(lens) : storedPreferences.lens,
+  };
+  const effectiveSessionId = sessionId || generateId();
   if (mode === "following") {
-    return buildFollowingPage(viewerId, normalizedLimit, decodedCursor, before, sessionId);
+    return buildFollowingPage(viewerId, normalizedLimit, decodedCursor, before, effectiveSessionId, preferences);
+  }
+  if (mode === "friends") {
+    return buildFriendsPage(viewerId, normalizedLimit, decodedCursor, before, effectiveSessionId, preferences);
+  }
+  if (mode === "latest") {
+    return buildLatestPage(viewerId, normalizedLimit, decodedCursor, before, effectiveSessionId, preferences, String(scope || "network"));
+  }
+  if (mode === "topics") {
+    const normalizedTopic = normalizeTopic(topic);
+    if (!normalizedTopic) throw new HttpError(400, "Topic is required");
+    return buildTopicPage(viewerId, normalizedTopic, normalizedLimit, decodedCursor, before, effectiveSessionId, preferences);
+  }
+  if (mode === "conversations") {
+    return buildConversationsPage(viewerId, normalizedLimit, decodedCursor, before, effectiveSessionId, preferences);
+  }
+  if (mode === "custom") {
+    const feedId = String(customFeedId || "").trim();
+    if (!feedId) throw new HttpError(400, "Custom feed is required");
+    return buildCustomFeedPage(viewerId, feedId, normalizedLimit, decodedCursor, before, effectiveSessionId, preferences);
+  }
+  if (mode === "catch-up") {
+    return buildCatchUpPage(viewerId, normalizedLimit, decodedCursor, before, effectiveSessionId, preferences);
   }
 
   const started = Date.now();
   const config = await loadRankingConfig();
   const provider = new HeuristicScoringProvider();
-  const collected = await collectCandidates(viewerId, normalizedLimit, config, before);
+  const effectiveMode: FeedMode = mode === "explore" ? "explore" : "for-you";
+  const collected = await collectCandidates(viewerId, normalizedLimit, config, before, preferences, effectiveMode);
   let fallbackUsed: string | null = null;
   let candidateSet = collected.candidates;
 
-  let filtered = await hardFilterCandidates(viewerId, candidateSet, config, sessionId);
+  let filtered = await hardFilterCandidates(viewerId, candidateSet, config, effectiveSessionId, preferences, {
+    strictOutOfNetwork: mode === "explore",
+  });
   if (filtered.candidates.length < normalizedLimit) {
     fallbackUsed = "cold_start_popular";
     const fallbackMap = new Map<string, Candidate>();
@@ -1087,7 +2007,9 @@ export async function buildFeedPage({
       "cold_start"
     );
     candidateSet = [...new Map([...candidateSet, ...fallbackMap.values()].map((candidate) => [candidate.post.post_id, candidate])).values()];
-    filtered = await hardFilterCandidates(viewerId, candidateSet, config, sessionId);
+    filtered = await hardFilterCandidates(viewerId, candidateSet, config, effectiveSessionId, preferences, {
+      strictOutOfNetwork: mode === "explore",
+    });
   }
 
   const features = await hydrateFeatures(viewerId, filtered.candidates.map((candidate) => candidate.post));
@@ -1096,13 +2018,16 @@ export async function buildFeedPage({
     .filter((post) => cursorPredicate(decodedCursor, post, "for-you", config.cursorEpsilon))
     .slice(0, normalizedLimit);
 
-  await recordServedPosts(viewerId, items, sessionId || "", "for-you");
+  await recordServedPosts(viewerId, items, effectiveSessionId, effectiveMode);
+  await persistFeedSession(viewerId, effectiveSessionId, effectiveMode, preferences.lens, items);
 
   return {
     items,
     nextCursor: buildNextCursor(items, "for-you"),
+    sessionId: effectiveSessionId,
     metrics: {
-      mode: "for-you",
+      mode: effectiveMode,
+      lens: preferences.lens,
       candidateCount: collected.candidates.length,
       filteredCount: filtered.filteredCount,
       fallbackUsed,
@@ -1312,6 +2237,297 @@ export async function markPostNotInterested(userId: string, postId: string, reas
   );
   await recordFeedEvent(userId, { type: "not_interested", postId, metadata: { reason } });
   return { notInterested: true };
+}
+
+export async function recordFeedFeedback(
+  userId: string,
+  postId: string,
+  feedbackType: string,
+  value = 1,
+  metadata: Record<string, unknown> = {}
+) {
+  const normalizedType = String(feedbackType || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 80);
+  if (!normalizedType) throw new HttpError(400, "Feedback type is required");
+  await query(
+    `INSERT INTO feed_feedback (user_id, post_id, feedback_type, feedback_value, metadata, created_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (user_id, post_id, feedback_type)
+     DO UPDATE SET feedback_value = EXCLUDED.feedback_value,
+                   metadata = EXCLUDED.metadata,
+                   created_at = EXCLUDED.created_at`,
+    [userId, postId, normalizedType, value, JSON.stringify(metadata)]
+  );
+  await recordFeedEvent(userId, {
+    type: value >= 0 ? "click" : "not_interested",
+    postId,
+    metadata: { feedbackType: normalizedType, ...metadata },
+  });
+  return { saved: true, feedbackType: normalizedType };
+}
+
+export async function followTopic(userId: string, topic: string) {
+  const normalized = normalizeTopic(topic);
+  if (!normalized) throw new HttpError(400, "Topic is required");
+  await query(
+    `INSERT INTO user_followed_topics (user_id, topic, followed_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (user_id, topic) DO UPDATE SET followed_at = EXCLUDED.followed_at`,
+    [userId, normalized]
+  );
+  await query(
+    `INSERT INTO user_topic_affinities (user_id, topic, score, positive_count, negative_count, last_signal_at, updated_at)
+     VALUES ($1, $2, 4, 1, 0, NOW(), NOW())
+     ON CONFLICT (user_id, topic)
+     DO UPDATE SET score = GREATEST(user_topic_affinities.score, EXCLUDED.score),
+                   positive_count = user_topic_affinities.positive_count + 1,
+                   last_signal_at = EXCLUDED.last_signal_at,
+                   updated_at = EXCLUDED.updated_at`,
+    [userId, normalized]
+  );
+  return { topic: normalized, followed: true };
+}
+
+export async function unfollowTopic(userId: string, topic: string) {
+  const normalized = normalizeTopic(topic);
+  if (!normalized) throw new HttpError(400, "Topic is required");
+  await query(`DELETE FROM user_followed_topics WHERE user_id = $1 AND topic = $2`, [userId, normalized]);
+  return { topic: normalized, followed: false };
+}
+
+export async function muteTopic(userId: string, topic: string, days?: number) {
+  const normalized = normalizeTopic(topic);
+  if (!normalized) throw new HttpError(400, "Topic is required");
+  const snoozedUntil = Number.isFinite(Number(days)) && Number(days) > 0
+    ? new Date(Date.now() + Math.min(Number(days), 365) * 24 * 60 * 60 * 1000)
+    : null;
+  await query(
+    `INSERT INTO feed_muted_topics (user_id, topic, reason, snoozed_until, created_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (user_id, topic)
+     DO UPDATE SET reason = EXCLUDED.reason,
+                   snoozed_until = EXCLUDED.snoozed_until,
+                   created_at = EXCLUDED.created_at`,
+    [userId, normalized, snoozedUntil ? "snoozed" : "muted", snoozedUntil]
+  );
+  return { topic: normalized, muted: !snoozedUntil, snoozedUntil: toIso(snoozedUntil) };
+}
+
+export async function unmuteTopic(userId: string, topic: string) {
+  const normalized = normalizeTopic(topic);
+  if (!normalized) throw new HttpError(400, "Topic is required");
+  await query(`DELETE FROM feed_muted_topics WHERE user_id = $1 AND topic = $2`, [userId, normalized]);
+  return { topic: normalized, muted: false };
+}
+
+export async function listFeedTopics(userId: string, limit = 50) {
+  const rows = await queryMany(
+    `WITH all_topics AS (
+       SELECT slug AS topic FROM topics WHERE is_active = TRUE
+       UNION
+       SELECT topic FROM trending_topics
+     )
+     SELECT at.topic AS topic,
+            COALESCE(t.name, at.topic) AS name,
+            COALESCE(t.category, 'general') AS category,
+            COALESCE(t.language, tt.language, '') AS language,
+            COALESCE(tt.post_count, 0) AS post_count,
+            COALESCE(tt.velocity_score, 0) AS velocity_score,
+            CASE WHEN uft.topic IS NULL THEN FALSE ELSE TRUE END AS followed,
+            CASE WHEN umt.topic IS NULL THEN FALSE ELSE TRUE END AS muted
+     FROM all_topics at
+     LEFT JOIN trending_topics tt ON tt.topic = at.topic
+     LEFT JOIN topics t ON t.slug = at.topic
+     LEFT JOIN user_followed_topics uft ON uft.user_id = $1 AND uft.topic = at.topic
+     LEFT JOIN feed_muted_topics umt
+       ON umt.user_id = $1 AND umt.topic = at.topic AND (umt.snoozed_until IS NULL OR umt.snoozed_until > NOW())
+     ORDER BY COALESCE(tt.velocity_score, 0) DESC, COALESCE(tt.post_count, 0) DESC, topic ASC
+     LIMIT $2`,
+    [userId, Math.max(1, Math.min(100, limit))]
+  );
+  return {
+    items: rows.map((row) => ({
+      topic: row.topic,
+      name: row.name,
+      category: row.category,
+      language: row.language,
+      postCount: Number(row.post_count || 0),
+      velocityScore: Number(row.velocity_score || 0),
+      followed: row.followed === true,
+      muted: row.muted === true,
+    })),
+  };
+}
+
+export async function listInferredInterests(userId: string) {
+  const [affinities, followed, muted] = await Promise.all([
+    queryMany(
+      `SELECT topic, score, positive_count, negative_count, last_signal_at
+       FROM user_topic_affinities
+       WHERE user_id = $1
+       ORDER BY score DESC, last_signal_at DESC
+       LIMIT 80`,
+      [userId]
+    ),
+    queryMany(`SELECT topic FROM user_followed_topics WHERE user_id = $1`, [userId]),
+    queryMany(
+      `SELECT topic FROM feed_muted_topics WHERE user_id = $1 AND (snoozed_until IS NULL OR snoozed_until > NOW())`,
+      [userId]
+    ),
+  ]);
+  const followedSet = new Set(followed.map((row) => row.topic));
+  const mutedSet = new Set(muted.map((row) => row.topic));
+  return {
+    items: affinities.map((row) => ({
+      topic: row.topic,
+      score: Number(row.score || 0),
+      positiveCount: Number(row.positive_count || 0),
+      negativeCount: Number(row.negative_count || 0),
+      lastSignalAt: toIso(row.last_signal_at),
+      followed: followedSet.has(row.topic),
+      muted: mutedSet.has(row.topic),
+    })),
+  };
+}
+
+export async function removeInferredInterest(userId: string, topic: string) {
+  const normalized = normalizeTopic(topic);
+  if (!normalized) throw new HttpError(400, "Topic is required");
+  await query(`DELETE FROM user_topic_affinities WHERE user_id = $1 AND topic = $2`, [userId, normalized]);
+  return { topic: normalized, removed: true };
+}
+
+export async function resetFeedPersonalization(userId: string) {
+  await Promise.all([
+    query(`DELETE FROM user_topic_affinities WHERE user_id = $1`, [userId]),
+    query(`DELETE FROM user_author_affinities WHERE user_id = $1`, [userId]),
+    query(`DELETE FROM feed_impressions WHERE user_id = $1`, [userId]),
+    query(`DELETE FROM feed_served_history WHERE user_id = $1`, [userId]),
+    query(`DELETE FROM feed_feedback WHERE user_id = $1`, [userId]),
+  ]);
+  return { reset: true };
+}
+
+export async function clearFeedServedHistory(userId: string) {
+  await Promise.all([
+    query(`DELETE FROM feed_served_history WHERE user_id = $1`, [userId]),
+    query(`DELETE FROM feed_sessions WHERE user_id = $1`, [userId]),
+  ]);
+  return { cleared: true };
+}
+
+function sanitizeCustomFeedDefinition(input: Record<string, unknown>) {
+  const definition = {
+    includeTopics: normalizeStringList(input.includeTopics || input.topics || [], 40).map(normalizeTopic).filter(Boolean),
+    excludeTopics: normalizeStringList(input.excludeTopics || [], 40).map(normalizeTopic).filter(Boolean),
+    includeAccounts: normalizeStringList(input.includeAccounts || [], 80),
+    excludeAccounts: normalizeStringList(input.excludeAccounts || [], 80),
+    friendsOnly: input.friendsOnly === true,
+    followedOnly: input.followedOnly === true,
+    latestOnly: input.latestOnly === true,
+    allowReposts: input.allowReposts !== false,
+    languages: normalizeStringList(input.languages || [], 12).map(normalizeLanguage).filter(Boolean),
+    media: String(input.media || "any").slice(0, 24),
+    minimumQuality: clamp01(input.minimumQuality, 0.25),
+    localScope: input.localScope === true,
+    broadNetwork: input.broadNetwork === true,
+  };
+  if (definition.includeTopics.length === 0 && !definition.friendsOnly && !definition.followedOnly && !definition.latestOnly && definition.languages.length === 0) {
+    throw new HttpError(400, "Custom feed needs at least one filter");
+  }
+  return definition;
+}
+
+export async function listCustomFeeds(userId: string) {
+  const rows = await queryMany(
+    `SELECT feed_id, name, definition, is_public, created_at, updated_at
+     FROM feed_custom_feeds
+     WHERE user_id = $1
+     ORDER BY updated_at DESC`,
+    [userId]
+  );
+  return {
+    items: rows.map((row) => ({
+      id: row.feed_id,
+      name: row.name,
+      definition: row.definition || {},
+      isPublic: row.is_public === true,
+      createdAt: toIso(row.created_at),
+      updatedAt: toIso(row.updated_at),
+    })),
+  };
+}
+
+export async function saveCustomFeed(userId: string, input: Record<string, unknown>, feedId?: string | null) {
+  const id = String(feedId || input.feedId || "").trim() || generateId();
+  const name = String(input.name || "").trim().slice(0, 80);
+  if (!name) throw new HttpError(400, "Custom feed name is required");
+  const definition = sanitizeCustomFeedDefinition((input.definition && typeof input.definition === "object" ? input.definition : input) as Record<string, unknown>);
+  await query(
+    `INSERT INTO feed_custom_feeds (feed_id, user_id, name, definition, is_public, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+     ON CONFLICT (feed_id)
+     DO UPDATE SET name = EXCLUDED.name,
+                   definition = EXCLUDED.definition,
+                   is_public = EXCLUDED.is_public,
+                   updated_at = EXCLUDED.updated_at
+     WHERE feed_custom_feeds.user_id = EXCLUDED.user_id`,
+    [id, userId, name, JSON.stringify(definition), input.isPublic === true]
+  );
+  return { id, name, definition, isPublic: input.isPublic === true };
+}
+
+export async function deleteCustomFeed(userId: string, feedId: string) {
+  const result = await query(`DELETE FROM feed_custom_feeds WHERE feed_id = $1 AND user_id = $2`, [feedId, userId]);
+  return { deleted: (result.rowCount || 0) > 0 };
+}
+
+export async function exportFeedSettings(userId: string) {
+  const [preferences, interests, customFeeds, followedTopics, mutedTopics] = await Promise.all([
+    getFeedPreferences(userId),
+    listInferredInterests(userId),
+    listCustomFeeds(userId),
+    queryMany(`SELECT topic, followed_at FROM user_followed_topics WHERE user_id = $1 ORDER BY followed_at DESC`, [userId]),
+    queryMany(`SELECT topic, reason, snoozed_until, created_at FROM feed_muted_topics WHERE user_id = $1 ORDER BY created_at DESC`, [userId]),
+  ]);
+  return {
+    preferences,
+    interests: interests.items,
+    customFeeds: customFeeds.items,
+    followedTopics: followedTopics.map((row) => ({ topic: row.topic, followedAt: toIso(row.followed_at) })),
+    mutedTopics: mutedTopics.map((row) => ({
+      topic: row.topic,
+      reason: row.reason,
+      snoozedUntil: toIso(row.snoozed_until),
+      createdAt: toIso(row.created_at),
+    })),
+  };
+}
+
+export async function explainPostRecommendation(userId: string, postId: string) {
+  const served = await queryOne(
+    `SELECT reason, source, score, created_at
+     FROM feed_served_history
+     WHERE user_id = $1 AND post_id = $2
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId, postId]
+  );
+  const post = await queryOne(
+    `SELECT post_id, author_id, hashtags
+     FROM posts
+     WHERE post_id = $1`,
+    [postId]
+  );
+  const reason = String(served?.reason || "recommended");
+  return {
+    postId,
+    reasonCode: reason,
+    explanation: humanExplanation(reason, post),
+    feedSource: served?.source || "unknown",
+    servedAt: toIso(served?.created_at),
+    score: served ? Number(served.score || 0) : null,
+    topicMatch: Array.isArray(post?.hashtags) && post.hashtags.length > 0 ? String(post.hashtags[0]) : null,
+  };
 }
 
 export async function runFeedAggregationJobs() {

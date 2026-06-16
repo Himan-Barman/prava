@@ -9,9 +9,9 @@ import 'signatures.dart';
 /// ============================================================
 /// Extended Triple Diffie-Hellman (X3DH)
 /// ============================================================
-/// Implements Signal Protocol X3DH key agreement: 
+/// Implements Signal Protocol X3DH key agreement:
 ///
-/// Purpose: 
+/// Purpose:
 /// • Establish shared secret between two parties
 /// • Works asynchronously (recipient can be offline)
 /// • Provides forward secrecy and deniability
@@ -32,7 +32,7 @@ final class X3DH {
   X3DH._();
 
   /// Protocol info string for domain separation
-  static final Uint8List _info = Uint8List. fromList('PravaX3DH_v1'. codeUnits);
+  static final Uint8List _info = Uint8List.fromList('PravaX3DH_v1'.codeUnits);
 
   /// X25519 key size
   static const int keySize = 32;
@@ -55,17 +55,29 @@ final class X3DH {
     final sodium = await SodiumLoader.sodium;
 
     _validatePublicKey(myIdentityPublicKeyX25519, 'myIdentityPublicKeyX25519');
-    _validateSecureKey(myIdentityPrivateKeyX25519, 'myIdentityPrivateKeyX25519');
-    _validatePublicKey(theirIdentityPublicKeyX25519, 'theirIdentityPublicKeyX25519');
+    _validateSecureKey(
+      myIdentityPrivateKeyX25519,
+      'myIdentityPrivateKeyX25519',
+    );
+    _validatePublicKey(
+      theirIdentityPublicKeyX25519,
+      'theirIdentityPublicKeyX25519',
+    );
     _validatePublicKey(theirSignedPreKeyPublic, 'theirSignedPreKeyPublic');
-    _validateSignature(theirSignedPreKeySignature, 'theirSignedPreKeySignature');
-    _validatePublicKey(theirIdentityPublicKeyEd25519, 'theirIdentityPublicKeyEd25519');
+    _validateSignature(
+      theirSignedPreKeySignature,
+      'theirSignedPreKeySignature',
+    );
+    _validatePublicKey(
+      theirIdentityPublicKeyEd25519,
+      'theirIdentityPublicKeyEd25519',
+    );
     if (theirOneTimePreKeyPublic != null) {
       _validatePublicKey(theirOneTimePreKeyPublic, 'theirOneTimePreKeyPublic');
     }
 
     // Step 1: Verify signed pre-key signature
-    final signatureValid = await Signatures. verifyPreKey(
+    final signatureValid = await Signatures.verifyPreKey(
       theirSignedPreKeyPublic,
       theirSignedPreKeySignature,
       theirIdentityPublicKeyEd25519,
@@ -76,16 +88,32 @@ final class X3DH {
     }
 
     // Step 2: Generate ephemeral key pair
-    final ephemeralKeyPair = sodium.crypto. box. keyPair();
+    final ephemeralKeyPair = sodium.crypto.box.keyPair();
 
     // Step 3: Perform DH calculations
-    final dh1 = _performDH(sodium, myIdentityPrivateKeyX25519, theirSignedPreKeyPublic);
-    final dh2 = _performDH(sodium, ephemeralKeyPair.secretKey, theirIdentityPublicKeyX25519);
-    final dh3 = _performDH(sodium, ephemeralKeyPair. secretKey, theirSignedPreKeyPublic);
+    final dh1 = _performDH(
+      sodium,
+      myIdentityPrivateKeyX25519,
+      theirSignedPreKeyPublic,
+    );
+    final dh2 = _performDH(
+      sodium,
+      ephemeralKeyPair.secretKey,
+      theirIdentityPublicKeyX25519,
+    );
+    final dh3 = _performDH(
+      sodium,
+      ephemeralKeyPair.secretKey,
+      theirSignedPreKeyPublic,
+    );
 
     Uint8List? dh4;
     if (theirOneTimePreKeyPublic != null) {
-      dh4 = _performDH(sodium, ephemeralKeyPair.secretKey, theirOneTimePreKeyPublic);
+      dh4 = _performDH(
+        sodium,
+        ephemeralKeyPair.secretKey,
+        theirOneTimePreKeyPublic,
+      );
     }
 
     // Step 4: Derive shared secret
@@ -130,13 +158,29 @@ final class X3DH {
     // Generate ephemeral key pair
     final ephemeralKeyPair = sodium.crypto.box.keyPair();
 
-    final dh1 = _performDH(sodium, myIdentityPrivateKey, theirSignedPreKeyPublic);
-    final dh2 = _performDH(sodium, ephemeralKeyPair. secretKey, theirIdentityPublicKey);
-    final dh3 = _performDH(sodium, ephemeralKeyPair.secretKey, theirSignedPreKeyPublic);
+    final dh1 = _performDH(
+      sodium,
+      myIdentityPrivateKey,
+      theirSignedPreKeyPublic,
+    );
+    final dh2 = _performDH(
+      sodium,
+      ephemeralKeyPair.secretKey,
+      theirIdentityPublicKey,
+    );
+    final dh3 = _performDH(
+      sodium,
+      ephemeralKeyPair.secretKey,
+      theirSignedPreKeyPublic,
+    );
 
     Uint8List? dh4;
     if (theirOneTimePreKeyPublic != null) {
-      dh4 = _performDH(sodium, ephemeralKeyPair.secretKey, theirOneTimePreKeyPublic);
+      dh4 = _performDH(
+        sodium,
+        ephemeralKeyPair.secretKey,
+        theirOneTimePreKeyPublic,
+      );
     }
 
     final sharedSecret = await _deriveSharedSecret(
@@ -154,8 +198,8 @@ final class X3DH {
 
     return X3DHInitiatorResult(
       sharedSecret: sharedSecret,
-      ephemeralPublicKey:  ephemeralKeyPair.publicKey,
-      usedOneTimePreKeyId:  theirOneTimePreKeyId,
+      ephemeralPublicKey: ephemeralKeyPair.publicKey,
+      usedOneTimePreKeyId: theirOneTimePreKeyId,
     );
   }
 
@@ -173,17 +217,35 @@ final class X3DH {
   }) async {
     final sodium = await SodiumLoader.sodium;
 
-    _validateSecureKey(myIdentityPrivateKeyX25519, 'myIdentityPrivateKeyX25519');
+    _validateSecureKey(
+      myIdentityPrivateKeyX25519,
+      'myIdentityPrivateKeyX25519',
+    );
     _validateSecureKey(mySignedPreKeyPrivate, 'mySignedPreKeyPrivate');
     if (myOneTimePreKeyPrivate != null) {
       _validateSecureKey(myOneTimePreKeyPrivate, 'myOneTimePreKeyPrivate');
     }
-    _validatePublicKey(theirIdentityPublicKeyX25519, 'theirIdentityPublicKeyX25519');
+    _validatePublicKey(
+      theirIdentityPublicKeyX25519,
+      'theirIdentityPublicKeyX25519',
+    );
     _validatePublicKey(theirEphemeralPublicKey, 'theirEphemeralPublicKey');
 
-    final dh1 = _performDH(sodium, mySignedPreKeyPrivate, theirIdentityPublicKeyX25519);
-    final dh2 = _performDH(sodium, myIdentityPrivateKeyX25519, theirEphemeralPublicKey);
-    final dh3 = _performDH(sodium, mySignedPreKeyPrivate, theirEphemeralPublicKey);
+    final dh1 = _performDH(
+      sodium,
+      mySignedPreKeyPrivate,
+      theirIdentityPublicKeyX25519,
+    );
+    final dh2 = _performDH(
+      sodium,
+      myIdentityPrivateKeyX25519,
+      theirEphemeralPublicKey,
+    );
+    final dh3 = _performDH(
+      sodium,
+      mySignedPreKeyPrivate,
+      theirEphemeralPublicKey,
+    );
 
     Uint8List? dh4;
     if (myOneTimePreKeyPrivate != null) {
@@ -219,7 +281,7 @@ final class X3DH {
       mySignedPreKeyPrivate: mySignedPreKeyPrivate,
       myOneTimePreKeyPrivate: myOneTimePreKeyPrivate,
       theirIdentityPublicKeyX25519: theirIdentityPublicKey,
-      theirEphemeralPublicKey:  theirEphemeralPublicKey,
+      theirEphemeralPublicKey: theirEphemeralPublicKey,
     );
   }
 
@@ -247,7 +309,7 @@ final class X3DH {
 
     try {
       // Combine private and public key bytes
-      final combined = Uint8List. fromList([... privBytes, ...publicKey]);
+      final combined = Uint8List.fromList([...privBytes, ...publicKey]);
 
       // Use BLAKE2b to derive a 32-byte shared secret
       final sharedSecret = sodium.crypto.genericHash(
@@ -273,14 +335,14 @@ final class X3DH {
     Uint8List? dh4,
   }) async {
     final combined = Uint8List.fromList([
-      ... dh1,
+      ...dh1,
       ...dh2,
       ...dh3,
       if (dh4 != null) ...dh4,
     ]);
 
     final derivedBytes = await Hashing.deriveKey(
-      inputKeyMaterial:  combined,
+      inputKeyMaterial: combined,
       info: _info,
       outputLength: keySize,
     );
@@ -311,7 +373,7 @@ final class X3DH {
 
   static void _validateSignature(Uint8List sig, String name) {
     // Ed25519 signatures are 64 bytes
-    if (sig. length != 64) {
+    if (sig.length != 64) {
       throw X3DHException('$name must be 64 bytes, got ${sig.length}');
     }
   }
@@ -326,7 +388,7 @@ class X3DHInitiatorResult {
   final Uint8List ephemeralPublicKey;
 
   /// ID of one-time pre-key used (if any)
-  final int?  usedOneTimePreKeyId;
+  final int? usedOneTimePreKeyId;
 
   const X3DHInitiatorResult({
     required this.sharedSecret,

@@ -5,25 +5,25 @@ import 'dart:io';
 /// ============================================================
 /// Native API Bridge
 /// ============================================================
-/// FFI interface to platform-specific security features: 
+/// FFI interface to platform-specific security features:
 ///
 /// Android:
 /// • Android Keystore (hardware-backed keys)
 /// • StrongBox (Titan M chip)
 /// • TEE (Trusted Execution Environment)
 ///
-/// iOS: 
+/// iOS:
 /// • Secure Enclave (hardware key protection)
 /// • Keychain Services
 /// • Biometric authentication
 ///
-/// Provides fallback for unsupported platforms. 
+/// Provides fallback for unsupported platforms.
 /// ============================================================
 final class NativeApi {
   NativeApi._();
 
   static const String _libraryName = 'prava_security';
-  static DynamicLibrary?  _library;
+  static DynamicLibrary? _library;
   static bool _initialized = false;
   static NativeCapabilities? _capabilities;
 
@@ -45,11 +45,11 @@ final class NativeApi {
   }
 
   /// Load platform-specific library
-  static DynamicLibrary?  _loadLibrary() {
+  static DynamicLibrary? _loadLibrary() {
     try {
       if (Platform.isAndroid) {
-        return DynamicLibrary. open('lib$_libraryName. so');
-      } else if (Platform. isIOS) {
+        return DynamicLibrary.open('lib$_libraryName. so');
+      } else if (Platform.isIOS) {
         return DynamicLibrary.process();
       } else if (Platform.isMacOS) {
         return DynamicLibrary.open('lib$_libraryName.dylib');
@@ -70,7 +70,7 @@ final class NativeApi {
       hasHardwareKeystore: Platform.isAndroid || Platform.isIOS,
       hasSecureEnclave: Platform.isIOS,
       hasStrongBox: Platform.isAndroid, // Requires runtime check
-      hasTEE: Platform. isAndroid,
+      hasTEE: Platform.isAndroid,
       hasHardwareRNG: true,
       hasBiometricAuth: Platform.isAndroid || Platform.isIOS,
     );
@@ -81,7 +81,7 @@ final class NativeApi {
 
   /// Get security capabilities
   static NativeCapabilities getCapabilities() {
-    return _capabilities ??  const NativeCapabilities. none();
+    return _capabilities ?? const NativeCapabilities.none();
   }
 
   /// Generate hardware-backed key (Android Keystore / iOS Secure Enclave)
@@ -90,7 +90,7 @@ final class NativeApi {
     required KeyType keyType,
     bool requireBiometric = false,
   }) async {
-    if (! isAvailable) {
+    if (!isAvailable) {
       return HardwareKeyResult.unsupported();
     }
 
@@ -117,7 +117,7 @@ final class NativeApi {
     required List<int> plaintext,
   }) async {
     if (!isAvailable) {
-      return EncryptionResult. unsupported();
+      return EncryptionResult.unsupported();
     }
 
     return EncryptionResult.unsupported();
@@ -136,7 +136,7 @@ final class NativeApi {
   }
 
   /// Get random bytes from hardware RNG
-  static Future<List<int>? > getHardwareRandom(int length) async {
+  static Future<List<int>?> getHardwareRandom(int length) async {
     if (!isAvailable) return null;
     return null;
   }
@@ -154,25 +154,26 @@ class NativeCapabilities {
   const NativeCapabilities({
     required this.hasHardwareKeystore,
     required this.hasSecureEnclave,
-    required this. hasStrongBox,
-    required this. hasTEE,
-    required this. hasHardwareRNG,
+    required this.hasStrongBox,
+    required this.hasTEE,
+    required this.hasHardwareRNG,
     required this.hasBiometricAuth,
   });
 
   const NativeCapabilities.none()
-      : hasHardwareKeystore = false,
-        hasSecureEnclave = false,
-        hasStrongBox = false,
-        hasTEE = false,
-        hasHardwareRNG = false,
-        hasBiometricAuth = false;
+    : hasHardwareKeystore = false,
+      hasSecureEnclave = false,
+      hasStrongBox = false,
+      hasTEE = false,
+      hasHardwareRNG = false,
+      hasBiometricAuth = false;
 
   bool get hasAnyHardwareSecurity =>
       hasHardwareKeystore || hasSecureEnclave || hasStrongBox || hasTEE;
 
   @override
-  String toString() => 'NativeCapabilities('
+  String toString() =>
+      'NativeCapabilities('
       'keystore: $hasHardwareKeystore, '
       'enclave: $hasSecureEnclave, '
       'strongbox: $hasStrongBox, '
@@ -180,11 +181,7 @@ class NativeCapabilities {
 }
 
 /// Key types for hardware-backed keys
-enum KeyType {
-  ed25519,
-  x25519,
-  aes256,
-}
+enum KeyType { ed25519, x25519, aes256 }
 
 /// Result of hardware key generation
 class HardwareKeyResult {
@@ -203,18 +200,15 @@ class HardwareKeyResult {
   factory HardwareKeyResult.success({
     required String alias,
     required List<int> publicKey,
-  }) =>
-      HardwareKeyResult. _(
-        success:  true,
-        alias: alias,
-        publicKey: publicKey,
-      );
+  }) => HardwareKeyResult._(success: true, alias: alias, publicKey: publicKey);
 
   factory HardwareKeyResult.failure(String error) =>
-      HardwareKeyResult._(success: false, error:  error);
+      HardwareKeyResult._(success: false, error: error);
 
-  factory HardwareKeyResult.unsupported() =>
-      const HardwareKeyResult._(success: false, error: 'Hardware keys not supported');
+  factory HardwareKeyResult.unsupported() => const HardwareKeyResult._(
+    success: false,
+    error: 'Hardware keys not supported',
+  );
 }
 
 /// Result of hardware signature operation
@@ -223,20 +217,18 @@ class SignatureResult {
   final List<int>? signature;
   final String? error;
 
-  const SignatureResult._({
-    required this.success,
-    this.signature,
-    this.error,
-  });
+  const SignatureResult._({required this.success, this.signature, this.error});
 
-  factory SignatureResult. success(List<int> signature) =>
-      SignatureResult. _(success: true, signature: signature);
+  factory SignatureResult.success(List<int> signature) =>
+      SignatureResult._(success: true, signature: signature);
 
   factory SignatureResult.failure(String error) =>
-      SignatureResult._(success: false, error:  error);
+      SignatureResult._(success: false, error: error);
 
-  factory SignatureResult.unsupported() =>
-      const SignatureResult. _(success: false, error: 'Hardware signing not supported');
+  factory SignatureResult.unsupported() => const SignatureResult._(
+    success: false,
+    error: 'Hardware signing not supported',
+  );
 }
 
 /// Result of hardware encryption operation
@@ -246,7 +238,7 @@ class EncryptionResult {
   final String? error;
 
   const EncryptionResult._({
-    required this. success,
+    required this.success,
     this.ciphertext,
     this.error,
   });
@@ -255,9 +247,10 @@ class EncryptionResult {
       EncryptionResult._(success: true, ciphertext: ciphertext);
 
   factory EncryptionResult.failure(String error) =>
-      EncryptionResult._(success: false, error:  error);
+      EncryptionResult._(success: false, error: error);
 
-  factory EncryptionResult.unsupported() =>
-      const EncryptionResult._(
-          success: false, error: 'Hardware encryption not supported');
+  factory EncryptionResult.unsupported() => const EncryptionResult._(
+    success: false,
+    error: 'Hardware encryption not supported',
+  );
 }

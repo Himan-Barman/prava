@@ -30,11 +30,7 @@ class LocalTimeService {
     final localValue = value.toLocal();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final target = DateTime(
-      localValue.year,
-      localValue.month,
-      localValue.day,
-    );
+    final target = DateTime(localValue.year, localValue.month, localValue.day);
     final diff = today.difference(target).inDays;
 
     if (diff == 0) return 'Today';

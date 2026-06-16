@@ -192,10 +192,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                         children: [
                                           Text(
                                             "Prava",
-                                            style: PravaTypography.h1.copyWith(
-                                              letterSpacing: -0.8,
-                                              color: primaryText,
-                                            ),
+                                            style: PravaTypography.displayMedium
+                                                .copyWith(
+                                                  letterSpacing: -0.8,
+                                                  color: primaryText,
+                                                ),
                                           ),
                                           const SizedBox(height: 10),
                                           Text(
@@ -376,7 +377,7 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               Text(
                 "Welcome back",
-                style: PravaTypography.h2.copyWith(
+                style: PravaTypography.titleLarge.copyWith(
                   color: primaryText,
                   letterSpacing: -0.3,
                 ),
@@ -384,7 +385,9 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 6),
               Text(
                 "Use your Prava ID or email to continue.",
-                style: PravaTypography.body.copyWith(color: secondaryText),
+                style: PravaTypography.bodyMedium.copyWith(
+                  color: secondaryText,
+                ),
               ),
               const SizedBox(height: 22),
               AutofillGroup(
@@ -393,6 +396,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     PravaInput(
                       hint: "Email or username",
                       controller: _emailController,
+                      fieldType: PravaInputFieldType.text,
+                      variant: PravaInputVariant.auth,
+                      prefixIcon: const Icon(Icons.alternate_email_rounded),
+                      showClearButton: true,
                       keyboardType: TextInputType.emailAddress,
                       autofillHints: const [
                         AutofillHints.username,

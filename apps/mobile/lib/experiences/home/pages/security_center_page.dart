@@ -141,7 +141,7 @@ class _ToggleTile extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: PravaTypography.body.copyWith(
+                  style: PravaTypography.bodyMedium.copyWith(
                     color: primary,
                     fontWeight: FontWeight.w600,
                   ),
@@ -203,7 +203,7 @@ class _ActionTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: PravaTypography.body.copyWith(
+                    style: PravaTypography.bodyMedium.copyWith(
                       color: primary,
                       fontWeight: FontWeight.w600,
                     ),

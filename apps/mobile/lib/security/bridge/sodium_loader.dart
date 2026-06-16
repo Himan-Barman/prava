@@ -6,7 +6,7 @@ import 'package:sodium_libs/sodium_libs_sumo.dart';
 /// ============================================================
 /// LibSodium Loader - Production Grade
 /// ============================================================
-/// Thread-safe, race-condition-proof sodium initialization. 
+/// Thread-safe, race-condition-proof sodium initialization.
 ///
 /// Guarantees:
 /// • Single initialization per isolate
@@ -37,7 +37,7 @@ final class SodiumLoader {
   static bool get isInitialized => _instance != null;
 
   /// Get initialization timestamp
-  static DateTime?  get initializedAt => _initTime;
+  static DateTime? get initializedAt => _initTime;
 
   /// Get sodium instance (async, cached)
   static Future<SodiumSumo> get sodium async {
@@ -47,7 +47,7 @@ final class SodiumLoader {
 
     // Check if initialization is in progress
     final completer = _initCompleter;
-    if (completer != null && ! completer.isCompleted) {
+    if (completer != null && !completer.isCompleted) {
       return completer.future;
     }
 
@@ -79,7 +79,7 @@ final class SodiumLoader {
         final sodium = await SodiumSumoInit.init();
 
         // Verify initialization
-        if (! _verifySodiumInit(sodium)) {
+        if (!_verifySodiumInit(sodium)) {
           throw SodiumInitException('Sodium verification failed');
         }
 
@@ -109,18 +109,15 @@ final class SodiumLoader {
   static bool _verifySodiumInit(SodiumSumo sodium) {
     try {
       // Test random generation
-      final random = sodium.randombytes. buf(32);
+      final random = sodium.randombytes.buf(32);
       if (random.length != 32) return false;
 
       // Test hashing
-      final hash = sodium.crypto. genericHash(
-        message: random,
-        outLen: 32,
-      );
+      final hash = sodium.crypto.genericHash(message: random, outLen: 32);
       if (hash.length != 32) return false;
 
       // Test key generation
-      final keyPair = sodium.crypto.box. keyPair();
+      final keyPair = sodium.crypto.box.keyPair();
       if (keyPair.publicKey.length != 32) return false;
 
       return true;
@@ -175,7 +172,7 @@ class SodiumVersion {
     required this.major,
     required this.minor,
     required this.patch,
-    required this. libraryVersion,
+    required this.libraryVersion,
   });
 
   String get version => '$major.$minor.$patch';

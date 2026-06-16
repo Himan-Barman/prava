@@ -8,6 +8,7 @@ import '../../../navigation/prava_navigator.dart';
 import '../../../services/chat_service.dart';
 import '../../../ui-system/background.dart';
 import '../../../ui-system/colors.dart';
+import '../../../ui-system/components/prava_input.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
 import '../../../ui-system/typography.dart';
@@ -315,7 +316,7 @@ class _TopBar extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Archived',
-                    style: PravaTypography.h3.copyWith(
+                    style: PravaTypography.titleSmall.copyWith(
                       color: primary,
                       fontWeight: FontWeight.w700,
                     ),
@@ -325,7 +326,7 @@ class _TopBar extends StatelessWidget {
                   onPressed: saving ? null : onRestore,
                   child: Text(
                     saving ? 'Restoring' : 'Restore all',
-                    style: PravaTypography.button.copyWith(
+                    style: PravaTypography.buttonMedium.copyWith(
                       color: PravaColors.accentPrimary,
                     ),
                   ),
@@ -364,10 +365,9 @@ class _SearchField extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: border),
           ),
-          child: CupertinoSearchTextField(
+          child: PravaSearchInput(
             controller: controller,
-            placeholder: 'Search archived chats',
-            backgroundColor: Colors.transparent,
+            hint: 'Search archived chats',
           ),
         ),
       ),
@@ -444,7 +444,7 @@ class _ConversationCard extends StatelessWidget {
                           chat.title.trim().isEmpty
                               ? 'Conversation'
                               : chat.title.trim(),
-                          style: PravaTypography.body.copyWith(
+                          style: PravaTypography.bodyMedium.copyWith(
                             color: primary,
                             fontWeight: FontWeight.w600,
                           ),
@@ -548,7 +548,7 @@ class _EmptyState extends StatelessWidget {
                 ? 'Try another keyword.'
                 : 'Archived chats will appear here.',
             textAlign: TextAlign.center,
-            style: PravaTypography.body.copyWith(color: secondary),
+            style: PravaTypography.bodyMedium.copyWith(color: secondary),
           ),
         ),
       ],

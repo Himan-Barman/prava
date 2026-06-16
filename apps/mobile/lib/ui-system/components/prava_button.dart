@@ -65,9 +65,8 @@ class PravaButton extends StatelessWidget {
                 )
               : Text(
                   label,
-                  style: PravaTypography.button.copyWith(
+                  style: PravaTypography.buttonLarge.copyWith(
                     color: foreground,
-                    fontWeight: FontWeight.w600,
                   ),
                 ),
         ),

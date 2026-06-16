@@ -31,11 +31,8 @@ final class PreKeyStore {
 
   /// Get pre-key by ID
   static Future<PreKeyEntity?> getPreKey(int keyId) async {
-    return Vault. read((db) async {
-      return db.preKeyEntitys
-          .filter()
-          .keyIdEqualTo(keyId)
-          .findFirst();
+    return Vault.read((db) async {
+      return db.preKeyEntitys.filter().keyIdEqualTo(keyId).findFirst();
     });
   }
 
@@ -48,7 +45,7 @@ final class PreKeyStore {
     final entity = PreKeyEntity()
       ..keyId = keyId
       ..publicKey = publicKey.toList()
-      ..privateKey = privateKey. toList()
+      ..privateKey = privateKey.toList()
       ..uploaded = false
       ..consumed = false
       ..createdAt = DateTime.now().millisecondsSinceEpoch;
@@ -63,7 +60,7 @@ final class PreKeyStore {
     final entities = preKeys.map((pk) {
       return PreKeyEntity()
         ..keyId = pk.keyId
-        ..publicKey = pk.publicKey. toList()
+        ..publicKey = pk.publicKey.toList()
         ..privateKey = pk.privateKey.toList()
         ..uploaded = false
         ..consumed = false
@@ -77,9 +74,9 @@ final class PreKeyStore {
 
   /// Consume pre-key (mark as used and return private key)
   static Future<Uint8List?> consumePreKey(int keyId) async {
-    return Vault. write((db) async {
+    return Vault.write((db) async {
       final entity = await db.preKeyEntitys
-          . filter()
+          .filter()
           .keyIdEqualTo(keyId)
           .and()
           .consumedEqualTo(false)
@@ -89,7 +86,7 @@ final class PreKeyStore {
 
       // Mark as consumed
       entity.consumed = true;
-      entity.consumedAt = DateTime. now().millisecondsSinceEpoch;
+      entity.consumedAt = DateTime.now().millisecondsSinceEpoch;
       await db.preKeyEntitys.put(entity);
 
       return Uint8List.fromList(entity.privateKey);
@@ -106,7 +103,7 @@ final class PreKeyStore {
             .findFirst();
 
         if (entity != null) {
-          entity. uploaded = true;
+          entity.uploaded = true;
           await db.preKeyEntitys.put(entity);
         }
       }
@@ -116,17 +113,14 @@ final class PreKeyStore {
   /// Get available (not consumed) pre-keys
   static Future<List<PreKeyEntity>> getAvailablePreKeys() async {
     return Vault.read((db) async {
-      return db.preKeyEntitys
-          .filter()
-          .consumedEqualTo(false)
-          .findAll();
+      return db.preKeyEntitys.filter().consumedEqualTo(false).findAll();
     });
   }
 
   /// Get pre-keys pending upload
   static Future<List<PreKeyEntity>> getPendingUpload() async {
     return Vault.read((db) async {
-      return db. preKeyEntitys
+      return db.preKeyEntitys
           .filter()
           .uploadedEqualTo(false)
           .and()
@@ -138,10 +132,7 @@ final class PreKeyStore {
   /// Get count of available pre-keys
   static Future<int> getAvailableCount() async {
     return Vault.read((db) async {
-      return db.preKeyEntitys
-          .filter()
-          .consumedEqualTo(false)
-          .count();
+      return db.preKeyEntitys.filter().consumedEqualTo(false).count();
     });
   }
 
@@ -169,7 +160,7 @@ final class PreKeyStore {
         .subtract(Duration(days: olderThanDays))
         .millisecondsSinceEpoch;
 
-    return Vault. write((db) async {
+    return Vault.write((db) async {
       return db.preKeyEntitys
           .filter()
           .consumedEqualTo(true)
@@ -196,6 +187,6 @@ class PreKeyData {
   const PreKeyData({
     required this.keyId,
     required this.publicKey,
-    required this. privateKey,
+    required this.privateKey,
   });
 }

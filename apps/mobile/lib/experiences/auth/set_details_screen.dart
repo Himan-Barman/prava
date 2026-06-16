@@ -10,6 +10,7 @@ import '../../navigation/prava_navigator.dart';
 import '../../ui-system/background.dart';
 import '../../ui-system/colors.dart';
 import '../../ui-system/components/prava_button.dart';
+import '../../ui-system/components/prava_input.dart';
 import '../../ui-system/feedback/prava_toast.dart';
 import '../../ui-system/feedback/toast_type.dart';
 import '../../ui-system/typography.dart';
@@ -219,17 +220,17 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
                                   children: [
                                     Text(
                                       title,
-                                      style: PravaTypography.h1.copyWith(
-                                        letterSpacing: -0.6,
-                                        color: primaryText,
-                                      ),
+                                      style: PravaTypography.displayMedium
+                                          .copyWith(
+                                            letterSpacing: -0.6,
+                                            color: primaryText,
+                                          ),
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
                                       subtitle,
-                                      style: PravaTypography.body.copyWith(
-                                        color: secondaryText,
-                                      ),
+                                      style: PravaTypography.bodyMedium
+                                          .copyWith(color: secondaryText),
                                     ),
                                   ],
                                 ),
@@ -319,7 +320,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
                   Expanded(
                     child: Text(
                       _step == 0 ? 'Identity details' : 'Phone details',
-                      style: PravaTypography.body.copyWith(
+                      style: PravaTypography.bodyMedium.copyWith(
                         color: primaryText,
                         fontWeight: FontWeight.w600,
                       ),
@@ -466,7 +467,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
                 alignment: Alignment.center,
                 child: Text(
                   'Back',
-                  style: PravaTypography.button.copyWith(
+                  style: PravaTypography.buttonMedium.copyWith(
                     color: primaryText,
                     fontWeight: FontWeight.w600,
                   ),
@@ -500,19 +501,19 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
         backgroundColor: isDark
             ? PravaColors.darkBgElevated
             : PravaColors.lightBgElevated,
-        textStyle: PravaTypography.body.copyWith(
+        textStyle: PravaTypography.bodyMedium.copyWith(
           color: isDark
               ? PravaColors.darkTextPrimary
               : PravaColors.lightTextPrimary,
         ),
-        searchTextStyle: PravaTypography.body.copyWith(
+        searchTextStyle: PravaTypography.bodyMedium.copyWith(
           color: isDark
               ? PravaColors.darkTextPrimary
               : PravaColors.lightTextPrimary,
         ),
         inputDecoration: InputDecoration(
           hintText: 'Search country',
-          hintStyle: PravaTypography.body.copyWith(
+          hintStyle: PravaTypography.bodyMedium.copyWith(
             color: isDark
                 ? PravaColors.darkTextTertiary
                 : PravaColors.lightTextTertiary,
@@ -567,7 +568,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
             Expanded(
               child: Text(
                 label,
-                style: PravaTypography.body.copyWith(
+                style: PravaTypography.bodyMedium.copyWith(
                   color: selected != null ? primaryText : tertiaryText,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -577,7 +578,7 @@ class _SetDetailsScreenState extends State<SetDetailsScreen> {
               const SizedBox(width: 6),
               Text(
                 '+$phoneCode',
-                style: PravaTypography.body.copyWith(
+                style: PravaTypography.bodyMedium.copyWith(
                   color: primaryText,
                   fontWeight: FontWeight.w600,
                 ),
@@ -676,40 +677,26 @@ class _LuxeInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fieldType = keyboardType == TextInputType.phone
+        ? PravaInputFieldType.phone
+        : textCapitalization == TextCapitalization.words
+        ? PravaInputFieldType.name
+        : PravaInputFieldType.text;
 
-    return TextField(
+    return PravaInput(
       controller: controller,
+      hint: hint,
       focusNode: focusNode,
+      fieldType: fieldType,
+      variant: PravaInputVariant.auth,
+      size: PravaInputSize.medium,
       keyboardType: keyboardType,
       textCapitalization: textCapitalization,
       textInputAction: textInputAction,
       autofillHints: autofillHints,
       inputFormatters: inputFormatters,
-      style: PravaTypography.body.copyWith(
-        color: isDark
-            ? PravaColors.darkTextPrimary
-            : PravaColors.lightTextPrimary,
-      ),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: PravaTypography.body.copyWith(
-          color: isDark
-              ? PravaColors.darkTextTertiary
-              : PravaColors.lightTextTertiary,
-        ),
-        filled: true,
-        fillColor: isDark ? PravaColors.darkSurface : PravaColors.lightSurface,
-        suffixIcon: suffixIcon,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 18,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
-      ),
+      suffixIcon: suffixIcon,
+      showClearButton: false,
       onSubmitted: onSubmitted,
     );
   }

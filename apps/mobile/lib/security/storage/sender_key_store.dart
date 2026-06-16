@@ -88,8 +88,9 @@ final class SenderKeyStore {
       entity.chainKey = senderKey.chainKey.toList();
       entity.signaturePublicKey = senderKey.signaturePublicKey.toList();
       if (isOwn && senderKey.signaturePrivateKey != null) {
-        entity.signaturePrivateKey =
-            senderKey.signaturePrivateKey!.extractBytes().toList();
+        entity.signaturePrivateKey = senderKey.signaturePrivateKey!
+            .extractBytes()
+            .toList();
       } else {
         entity.signaturePrivateKey = null;
       }
@@ -105,16 +106,11 @@ final class SenderKeyStore {
   /// Delete sender keys for a group
   static Future<void> deleteGroupKeys(String groupId) async {
     await Vault.write((db) async {
-      await db.senderKeyEntitys
-          .filter()
-          .groupIdEqualTo(groupId)
-          .deleteAll();
+      await db.senderKeyEntitys.filter().groupIdEqualTo(groupId).deleteAll();
     });
   }
 
-  static Future<SenderKeyState> _entityToState(
-    SenderKeyEntity entity,
-  ) async {
+  static Future<SenderKeyState> _entityToState(SenderKeyEntity entity) async {
     SecureKey? privateKey;
     final storedPrivate = entity.signaturePrivateKey;
     if (storedPrivate != null && storedPrivate.isNotEmpty) {

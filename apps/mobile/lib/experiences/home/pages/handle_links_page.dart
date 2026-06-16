@@ -315,7 +315,7 @@ class _HandleLinksPageState extends State<HandleLinksPage> {
                 const SizedBox(height: 6),
                 Text(
                   '@${account?.username ?? ''}',
-                  style: PravaTypography.h3.copyWith(
+                  style: PravaTypography.titleSmall.copyWith(
                     color: primary,
                     fontWeight: FontWeight.w800,
                   ),
@@ -324,6 +324,11 @@ class _HandleLinksPageState extends State<HandleLinksPage> {
                 PravaInput(
                   controller: _usernameController,
                   hint: 'Search username',
+                  label: 'Preferred username',
+                  fieldType: PravaInputFieldType.username,
+                  variant: PravaInputVariant.settings,
+                  prefixIcon: const Icon(Icons.alternate_email_rounded),
+                  showClearButton: true,
                   suffixIcon: _usernameSuffix(),
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9_.]')),
@@ -350,7 +355,7 @@ class _HandleLinksPageState extends State<HandleLinksPage> {
                 const SizedBox(height: 24),
                 Text(
                   'Password verification',
-                  style: PravaTypography.body.copyWith(
+                  style: PravaTypography.bodyMedium.copyWith(
                     color: primary,
                     fontWeight: FontWeight.w700,
                   ),
@@ -359,7 +364,12 @@ class _HandleLinksPageState extends State<HandleLinksPage> {
                 PravaInput(
                   controller: _passwordController,
                   hint: 'Password',
+                  fieldType: PravaInputFieldType.password,
+                  variant: PravaInputVariant.settings,
+                  prefixIcon: const Icon(Icons.lock_rounded),
                   obscureText: true,
+                  showPasswordToggle: true,
+                  requiredField: true,
                   autofillHints: const [AutofillHints.password],
                 ),
                 const SizedBox(height: 12),

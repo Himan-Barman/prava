@@ -1,7 +1,6 @@
 // CSPRNG utilities
 import 'dart:typed_data';
 
-
 import '../bridge/sodium_loader.dart';
 
 /// ============================================================

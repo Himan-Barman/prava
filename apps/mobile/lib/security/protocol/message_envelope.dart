@@ -5,7 +5,7 @@ import 'dart:typed_data';
 /// ============================================================
 /// Message Envelope
 /// ============================================================
-/// Wire format for encrypted messages. 
+/// Wire format for encrypted messages.
 /// ============================================================
 
 /// Message types
@@ -53,7 +53,7 @@ final class MessageEnvelope {
   final String messageId;
 
   const MessageEnvelope({
-    required this. type,
+    required this.type,
     required this.senderDeviceId,
     this.recipientDeviceId,
     required this.content,
@@ -68,25 +68,25 @@ final class MessageEnvelope {
   }
 
   /// Deserialize from bytes
-  factory MessageEnvelope. fromBytes(Uint8List bytes) {
+  factory MessageEnvelope.fromBytes(Uint8List bytes) {
     final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-    return MessageEnvelope. fromJson(json);
+    return MessageEnvelope.fromJson(json);
   }
 
   /// Serialize to JSON
   Map<String, dynamic> toJson() => {
-        'version': protocolVersion,
-        'type':  type.index,
-        'senderDeviceId':  senderDeviceId,
-        'recipientDeviceId':  recipientDeviceId,
-        'content': base64Encode(content),
-        'timestamp':  timestamp,
-        'messageId': messageId,
-      };
+    'version': protocolVersion,
+    'type': type.index,
+    'senderDeviceId': senderDeviceId,
+    'recipientDeviceId': recipientDeviceId,
+    'content': base64Encode(content),
+    'timestamp': timestamp,
+    'messageId': messageId,
+  };
 
   /// Deserialize from JSON
-  factory MessageEnvelope. fromJson(Map<String, dynamic> json) {
-    final version = json['version'] as int?  ?? 1;
+  factory MessageEnvelope.fromJson(Map<String, dynamic> json) {
+    final version = json['version'] as int? ?? 1;
     if (version > protocolVersion) {
       throw UnsupportedError('Unsupported protocol version:  $version');
     }
@@ -102,7 +102,7 @@ final class MessageEnvelope {
   }
 
   /// Create regular message envelope
-  factory MessageEnvelope. message({
+  factory MessageEnvelope.message({
     required String senderDeviceId,
     required String recipientDeviceId,
     required Uint8List content,
@@ -130,7 +130,7 @@ final class MessageEnvelope {
       senderDeviceId: senderDeviceId,
       recipientDeviceId: recipientDeviceId,
       content: content,
-      timestamp: DateTime. now().millisecondsSinceEpoch,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
       messageId: messageId,
     );
   }

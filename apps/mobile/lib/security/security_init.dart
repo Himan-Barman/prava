@@ -12,19 +12,19 @@ import 'threat/debugger_check.dart';
 /// ============================================================
 /// Security Module Initialization
 /// ============================================================
-/// Call once at app startup before any security operations. 
+/// Call once at app startup before any security operations.
 ///
 /// Usage:
 /// ```dart
 /// void main() async {
 ///   WidgetsFlutterBinding.ensureInitialized();
-///   
+///
 ///   final result = await SecurityInit.initialize();
 ///   if (! result. success) {
 ///     // Handle security initialization failure
 ///     exit(1);
 ///   }
-///   
+///
 ///   runApp(MyApp());
 /// }
 /// ```
@@ -33,7 +33,7 @@ final class SecurityInit {
   SecurityInit._();
 
   static bool _initialized = false;
-  static SecurityInitResult?  _result;
+  static SecurityInitResult? _result;
   static final _initLock = Completer<void>();
 
   /// Check if security module is initialized
@@ -58,7 +58,7 @@ final class SecurityInit {
       // ─────────────────────────────────────────────────────
       // Phase 1: Core Initialization
       // ─────────────────────────────────────────────────────
-      
+
       // 1.1 Initialize memory allocator
       MemoryAllocator.initialize();
 
@@ -70,13 +70,13 @@ final class SecurityInit {
 
       // 1.3 Initialize libsodium
       try {
-        await SodiumLoader. warmUp();
+        await SodiumLoader.warmUp();
       } catch (e) {
         errors.add('Failed to initialize libsodium:  $e');
-        return SecurityInitResult. failure(
+        return SecurityInitResult.failure(
           error: 'Cryptographic library initialization failed',
           errors: errors,
-          initTimeMs: stopwatch. elapsedMilliseconds,
+          initTimeMs: stopwatch.elapsedMilliseconds,
         );
       }
 
@@ -90,12 +90,15 @@ final class SecurityInit {
         if (rootResult.isCompromised) {
           if (config.blockRootedDevices) {
             return SecurityInitResult.failure(
-              error:  'Device security compromised:  ${rootResult.failedChecks. join(", ")}',
+              error:
+                  'Device security compromised:  ${rootResult.failedChecks.join(", ")}',
               errors: ['Root/jailbreak detected'],
               initTimeMs: stopwatch.elapsedMilliseconds,
             );
           }
-          warnings.add('Device may be rooted/jailbroken:  ${rootResult.failedChecks.join(", ")}');
+          warnings.add(
+            'Device may be rooted/jailbroken:  ${rootResult.failedChecks.join(", ")}',
+          );
         }
       }
 
@@ -105,12 +108,15 @@ final class SecurityInit {
         if (debugResult.isBeingDebugged) {
           if (config.blockDebugger) {
             return SecurityInitResult.failure(
-              error:  'Debugging detected: ${debugResult. detectedMethods.join(", ")}',
+              error:
+                  'Debugging detected: ${debugResult.detectedMethods.join(", ")}',
               errors: ['Debugger attached'],
-              initTimeMs: stopwatch. elapsedMilliseconds,
+              initTimeMs: stopwatch.elapsedMilliseconds,
             );
           }
-          warnings.add('Debugger detected: ${debugResult.detectedMethods.join(", ")}');
+          warnings.add(
+            'Debugger detected: ${debugResult.detectedMethods.join(", ")}',
+          );
         }
       }
 
@@ -120,15 +126,13 @@ final class SecurityInit {
 
       // 3.1 Initialize secure vault
       try {
-        await Vault.initialize(
-          encryptionKey: config.vaultEncryptionKey,
-        );
+        await Vault.initialize(encryptionKey: config.vaultEncryptionKey);
       } catch (e) {
         errors.add('Failed to initialize secure storage: $e');
         return SecurityInitResult.failure(
           error: 'Secure storage initialization failed',
           errors: errors,
-          initTimeMs: stopwatch. elapsedMilliseconds,
+          initTimeMs: stopwatch.elapsedMilliseconds,
         );
       }
 
@@ -139,7 +143,7 @@ final class SecurityInit {
       stopwatch.stop();
 
       _initialized = true;
-      _result = SecurityInitResult. success(
+      _result = SecurityInitResult.success(
         initTimeMs: stopwatch.elapsedMilliseconds,
         warnings: warnings,
         capabilities: SecurityCapabilities(
@@ -151,8 +155,7 @@ final class SecurityInit {
         ),
       );
 
-      return _result! ;
-
+      return _result!;
     } catch (e, st) {
       stopwatch.stop();
       errors.add('Unexpected error:  $e');
@@ -170,7 +173,7 @@ final class SecurityInit {
     if (!_initialized) return;
 
     // Clear all sensitive data from memory
-    MemoryAllocator. cleanupAll();
+    MemoryAllocator.cleanupAll();
 
     // Close secure storage
     await Vault.close();
@@ -193,12 +196,12 @@ final class SecurityInit {
   }
 
   static PlatformSecurityLevel _getPlatformSecurityLevel() {
-    if (Platform. isIOS) {
+    if (Platform.isIOS) {
       return PlatformSecurityLevel.high; // Secure Enclave
-    } else if (Platform. isAndroid) {
-      return PlatformSecurityLevel. medium; // Varies by device
+    } else if (Platform.isAndroid) {
+      return PlatformSecurityLevel.medium; // Varies by device
     }
-    return PlatformSecurityLevel. low;
+    return PlatformSecurityLevel.low;
   }
 }
 
@@ -208,7 +211,7 @@ class SecurityConfig {
   final bool blockRootedDevices;
   final bool checkDebugger;
   final bool blockDebugger;
-  final String?  vaultEncryptionKey;
+  final String? vaultEncryptionKey;
   final bool enableKeyTransparency;
   final Duration sessionTimeout;
 
@@ -216,7 +219,7 @@ class SecurityConfig {
     this.checkRootedDevice = true,
     this.blockRootedDevices = false,
     this.checkDebugger = true,
-    this. blockDebugger = false,
+    this.blockDebugger = false,
     this.vaultEncryptionKey,
     this.enableKeyTransparency = true,
     this.sessionTimeout = const Duration(days: 30),
@@ -224,21 +227,21 @@ class SecurityConfig {
 
   /// Production configuration (strict)
   factory SecurityConfig.production() => const SecurityConfig(
-        checkRootedDevice: true,
-        blockRootedDevices:  true,
-        checkDebugger: true,
-        blockDebugger: true,
-        enableKeyTransparency:  true,
-      );
+    checkRootedDevice: true,
+    blockRootedDevices: true,
+    checkDebugger: true,
+    blockDebugger: true,
+    enableKeyTransparency: true,
+  );
 
   /// Development configuration (relaxed)
   factory SecurityConfig.development() => const SecurityConfig(
-        checkRootedDevice: false,
-        blockRootedDevices:  false,
-        checkDebugger: false,
-        blockDebugger: false,
-        enableKeyTransparency: false,
-      );
+    checkRootedDevice: false,
+    blockRootedDevices: false,
+    checkDebugger: false,
+    blockDebugger: false,
+    enableKeyTransparency: false,
+  );
 }
 
 /// Security initialization result
@@ -249,43 +252,41 @@ class SecurityInitResult {
   final List<String> warnings;
   final StackTrace? stackTrace;
   final int initTimeMs;
-  final SecurityCapabilities?  capabilities;
+  final SecurityCapabilities? capabilities;
 
   const SecurityInitResult._({
     required this.success,
     this.error,
     this.errors = const [],
     this.warnings = const [],
-    this. stackTrace,
+    this.stackTrace,
     required this.initTimeMs,
-    this. capabilities,
+    this.capabilities,
   });
 
   factory SecurityInitResult.success({
     required int initTimeMs,
     List<String> warnings = const [],
     required SecurityCapabilities capabilities,
-  }) =>
-      SecurityInitResult. _(
-        success:  true,
-        initTimeMs: initTimeMs,
-        warnings: warnings,
-        capabilities: capabilities,
-      );
+  }) => SecurityInitResult._(
+    success: true,
+    initTimeMs: initTimeMs,
+    warnings: warnings,
+    capabilities: capabilities,
+  );
 
   factory SecurityInitResult.failure({
     required String error,
     List<String> errors = const [],
     StackTrace? stackTrace,
     required int initTimeMs,
-  }) =>
-      SecurityInitResult._(
-        success: false,
-        error:  error,
-        errors: errors,
-        stackTrace: stackTrace,
-        initTimeMs: initTimeMs,
-      );
+  }) => SecurityInitResult._(
+    success: false,
+    error: error,
+    errors: errors,
+    stackTrace: stackTrace,
+    initTimeMs: initTimeMs,
+  );
 
   @override
   String toString() {
@@ -310,22 +311,19 @@ class SecurityCapabilities {
     required this.hasSecureEnclave,
     required this.hasStrongBox,
     required this.hasBiometrics,
-    required this. platformSecurity,
+    required this.platformSecurity,
   });
 
   bool get hasHardwareSecurity =>
       hasHardwareKeystore || hasSecureEnclave || hasStrongBox;
 
   @override
-  String toString() => 'SecurityCapabilities('
+  String toString() =>
+      'SecurityCapabilities('
       'hardware: $hasHardwareSecurity, '
       'biometrics: $hasBiometrics, '
       'level: $platformSecurity)';
 }
 
 /// Platform security level
-enum PlatformSecurityLevel {
-  low,
-  medium,
-  high,
-}
+enum PlatformSecurityLevel { low, medium, high }

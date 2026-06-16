@@ -10,8 +10,8 @@ typedef FeedEventHandler = void Function(Map<String, dynamic> event);
 
 class FeedRealtime {
   FeedRealtime({SecureStore? store})
-      : _store = store ?? SecureStore(),
-        _deviceIdStore = DeviceIdStore(store ?? SecureStore());
+    : _store = store ?? SecureStore(),
+      _deviceIdStore = DeviceIdStore(store ?? SecureStore());
 
   final SecureStore _store;
   final DeviceIdStore _deviceIdStore;
@@ -23,12 +23,9 @@ class FeedRealtime {
     if (token == null || token.isEmpty) return;
 
     final deviceId = await _deviceIdStore.getOrCreate();
-    final url = Uri.parse(AppConfig.wsBaseUrl).replace(
-      queryParameters: {
-        'token': token,
-        'deviceId': deviceId,
-      },
-    );
+    final url = Uri.parse(
+      AppConfig.wsBaseUrl,
+    ).replace(queryParameters: {'token': token, 'deviceId': deviceId});
 
     _channel = WebSocketChannel.connect(url);
     _channel?.stream.listen((data) {
@@ -42,11 +39,7 @@ class FeedRealtime {
       }
     });
 
-    _channel?.sink.add(
-      jsonEncode({
-        'type': 'FEED_SUBSCRIBE',
-      }),
-    );
+    _channel?.sink.add(jsonEncode({'type': 'FEED_SUBSCRIBE'}));
   }
 
   Future<void> disconnect() async {

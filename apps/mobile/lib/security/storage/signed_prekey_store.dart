@@ -29,22 +29,16 @@ final class SignedPreKeyStore {
   // ─────────────────────────────────────────────────────────
 
   /// Get signed pre-key by ID
-  static Future<SignedPreKeyEntity? > getSignedPreKey(int keyId) async {
+  static Future<SignedPreKeyEntity?> getSignedPreKey(int keyId) async {
     return Vault.read((db) async {
-      return db.signedPreKeyEntitys
-          .filter()
-          .keyIdEqualTo(keyId)
-          .findFirst();
+      return db.signedPreKeyEntitys.filter().keyIdEqualTo(keyId).findFirst();
     });
   }
 
   /// Get current active signed pre-key
-  static Future<SignedPreKeyEntity? > getCurrentSignedPreKey() async {
-    return Vault. read((db) async {
-      return db.signedPreKeyEntitys
-          . filter()
-          .isActiveEqualTo(true)
-          .findFirst();
+  static Future<SignedPreKeyEntity?> getCurrentSignedPreKey() async {
+    return Vault.read((db) async {
+      return db.signedPreKeyEntitys.filter().isActiveEqualTo(true).findFirst();
     });
   }
 
@@ -60,7 +54,7 @@ final class SignedPreKeyStore {
     if (isActive) {
       await Vault.write((db) async {
         final current = await db.signedPreKeyEntitys
-            . filter()
+            .filter()
             .isActiveEqualTo(true)
             .findFirst();
 
@@ -73,7 +67,7 @@ final class SignedPreKeyStore {
 
     final entity = SignedPreKeyEntity()
       ..keyId = keyId
-      ..publicKey = publicKey. toList()
+      ..publicKey = publicKey.toList()
       ..privateKey = privateKey.toList()
       ..signature = signature.toList()
       ..isActive = isActive
@@ -99,7 +93,7 @@ final class SignedPreKeyStore {
   static Future<int> getNextKeyId() async {
     return Vault.read((db) async {
       final maxKey = await db.signedPreKeyEntitys
-          . where()
+          .where()
           .sortByKeyIdDesc()
           .findFirst();
 
@@ -109,7 +103,7 @@ final class SignedPreKeyStore {
 
   /// Delete old signed pre-keys
   static Future<int> deleteOld() async {
-    final cutoff = DateTime. now()
+    final cutoff = DateTime.now()
         .subtract(const Duration(days: maxAgeDays))
         .millisecondsSinceEpoch;
 
@@ -125,8 +119,8 @@ final class SignedPreKeyStore {
 
   /// Get all signed pre-keys
   static Future<List<SignedPreKeyEntity>> getAll() async {
-    return Vault. read((db) async {
-      return db.signedPreKeyEntitys. where().findAll();
+    return Vault.read((db) async {
+      return db.signedPreKeyEntitys.where().findAll();
     });
   }
 

@@ -8,6 +8,7 @@ import '../navigation/prava_navigator.dart';
 import '../services/backend_keepalive_service.dart';
 import '../ui-system/colors.dart';
 import '../ui-system/theme.dart';
+import '../ui-system/typography.dart';
 import 'deep_link_handler.dart';
 import 'settings_controller.dart';
 
@@ -140,12 +141,8 @@ class _AuthGate extends StatelessWidget {
           children: [
             Text(
               'PRAVA',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 32,
-                fontWeight: FontWeight.w800,
+              style: PravaTypography.logoMark.copyWith(
                 color: tokens.textPrimary,
-                letterSpacing: 1.2,
               ),
             ),
             const SizedBox(height: 24),

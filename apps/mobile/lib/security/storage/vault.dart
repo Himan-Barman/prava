@@ -17,16 +17,18 @@ import '../entities/signed_prekey_entity.dart';
 final class Vault {
   Vault._();
 
-  static Isar?  _db;
+  static Isar? _db;
   static bool _initialized = false;
   static Completer<void>? _initCompleter;
-  static String?  _dbPath;
+  static String? _dbPath;
 
   static bool get isInitialized => _initialized;
 
   static Isar get db {
-    if (! _initialized || _db == null) {
-      throw StateError('Vault not initialized.  Call Vault.initialize() first.');
+    if (!_initialized || _db == null) {
+      throw StateError(
+        'Vault not initialized.  Call Vault.initialize() first.',
+      );
     }
     return _db!;
   }
@@ -39,7 +41,7 @@ final class Vault {
     if (_initialized) return;
 
     if (_initCompleter != null) {
-      await _initCompleter! .future;
+      await _initCompleter!.future;
       return;
     }
 
@@ -63,7 +65,7 @@ final class Vault {
       );
 
       _initialized = true;
-      _initCompleter! .complete();
+      _initCompleter!.complete();
     } catch (e) {
       _initCompleter!.completeError(e);
       _initCompleter = null;
@@ -73,9 +75,9 @@ final class Vault {
 
   /// Close database connection
   static Future<void> close() async {
-    if (! _initialized || _db == null) return;
+    if (!_initialized || _db == null) return;
 
-    await _db! .close();
+    await _db!.close();
     _db = null;
     _initialized = false;
     _initCompleter = null;
@@ -85,8 +87,8 @@ final class Vault {
   static Future<void> clear() async {
     _ensureInitialized();
 
-    await _db! .writeTxn(() async {
-      await _db! .clear();
+    await _db!.writeTxn(() async {
+      await _db!.clear();
     });
   }
 
@@ -106,14 +108,14 @@ final class Vault {
   /// Returns the raw bytes of the database file
   static Future<List<int>> export() async {
     _ensureInitialized();
-    
+
     // Get the database file path
     final dbFile = File('$_dbPath/prava_vault.isar');
-    
+
     if (await dbFile.exists()) {
       return dbFile.readAsBytes();
     }
-    
+
     // If file doesn't exist, return empty list
     return [];
   }
@@ -121,15 +123,15 @@ final class Vault {
   /// Get database size in bytes
   static Future<int> getSize() async {
     _ensureInitialized();
-    
+
     // Get the database file size
     final dbFile = File('$_dbPath/prava_vault.isar');
-    
+
     if (await dbFile.exists()) {
-      final stat = await dbFile. stat();
+      final stat = await dbFile.stat();
       return stat.size;
     }
-    
+
     return 0;
   }
 
@@ -140,9 +142,9 @@ final class Vault {
     return VaultStats(
       identityCount: await _db!.identityEntitys.count(),
       sessionCount: await _db!.sessionEntitys.count(),
-      preKeyCount:  await _db!. preKeyEntitys. count(),
-      signedPreKeyCount:  await _db!. signedPreKeyEntitys.count(),
-      senderKeyCount: await _db! .senderKeyEntitys.count(),
+      preKeyCount: await _db!.preKeyEntitys.count(),
+      signedPreKeyCount: await _db!.signedPreKeyEntitys.count(),
+      senderKeyCount: await _db!.senderKeyEntitys.count(),
       sizeBytes: await getSize(),
     );
   }
@@ -167,7 +169,7 @@ class VaultStats {
     required this.identityCount,
     required this.sessionCount,
     required this.preKeyCount,
-    required this. signedPreKeyCount,
+    required this.signedPreKeyCount,
     required this.senderKeyCount,
     required this.sizeBytes,
   });
@@ -188,7 +190,8 @@ class VaultStats {
   }
 
   @override
-  String toString() => 'VaultStats('
+  String toString() =>
+      'VaultStats('
       'identities: $identityCount, '
       'sessions: $sessionCount, '
       'preKeys: $preKeyCount, '

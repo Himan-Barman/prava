@@ -6,9 +6,7 @@ class FeedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Prava'),
-      ),
+      appBar: AppBar(title: const Text('Prava')),
       body: ListView.builder(
         itemCount: 10,
         itemBuilder: (context, index) {

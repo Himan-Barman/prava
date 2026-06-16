@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart';
 /// ============================================================
 /// Certificate Pinning
 /// ============================================================
-/// Implements TLS certificate pinning: 
+/// Implements TLS certificate pinning:
 ///
 /// • Pin to public key hash (SPKI)
 /// • Support backup pins for rotation
@@ -25,12 +25,12 @@ final class CertPinning {
     List<String> backupPins = const [],
   }) {
     _pinnedHashes.clear();
-    _pinnedHashes.addAll(pins. map((p) => p.toUpperCase()));
+    _pinnedHashes.addAll(pins.map((p) => p.toUpperCase()));
 
     _backupHashes.clear();
-    _backupHashes.addAll(backupPins. map((p) => p.toUpperCase()));
+    _backupHashes.addAll(backupPins.map((p) => p.toUpperCase()));
 
-    _enabled = _pinnedHashes. isNotEmpty;
+    _enabled = _pinnedHashes.isNotEmpty;
   }
 
   /// Check if pinning is enabled
@@ -56,7 +56,7 @@ final class CertPinning {
 
   /// Verify certificate against pins
   static bool verify(X509Certificate cert) {
-    if (! _enabled) return true;
+    if (!_enabled) return true;
 
     final hash = _hashCertificate(cert);
     return _pinnedHashes.contains(hash) || _backupHashes.contains(hash);

@@ -324,7 +324,9 @@ class _ChatDetailsPageState extends State<ChatDetailsPage> {
                       Expanded(
                         child: Text(
                           'Chat details',
-                          style: PravaTypography.h2.copyWith(color: primary),
+                          style: PravaTypography.titleLarge.copyWith(
+                            color: primary,
+                          ),
                         ),
                       ),
                       IconButton(
@@ -504,7 +506,7 @@ class _ProfileHeader extends StatelessWidget {
             child: avatarUrl == null || avatarUrl!.isEmpty
                 ? Text(
                     initial,
-                    style: PravaTypography.h1.copyWith(
+                    style: PravaTypography.displayMedium.copyWith(
                       color: PravaColors.accentPrimary,
                     ),
                   )
@@ -515,12 +517,12 @@ class _ProfileHeader extends StatelessWidget {
             name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: PravaTypography.h2.copyWith(color: primary),
+            style: PravaTypography.titleLarge.copyWith(color: primary),
           ),
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: PravaTypography.body.copyWith(color: secondary),
+            style: PravaTypography.bodyMedium.copyWith(color: secondary),
           ),
         ],
       ),
@@ -542,7 +544,7 @@ class _SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         text,
-        style: PravaTypography.label.copyWith(
+        style: PravaTypography.chipLabel.copyWith(
           color: secondary,
           fontWeight: FontWeight.w700,
         ),
@@ -689,7 +691,7 @@ class _AttachmentRow extends StatelessWidget {
               item.fileName.isEmpty ? item.attachmentType : item.fileName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: PravaTypography.body.copyWith(color: primary),
+              style: PravaTypography.bodyMedium.copyWith(color: primary),
             ),
           ),
           const SizedBox(width: 12),
@@ -741,7 +743,7 @@ class _PinnedMessageRow extends StatelessWidget {
                   body,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: PravaTypography.body.copyWith(color: primary),
+                  style: PravaTypography.bodyMedium.copyWith(color: primary),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -795,7 +797,7 @@ class _SavedMessageRow extends StatelessWidget {
                   body,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: PravaTypography.body.copyWith(color: primary),
+                  style: PravaTypography.bodyMedium.copyWith(color: primary),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -846,7 +848,7 @@ class _MemberRow extends StatelessWidget {
               member.userId,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: PravaTypography.body.copyWith(color: primary),
+              style: PravaTypography.bodyMedium.copyWith(color: primary),
             ),
           ),
           Text(
@@ -869,7 +871,10 @@ class _EmptyLine extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Text(text, style: PravaTypography.body.copyWith(color: color)),
+      child: Text(
+        text,
+        style: PravaTypography.bodyMedium.copyWith(color: color),
+      ),
     );
   }
 }

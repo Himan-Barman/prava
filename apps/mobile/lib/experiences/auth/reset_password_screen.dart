@@ -12,11 +12,7 @@ import '../../ui-system/feedback/toast_type.dart';
 import '../../ui-system/typography.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({
-    super.key,
-    this.email,
-    this.initialToken,
-  });
+  const ResetPasswordScreen({super.key, this.email, this.initialToken});
 
   final String? email;
   final String? initialToken;
@@ -39,8 +35,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     _passwordController.addListener(_syncState);
     _tokenController.addListener(_syncState);
     _confirmController.addListener(_syncState);
-    if (widget.initialToken != null &&
-        widget.initialToken!.trim().isNotEmpty) {
+    if (widget.initialToken != null && widget.initialToken!.trim().isNotEmpty) {
       _tokenController.text = widget.initialToken!.trim();
     }
   }
@@ -102,21 +97,19 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       final message = err is ApiException
           ? err.message
           : 'Unable to reset password';
-      PravaToast.show(
-        context,
-        message: message,
-        type: PravaToastType.error,
-      );
+      PravaToast.show(context, message: message, type: PravaToastType.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryText =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondaryText =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final primaryText = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondaryText = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
 
     final subtitle = widget.email != null && widget.email!.isNotEmpty
         ? 'Enter the 6-digit reset code sent to ${widget.email}.'
@@ -145,7 +138,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     children: [
                       Text(
                         'Set a new password',
-                        style: PravaTypography.h1.copyWith(
+                        style: PravaTypography.displayMedium.copyWith(
                           letterSpacing: -0.6,
                           color: primaryText,
                         ),
@@ -153,7 +146,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       const SizedBox(height: 8),
                       Text(
                         subtitle,
-                        style: PravaTypography.body.copyWith(
+                        style: PravaTypography.bodyMedium.copyWith(
                           color: secondaryText,
                         ),
                       ),
@@ -161,6 +154,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       PravaInput(
                         hint: '6-digit reset code',
                         controller: _tokenController,
+                        fieldType: PravaInputFieldType.otp,
+                        variant: PravaInputVariant.auth,
+                        prefixIcon: const Icon(Icons.pin_rounded),
+                        showCounter: true,
+                        maxLength: 6,
+                        requiredField: true,
                         keyboardType: TextInputType.number,
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
@@ -171,6 +170,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       PravaPasswordInput(
                         hint: 'New password',
                         controller: _passwordController,
+                        helperText: 'Use a strong password.',
+                        requiredField: true,
                         autofillHints: const [AutofillHints.newPassword],
                       ),
                       const SizedBox(height: 12),
@@ -186,6 +187,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       PravaPasswordInput(
                         hint: 'Confirm password',
                         controller: _confirmController,
+                        requiredField: true,
                         autofillHints: const [AutofillHints.newPassword],
                       ),
                       const SizedBox(height: 28),

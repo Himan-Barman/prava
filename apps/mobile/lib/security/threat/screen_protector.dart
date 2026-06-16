@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 /// ============================================================
 /// Screen Protector
 /// ============================================================
-/// Prevents screen capture: 
+/// Prevents screen capture:
 ///
 /// • Screenshot blocking
 /// • Screen recording blocking
@@ -25,7 +25,7 @@ final class ScreenProtector {
 
     try {
       final result = await _channel.invokeMethod<bool>('enableSecure');
-      _enabled = result ??  false;
+      _enabled = result ?? false;
       return _enabled;
     } on PlatformException catch (_) {
       return false;

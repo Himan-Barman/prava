@@ -27,21 +27,18 @@ class DeviceSession {
       deviceId: json['deviceId']?.toString() ?? '',
       deviceName: json['deviceName']?.toString() ?? '',
       platform: json['platform']?.toString() ?? '',
-      createdAt:
-          DateTime.tryParse(json['createdAt']?.toString() ?? ''),
-      lastSeenAt:
-          DateTime.tryParse(json['lastSeenAt']?.toString() ?? ''),
-      expiresAt:
-          DateTime.tryParse(json['expiresAt']?.toString() ?? ''),
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      lastSeenAt: DateTime.tryParse(json['lastSeenAt']?.toString() ?? ''),
+      expiresAt: DateTime.tryParse(json['expiresAt']?.toString() ?? ''),
     );
   }
 }
 
 class SessionService {
   SessionService({SecureStore? store})
-      : _store = store ?? SecureStore(),
-        _deviceIdStore = DeviceIdStore(store ?? SecureStore()),
-        _client = ApiClient(store ?? SecureStore());
+    : _store = store ?? SecureStore(),
+      _deviceIdStore = DeviceIdStore(store ?? SecureStore()),
+      _client = ApiClient(store ?? SecureStore());
 
   final SecureStore _store;
   final DeviceIdStore _deviceIdStore;

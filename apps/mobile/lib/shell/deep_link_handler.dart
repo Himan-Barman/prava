@@ -8,8 +8,8 @@ import '../navigation/prava_navigator.dart';
 
 class DeepLinkHandler {
   DeepLinkHandler({required GlobalKey<NavigatorState> navigatorKey})
-      : _navigatorKey = navigatorKey,
-        _links = AppLinks();
+    : _navigatorKey = navigatorKey,
+      _links = AppLinks();
 
   final GlobalKey<NavigatorState> _navigatorKey;
   final AppLinks _links;
@@ -53,8 +53,7 @@ class DeepLinkHandler {
       return;
     }
 
-    String? token =
-        uri.queryParameters['token'] ?? uri.queryParameters['code'];
+    String? token = uri.queryParameters['token'] ?? uri.queryParameters['code'];
     if (token == null || token.isEmpty) {
       final segments = uri.pathSegments;
       if (segments.isNotEmpty) {
@@ -70,19 +69,14 @@ class DeepLinkHandler {
     final email = uri.queryParameters['email'];
     _navigatorKey.currentState!.push(
       PravaNavigator.route(
-        ResetPasswordScreen(
-          email: email,
-          initialToken: token,
-        ),
+        ResetPasswordScreen(email: email, initialToken: token),
       ),
     );
   }
 
   String _normalizeRoute(Uri uri) {
     if (uri.path.isNotEmpty) {
-      final cleaned = uri.path.startsWith('/')
-          ? uri.path
-          : '/${uri.path}';
+      final cleaned = uri.path.startsWith('/') ? uri.path : '/${uri.path}';
       return cleaned.toLowerCase();
     }
     if (uri.host.isNotEmpty) {

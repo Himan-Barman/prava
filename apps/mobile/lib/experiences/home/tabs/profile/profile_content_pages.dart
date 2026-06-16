@@ -282,7 +282,7 @@ class _ProfileContentHeader extends StatelessWidget {
         title,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: PravaTypography.h2.copyWith(
+        style: PravaTypography.titleLarge.copyWith(
           color: primary,
           letterSpacing: 0,
           fontWeight: FontWeight.w800,
@@ -318,7 +318,7 @@ class _ProfileContentEmptyState extends StatelessWidget {
         Text(
           title,
           textAlign: TextAlign.center,
-          style: PravaTypography.h3.copyWith(
+          style: PravaTypography.titleSmall.copyWith(
             color: primary,
             fontWeight: FontWeight.w800,
           ),
@@ -327,7 +327,7 @@ class _ProfileContentEmptyState extends StatelessWidget {
         Text(
           subtitle,
           textAlign: TextAlign.center,
-          style: PravaTypography.body.copyWith(color: secondary),
+          style: PravaTypography.bodyMedium.copyWith(color: secondary),
         ),
       ],
     );
@@ -504,7 +504,7 @@ class _ProfileConnectionAvatar extends StatelessWidget {
                 child: Center(
                   child: Text(
                     name.isEmpty ? '?' : name[0].toUpperCase(),
-                    style: PravaTypography.h3.copyWith(
+                    style: PravaTypography.titleSmall.copyWith(
                       color: tokens.brandContent,
                       fontWeight: FontWeight.w800,
                     ),

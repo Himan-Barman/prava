@@ -75,7 +75,7 @@ class SkippedMessageKeys {
     }
 
     final keyHex = _bytesToHex(ratchetPublicKey);
-    _keys. putIfAbsent(keyHex, () => {});
+    _keys.putIfAbsent(keyHex, () => {});
     _keys[keyHex]![messageNumber] = _StoredKey(
       key: Uint8List.fromList(messageKey),
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -101,12 +101,12 @@ class SkippedMessageKeys {
   }
 
   /// Consume (get and remove) a skipped message key
-  Uint8List?  consumeKey(Uint8List ratchetPublicKey, int messageNumber) {
+  Uint8List? consumeKey(Uint8List ratchetPublicKey, int messageNumber) {
     final keyHex = _bytesToHex(ratchetPublicKey);
     final chain = _keys[keyHex];
     if (chain == null) return null;
 
-    final stored = chain. remove(messageNumber);
+    final stored = chain.remove(messageNumber);
     if (stored == null) return null;
 
     if (chain.isEmpty) {
@@ -117,10 +117,7 @@ class SkippedMessageKeys {
   }
 
   /// Get a persisted message key without removing it
-  Uint8List? getPersistentKey(
-    Uint8List ratchetPublicKey,
-    int messageNumber,
-  ) {
+  Uint8List? getPersistentKey(Uint8List ratchetPublicKey, int messageNumber) {
     final keyHex = _bytesToHex(ratchetPublicKey);
     final chain = _persisted[keyHex];
     if (chain == null) return null;
@@ -132,10 +129,7 @@ class SkippedMessageKeys {
   }
 
   /// Remove a persisted message key
-  void removePersistentKey(
-    Uint8List ratchetPublicKey,
-    int messageNumber,
-  ) {
+  void removePersistentKey(Uint8List ratchetPublicKey, int messageNumber) {
     final keyHex = _bytesToHex(ratchetPublicKey);
     final chain = _persisted[keyHex];
     if (chain == null) return;
@@ -165,7 +159,7 @@ class SkippedMessageKeys {
   void clear() {
     for (final chain in _keys.values) {
       for (final stored in chain.values) {
-        _zeroize(stored. key);
+        _zeroize(stored.key);
       }
     }
     _keys.clear();
@@ -186,14 +180,14 @@ class SkippedMessageKeys {
   }
 
   void _removeOldest() {
-    int?  oldestTime;
+    int? oldestTime;
     String? oldestChain;
     int? oldestNumber;
 
     for (final entry in _keys.entries) {
       for (final keyEntry in entry.value.entries) {
-        if (oldestTime == null || keyEntry.value. timestamp < oldestTime) {
-          oldestTime = keyEntry. value.timestamp;
+        if (oldestTime == null || keyEntry.value.timestamp < oldestTime) {
+          oldestTime = keyEntry.value.timestamp;
           oldestChain = entry.key;
           oldestNumber = keyEntry.key;
         }
@@ -201,11 +195,11 @@ class SkippedMessageKeys {
     }
 
     if (oldestChain != null && oldestNumber != null) {
-      final stored = _keys[oldestChain]?. remove(oldestNumber);
+      final stored = _keys[oldestChain]?.remove(oldestNumber);
       if (stored != null) {
         _zeroize(stored.key);
       }
-      if (_keys[oldestChain]?.isEmpty ??  false) {
+      if (_keys[oldestChain]?.isEmpty ?? false) {
         _keys.remove(oldestChain);
       }
     }
@@ -266,10 +260,7 @@ class SkippedMessageKeys {
         final keyBytes = _decodeKey(stored['key']);
         final timestamp = stored['timestamp'] as int? ?? 0;
         if (keyBytes == null || keyBytes.isEmpty) continue;
-        chainKeys[messageNum] = _StoredKey(
-          key: keyBytes,
-          timestamp: timestamp,
-        );
+        chainKeys[messageNum] = _StoredKey(key: keyBytes, timestamp: timestamp);
       }
 
       if (chainKeys.isNotEmpty) {

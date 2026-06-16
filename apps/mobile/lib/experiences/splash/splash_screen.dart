@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../ui-system/typography.dart';
+
 /// Simple splash screen — shows "PRAVA." then navigates.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key, required this.onComplete});
@@ -68,14 +70,9 @@ class _SplashScreenState extends State<SplashScreen>
             children: [
               Text(
                 'PRAVA',
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: size,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: size * 0.03,
-                  height: 1.0,
-                ),
+                style: PravaTypography.splashLogo(
+                  size,
+                ).copyWith(color: Colors.white),
               ),
               Padding(
                 padding: EdgeInsets.only(left: size * 0.05, bottom: size * 0.1),

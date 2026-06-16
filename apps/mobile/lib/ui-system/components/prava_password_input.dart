@@ -1,76 +1,71 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../colors.dart';
-import '../typography.dart';
+import 'prava_input.dart';
 
-class PravaPasswordInput extends StatefulWidget {
+class PravaPasswordInput extends StatelessWidget {
   const PravaPasswordInput({
     super.key,
     required this.hint,
     required this.controller,
-    this.autofillHints, // ✅ ADD
+    this.label,
+    this.helperText,
+    this.errorText,
+    this.successText,
+    this.focusNode,
+    this.nextFocusNode,
+    this.autofillHints,
+    this.inputFormatters,
+    this.validator,
+    this.onChanged,
+    this.onSubmitted,
+    this.requiredField = false,
+    this.loading = false,
+    this.enabled = true,
+    this.readOnly = false,
   });
 
   final String hint;
   final TextEditingController controller;
-  final Iterable<String>? autofillHints; // ✅ ADD
-
-  @override
-  State<PravaPasswordInput> createState() => _PravaPasswordInputState();
-}
-
-class _PravaPasswordInputState extends State<PravaPasswordInput> {
-  bool _obscure = true;
+  final String? label;
+  final String? helperText;
+  final String? errorText;
+  final String? successText;
+  final FocusNode? focusNode;
+  final FocusNode? nextFocusNode;
+  final Iterable<String>? autofillHints;
+  final List<TextInputFormatter>? inputFormatters;
+  final FormFieldValidator<String>? validator;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final bool requiredField;
+  final bool loading;
+  final bool enabled;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    OutlineInputBorder border(Color color, [double width = 1]) {
-      return OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: color, width: width),
-      );
-    }
-
-    return TextField(
-      controller: widget.controller,
-      obscureText: _obscure,
-      autofillHints: widget.autofillHints, // ✅ PASS
-      enableSuggestions: false,
-      autocorrect: false,
-      keyboardType: TextInputType.visiblePassword,
-      style: PravaTypography.body.copyWith(color: tokens.textPrimary),
-      cursorColor: tokens.brandPrimary,
-      decoration: InputDecoration(
-        hintText: widget.hint,
-        hintStyle: PravaTypography.body.copyWith(color: tokens.textTertiary),
-        filled: true,
-        fillColor: tokens.backgroundSurfaceSubtle,
-        suffixIcon: IconButton(
-          splashRadius: 18,
-          icon: Icon(
-            _obscure
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined,
-            size: 20,
-            color: tokens.iconSecondary,
-          ),
-          onPressed: () {
-            HapticFeedback.selectionClick();
-            setState(() => _obscure = !_obscure);
-          },
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 18,
-        ),
-        border: border(tokens.borderDefault),
-        enabledBorder: border(tokens.borderDefault),
-        focusedBorder: border(tokens.focusBorder, 1.4),
-        errorBorder: border(tokens.statusError),
-        focusedErrorBorder: border(tokens.statusError, 1.4),
-      ),
+    return PravaInput(
+      controller: controller,
+      hint: hint,
+      label: label,
+      helperText: helperText,
+      errorText: errorText,
+      successText: successText,
+      fieldType: PravaInputFieldType.password,
+      variant: PravaInputVariant.auth,
+      focusNode: focusNode,
+      nextFocusNode: nextFocusNode,
+      autofillHints: autofillHints,
+      inputFormatters: inputFormatters,
+      validator: validator,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      requiredField: requiredField,
+      loading: loading,
+      enabled: enabled,
+      readOnly: readOnly,
+      showPasswordToggle: true,
     );
   }
 }

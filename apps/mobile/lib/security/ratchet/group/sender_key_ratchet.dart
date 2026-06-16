@@ -1,7 +1,6 @@
 // Group ratchet logic
 import 'dart:typed_data';
 
-
 import '../../crypto/signatures.dart';
 import '../message_keys.dart';
 import 'sender_key_state.dart';
@@ -9,9 +8,9 @@ import 'sender_key_state.dart';
 /// ============================================================
 /// Sender Key Ratchet
 /// ============================================================
-/// Encryption engine for group messaging: 
+/// Encryption engine for group messaging:
 ///
-/// Advantages over pairwise: 
+/// Advantages over pairwise:
 /// • O(1) encryption vs O(n) for pairwise
 /// • Single encryption for all recipients
 /// • Efficient for large groups
@@ -35,7 +34,7 @@ final class SenderKeyRatchet {
     required Uint8List plaintext,
     required SenderKeyState senderKey,
   }) async {
-    if (! senderKey.isOwnKey) {
+    if (!senderKey.isOwnKey) {
       throw SenderKeyException('Cannot encrypt with received sender key');
     }
 
@@ -51,17 +50,17 @@ final class SenderKeyRatchet {
     // Sign the ciphertext
     final signature = await Signatures.sign(
       encrypted.ciphertext,
-      senderKey.signaturePrivateKey! ,
+      senderKey.signaturePrivateKey!,
     );
 
     // Create message
     final message = SenderKeyMessage(
       groupId: senderKey.groupId,
       senderId: senderKey.senderId,
-      deviceId: senderKey. deviceId,
+      deviceId: senderKey.deviceId,
       keyId: senderKey.keyId,
       messageIndex: advance.messageIndex,
-      ciphertext: encrypted. ciphertext,
+      ciphertext: encrypted.ciphertext,
       nonce: encrypted.nonce,
       signature: signature,
     );
@@ -80,7 +79,7 @@ final class SenderKeyRatchet {
     // Verify sender key matches message
     if (senderKey.groupId != message.groupId ||
         senderKey.senderId != message.senderId ||
-        senderKey. deviceId != message. deviceId ||
+        senderKey.deviceId != message.deviceId ||
         senderKey.keyId != message.keyId) {
       throw SenderKeyException('Sender key mismatch');
     }
@@ -97,7 +96,7 @@ final class SenderKeyRatchet {
     }
 
     // Get message key for this index
-    final messageKey = await senderKey.advanceToIndex(message. messageIndex);
+    final messageKey = await senderKey.advanceToIndex(message.messageIndex);
 
     if (messageKey == null) {
       throw SenderKeyException(
@@ -126,15 +125,18 @@ final class SenderKeyRatchet {
     required String senderId,
     required String deviceId,
   }) async {
-    return SenderKeyState. create(
+    return SenderKeyState.create(
       groupId: groupId,
-      senderId:  senderId,
+      senderId: senderId,
       deviceId: deviceId,
     );
   }
 
   /// Check if sender key needs rotation
-  static bool needsRotation(SenderKeyState senderKey, {int maxMessages = 1000}) {
+  static bool needsRotation(
+    SenderKeyState senderKey, {
+    int maxMessages = 1000,
+  }) {
     return senderKey.messageIndex >= maxMessages;
   }
 }
@@ -173,25 +175,25 @@ class SenderKeyMessage {
     required this.senderId,
     required this.deviceId,
     required this.keyId,
-    required this. messageIndex,
+    required this.messageIndex,
     required this.ciphertext,
     required this.nonce,
-    required this. signature,
-    int?  timestamp,
-  }) : timestamp = timestamp ??  DateTime.now().millisecondsSinceEpoch;
+    required this.signature,
+    int? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
 
   /// Serialize for transmission
   Map<String, dynamic> toJson() => {
-        'groupId':  groupId,
-        'senderId': senderId,
-        'deviceId': deviceId,
-        'keyId': keyId,
-        'messageIndex': messageIndex,
-        'ciphertext': ciphertext. toList(),
-        'nonce': nonce.toList(),
-        'signature':  signature.toList(),
-        'timestamp':  timestamp,
-      };
+    'groupId': groupId,
+    'senderId': senderId,
+    'deviceId': deviceId,
+    'keyId': keyId,
+    'messageIndex': messageIndex,
+    'ciphertext': ciphertext.toList(),
+    'nonce': nonce.toList(),
+    'signature': signature.toList(),
+    'timestamp': timestamp,
+  };
 
   /// Deserialize from transmission
   factory SenderKeyMessage.fromJson(Map<String, dynamic> json) {
@@ -199,10 +201,10 @@ class SenderKeyMessage {
       groupId: json['groupId'] as String,
       senderId: json['senderId'] as String,
       deviceId: json['deviceId'] as String,
-      keyId:  json['keyId'] as int,
+      keyId: json['keyId'] as int,
       messageIndex: json['messageIndex'] as int,
       ciphertext: Uint8List.fromList((json['ciphertext'] as List).cast<int>()),
-      nonce:  Uint8List.fromList((json['nonce'] as List).cast<int>()),
+      nonce: Uint8List.fromList((json['nonce'] as List).cast<int>()),
       signature: Uint8List.fromList((json['signature'] as List).cast<int>()),
       timestamp: json['timestamp'] as int?,
     );

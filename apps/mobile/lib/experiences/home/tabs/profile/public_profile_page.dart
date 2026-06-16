@@ -41,6 +41,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
   bool _openingChat = false;
   bool _following = false;
   bool _followedBy = false;
+  bool _requested = false;
+  bool _incomingRequestPending = false;
+  bool _closeFriend = false;
+  bool _muted = false;
+  bool _restricted = false;
   _PublicProfileContentTab _contentTab = _PublicProfileContentTab.all;
   final Set<String> _collapsedSections = {};
 
@@ -69,6 +74,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
         _summary = summary;
         _following = summary.relationship.isFollowing;
         _followedBy = summary.relationship.isFollowedBy;
+        _requested = summary.relationship.requestPending;
+        _incomingRequestPending = summary.relationship.incomingRequestPending;
+        _closeFriend = summary.relationship.isCloseFriend;
+        _muted = summary.relationship.isMuted;
+        _restricted = summary.relationship.isRestricted;
         _loading = false;
       });
     } catch (_) {
@@ -84,25 +94,29 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
   Future<void> _toggleFollow() async {
     if (_pendingFollow || widget.userId.isEmpty) return;
+    if (_summary?.profileState == 'blockedByViewer') {
+      await _setBlocked(false);
+      return;
+    }
     HapticFeedback.selectionClick();
     final nextFollow = !_following;
     setState(() => _pendingFollow = true);
 
     try {
-      final following = await _profileService.setFollow(
-        widget.userId,
-        nextFollow,
-      );
+      final result = await _profileService.setFollow(widget.userId, nextFollow);
       if (!mounted) return;
       setState(() {
-        _following = following;
+        _following = result.following;
+        _requested = result.requested;
         _pendingFollow = false;
       });
       await _loadProfile(silent: true);
       if (!mounted) return;
       PravaToast.show(
         context,
-        message: _following && _followedBy
+        message: _requested
+            ? 'Follow request sent'
+            : _following && _followedBy
             ? 'You are now friends'
             : (_following ? 'Following' : 'Unfollowed'),
         type: PravaToastType.success,
@@ -116,6 +130,169 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
         type: PravaToastType.error,
       );
     }
+  }
+
+  Future<void> _performProfileAction(
+    Future<void> Function() action, {
+    required String successMessage,
+    String errorMessage = 'Unable to update profile action',
+  }) async {
+    HapticFeedback.selectionClick();
+    try {
+      await action();
+      await _loadProfile(silent: true);
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: successMessage,
+        type: PravaToastType.success,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: errorMessage,
+        type: PravaToastType.error,
+      );
+    }
+  }
+
+  Future<void> _setBlocked(bool blocked) {
+    return _performProfileAction(
+      () => _profileService.setBlock(widget.userId, blocked),
+      successMessage: blocked ? 'Profile blocked' : 'Profile unblocked',
+      errorMessage: blocked ? 'Unable to block profile' : 'Unable to unblock',
+    );
+  }
+
+  Future<void> _setMuted(bool muted) {
+    return _performProfileAction(
+      () => _profileService.setMute(widget.userId, muted),
+      successMessage: muted ? 'Profile muted' : 'Profile unmuted',
+      errorMessage: muted ? 'Unable to mute profile' : 'Unable to unmute',
+    );
+  }
+
+  Future<void> _setRestricted(bool restricted) {
+    return _performProfileAction(
+      () => _profileService.setRestrict(widget.userId, restricted),
+      successMessage: restricted ? 'Profile restricted' : 'Restriction removed',
+      errorMessage: restricted
+          ? 'Unable to restrict profile'
+          : 'Unable to remove restriction',
+    );
+  }
+
+  Future<void> _setCloseFriend(bool closeFriend) {
+    return _performProfileAction(
+      () => _profileService.setCloseFriend(widget.userId, closeFriend),
+      successMessage: closeFriend
+          ? 'Added to close friends'
+          : 'Removed from close friends',
+      errorMessage: closeFriend
+          ? 'Follow this user before adding to close friends'
+          : 'Unable to update close friends',
+    );
+  }
+
+  Future<void> _removeFollower() {
+    return _performProfileAction(
+      () => _profileService.removeFollower(widget.userId),
+      successMessage: 'Follower removed',
+      errorMessage: 'Unable to remove follower',
+    );
+  }
+
+  Future<void> _removeConnection() {
+    return _performProfileAction(
+      () => _profileService.removeConnection(widget.userId),
+      successMessage: 'Connection removed',
+      errorMessage: 'Unable to remove connection',
+    );
+  }
+
+  Future<void> _reportProfile() {
+    return _performProfileAction(
+      () => _profileService.reportProfile(widget.userId, reason: 'other'),
+      successMessage: 'Profile report sent',
+      errorMessage: 'Unable to report profile',
+    );
+  }
+
+  Future<void> _copyProfileLink() async {
+    final summary = _summary;
+    final username = summary?.user.username.trim() ?? '';
+    final suffix = username.isEmpty ? widget.userId : username;
+    await Clipboard.setData(
+      ClipboardData(text: 'https://pravachat.me/$suffix'),
+    );
+    if (!mounted) return;
+    PravaToast.show(
+      context,
+      message: 'Profile link copied',
+      type: PravaToastType.success,
+    );
+  }
+
+  void _openMoreMenu() {
+    final summary = _summary;
+    if (summary == null) return;
+    HapticFeedback.selectionClick();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return _ProfileActionSheet(
+          summary: summary,
+          following: _following,
+          followedBy: _followedBy,
+          closeFriend: _closeFriend,
+          muted: _muted,
+          restricted: _restricted,
+          incomingRequestPending: _incomingRequestPending,
+          onCopyLink: () {
+            Navigator.of(sheetContext).pop();
+            _copyProfileLink();
+          },
+          onToggleFollow: () {
+            Navigator.of(sheetContext).pop();
+            _toggleFollow();
+          },
+          onToggleCloseFriend: () {
+            Navigator.of(sheetContext).pop();
+            _setCloseFriend(!_closeFriend);
+          },
+          onToggleMute: () {
+            Navigator.of(sheetContext).pop();
+            _setMuted(!_muted);
+          },
+          onToggleRestrict: () {
+            Navigator.of(sheetContext).pop();
+            _setRestricted(!_restricted);
+          },
+          onRemoveFollower: () {
+            Navigator.of(sheetContext).pop();
+            _removeFollower();
+          },
+          onRemoveConnection: () {
+            Navigator.of(sheetContext).pop();
+            _removeConnection();
+          },
+          onBlock: () {
+            Navigator.of(sheetContext).pop();
+            _setBlocked(true);
+          },
+          onUnblock: () {
+            Navigator.of(sheetContext).pop();
+            _setBlocked(false);
+          },
+          onReport: () {
+            Navigator.of(sheetContext).pop();
+            _reportProfile();
+          },
+        );
+      },
+    );
   }
 
   Future<void> _openChat() async {
@@ -211,6 +388,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
   }
 
   String _relationshipLabel() {
+    final summary = _summary;
+    if (summary?.profileState == 'private') return 'Private profile';
+    if (summary?.profileState == 'blockedByViewer') return 'Blocked';
+    if (summary?.profileState == 'blocked') return 'Unavailable';
+    if (_requested) return 'Requested';
     if (_following && _followedBy) return 'Friends';
     if (_following) return 'Following';
     if (_followedBy) return 'Follows you';
@@ -367,8 +549,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
           SliverToBoxAdapter(
             child: _PublicProfileHero(
               displayName: displayName,
+              username: user.username,
               initials: _initials(displayName),
               avatarUrl: user.avatarUrl,
+              coverUrl: user.coverUrl,
               verified: user.isVerified,
               relationship: _relationshipLabel(),
               bio: user.bio,
@@ -387,6 +571,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
               isFriend: _following && _followedBy,
               followingUser: _following,
               followedByUser: _followedBy,
+              requested: _requested,
+              profileState: summary.profileState,
+              mutualFriends: summary.mutualFriends,
               pendingFollow: _pendingFollow,
               openingChat: _openingChat,
               primary: primary,
@@ -394,6 +581,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
               border: border,
               onFollow: _toggleFollow,
               onMessage: _openChat,
+              onMore: _openMoreMenu,
               onPostsTap: () => _openPostsPage(summary),
               onFollowersTap: () =>
                   _openConnections(summary, ProfileConnectionKind.followers),
@@ -402,15 +590,50 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
             ),
           ),
           SliverToBoxAdapter(
-            child: _PublicProfileTabBar(
-              value: _contentTab,
-              primary: primary,
-              secondary: secondary,
-              border: border,
-              onChanged: _setTab,
-            ),
+            child: summary.tabs.isEmpty
+                ? const SizedBox.shrink()
+                : _PublicProfileTabBar(
+                    value: _contentTab,
+                    tabs: summary.tabs,
+                    primary: primary,
+                    secondary: secondary,
+                    border: border,
+                    onChanged: _setTab,
+                  ),
           ),
-          if (_contentTab == _PublicProfileContentTab.all) ...[
+          if (summary.profileState == 'private')
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
+                child: _LockedState(
+                  title: 'This account is private',
+                  subtitle:
+                      'Follow this account to see their posts, media, and activity.',
+                  primary: primary,
+                  secondary: secondary,
+                  border: border,
+                ),
+              ),
+            )
+          else if (summary.profileState == 'blocked' ||
+              summary.profileState == 'blockedByViewer')
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
+                child: _LockedState(
+                  title: summary.profileState == 'blockedByViewer'
+                      ? 'Profile blocked'
+                      : 'Profile unavailable',
+                  subtitle: summary.profileState == 'blockedByViewer'
+                      ? 'Unblock this profile to interact again.'
+                      : 'This profile is not available to view.',
+                  primary: primary,
+                  secondary: secondary,
+                  border: border,
+                ),
+              ),
+            )
+          else if (_contentTab == _PublicProfileContentTab.all) ...[
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
@@ -524,7 +747,44 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                 ),
               ),
             ),
-          ] else
+          ] else if (_contentTab == _PublicProfileContentTab.media)
+            SliverToBoxAdapter(
+              child: _PublicPostsList(
+                posts: summary.mediaPosts,
+                primary: primary,
+                secondary: secondary,
+                border: border,
+                formatCount: _formatCount,
+                formatTime: _formatRelativeTime,
+                emptyTitle: 'No media yet',
+                emptySubtitle:
+                    'Photos and videos this profile shares will appear here.',
+              ),
+            )
+          else if (_contentTab == _PublicProfileContentTab.replies)
+            SliverToBoxAdapter(
+              child: _PublicPostsList(
+                posts: summary.replies,
+                primary: primary,
+                secondary: secondary,
+                border: border,
+                formatCount: _formatCount,
+                formatTime: _formatRelativeTime,
+                emptyTitle: 'No replies yet',
+                emptySubtitle:
+                    'Replies this profile can share will appear here.',
+              ),
+            )
+          else if (_contentTab == _PublicProfileContentTab.highlights)
+            SliverToBoxAdapter(
+              child: _HighlightsPanel(
+                highlights: summary.highlights,
+                primary: primary,
+                secondary: secondary,
+                border: border,
+              ),
+            )
+          else
             SliverToBoxAdapter(
               child: postsHidden
                   ? Padding(
@@ -553,7 +813,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
   }
 }
 
-enum _PublicProfileContentTab { all, posts }
+enum _PublicProfileContentTab { all, posts, replies, media, highlights, about }
 
 class _TopBar extends StatelessWidget {
   const _TopBar({required this.title, required this.primary});
@@ -567,7 +827,7 @@ class _TopBar extends StatelessWidget {
       title,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: PravaTypography.h3.copyWith(
+      style: PravaTypography.titleSmall.copyWith(
         color: primary,
         letterSpacing: 0,
         fontWeight: FontWeight.w800,
@@ -579,8 +839,10 @@ class _TopBar extends StatelessWidget {
 class _PublicProfileHero extends StatelessWidget {
   const _PublicProfileHero({
     required this.displayName,
+    required this.username,
     required this.initials,
     required this.avatarUrl,
+    required this.coverUrl,
     required this.verified,
     required this.relationship,
     required this.bio,
@@ -591,6 +853,9 @@ class _PublicProfileHero extends StatelessWidget {
     required this.isFriend,
     required this.followingUser,
     required this.followedByUser,
+    required this.requested,
+    required this.profileState,
+    required this.mutualFriends,
     required this.pendingFollow,
     required this.openingChat,
     required this.primary,
@@ -598,14 +863,17 @@ class _PublicProfileHero extends StatelessWidget {
     required this.border,
     required this.onFollow,
     required this.onMessage,
+    required this.onMore,
     required this.onPostsTap,
     required this.onFollowersTap,
     required this.onFollowingTap,
   });
 
   final String displayName;
+  final String username;
   final String initials;
   final String avatarUrl;
+  final String coverUrl;
   final bool verified;
   final String relationship;
   final String bio;
@@ -616,6 +884,9 @@ class _PublicProfileHero extends StatelessWidget {
   final bool isFriend;
   final bool followingUser;
   final bool followedByUser;
+  final bool requested;
+  final String profileState;
+  final List<PublicProfileMiniUser> mutualFriends;
   final bool pendingFollow;
   final bool openingChat;
   final Color primary;
@@ -623,6 +894,7 @@ class _PublicProfileHero extends StatelessWidget {
   final Color border;
   final VoidCallback onFollow;
   final VoidCallback onMessage;
+  final VoidCallback onMore;
   final VoidCallback onPostsTap;
   final VoidCallback onFollowersTap;
   final VoidCallback onFollowingTap;
@@ -637,6 +909,12 @@ class _PublicProfileHero extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _ProfileCoverBanner(
+            coverUrl: coverUrl,
+            initials: initials,
+            border: border,
+          ),
+          const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -658,7 +936,7 @@ class _PublicProfileHero extends StatelessWidget {
                             displayName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: PravaTypography.h2.copyWith(
+                            style: PravaTypography.titleLarge.copyWith(
                               color: primary,
                               letterSpacing: 0,
                               fontWeight: FontWeight.w800,
@@ -674,6 +952,15 @@ class _PublicProfileHero extends StatelessWidget {
                           ),
                         ],
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      username.isEmpty ? '' : '@$username',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PravaTypography.bodyMedium.copyWith(
+                        color: secondary,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     _RelationshipPill(label: relationship, color: secondary),
@@ -715,23 +1002,42 @@ class _PublicProfileHero extends StatelessWidget {
             else
               Text(
                 bio.trim(),
-                style: PravaTypography.body.copyWith(
+                style: PravaTypography.bodyMedium.copyWith(
                   color: primary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
+          ],
+          if (mutualFriends.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              mutualFriends
+                  .take(3)
+                  .map(
+                    (friend) => friend.displayName.isNotEmpty
+                        ? friend.displayName
+                        : '@${friend.username}',
+                  )
+                  .join(', '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.caption.copyWith(color: secondary),
+            ),
           ],
           const SizedBox(height: 18),
           _RelationActions(
             isFriend: isFriend,
             following: followingUser,
             followedBy: followedByUser,
+            requested: requested,
+            profileState: profileState,
             pendingFollow: pendingFollow,
             openingChat: openingChat,
             border: border,
             primary: primary,
             onFollow: onFollow,
             onMessage: onMessage,
+            onMore: onMore,
           ),
         ],
       ),
@@ -742,6 +1048,7 @@ class _PublicProfileHero extends StatelessWidget {
 class _PublicProfileTabBar extends StatelessWidget {
   const _PublicProfileTabBar({
     required this.value,
+    required this.tabs,
     required this.primary,
     required this.secondary,
     required this.border,
@@ -749,6 +1056,7 @@ class _PublicProfileTabBar extends StatelessWidget {
   });
 
   final _PublicProfileContentTab value;
+  final List<PublicProfileTab> tabs;
   final Color primary;
   final Color secondary;
   final Color border;
@@ -756,30 +1064,60 @@ class _PublicProfileTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visibleTabs = [
+      const PublicProfileTab(key: 'all', label: 'All', ownerOnly: false),
+      ...tabs.where(
+        (tab) => {
+          'posts',
+          'replies',
+          'media',
+          'highlights',
+          'about',
+        }.contains(tab.key),
+      ),
+    ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 6, 18, 8),
-      child: Row(
-        children: [
-          _PublicProfileTabButton(
-            label: 'All',
-            selected: value == _PublicProfileContentTab.all,
-            primary: primary,
-            secondary: secondary,
-            border: border,
-            onTap: () => onChanged(_PublicProfileContentTab.all),
-          ),
-          const SizedBox(width: 10),
-          _PublicProfileTabButton(
-            label: 'Posts',
-            selected: value == _PublicProfileContentTab.posts,
-            primary: primary,
-            secondary: secondary,
-            border: border,
-            onTap: () => onChanged(_PublicProfileContentTab.posts),
-          ),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: [
+            for (final tab in visibleTabs) ...[
+              SizedBox(
+                width: 112,
+                child: _PublicProfileTabButton(
+                  label: tab.label,
+                  selected: value == _tabForKey(tab.key),
+                  primary: primary,
+                  secondary: secondary,
+                  border: border,
+                  onTap: () => onChanged(_tabForKey(tab.key)),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+          ],
+        ),
       ),
     );
+  }
+
+  _PublicProfileContentTab _tabForKey(String key) {
+    switch (key) {
+      case 'posts':
+        return _PublicProfileContentTab.posts;
+      case 'replies':
+        return _PublicProfileContentTab.replies;
+      case 'media':
+        return _PublicProfileContentTab.media;
+      case 'highlights':
+        return _PublicProfileContentTab.highlights;
+      case 'about':
+        return _PublicProfileContentTab.about;
+      default:
+        return _PublicProfileContentTab.all;
+    }
   }
 }
 
@@ -803,25 +1141,23 @@ class _PublicProfileTabButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          height: 40,
-          decoration: BoxDecoration(
-            color: selected ? tokens.brandContainer : Colors.transparent,
-            border: Border.all(color: selected ? tokens.brandPrimary : border),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: PravaTypography.button.copyWith(
-                color: selected ? tokens.brandContent : secondary,
-                letterSpacing: 0,
-                fontWeight: FontWeight.w800,
-              ),
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        height: 40,
+        decoration: BoxDecoration(
+          color: selected ? tokens.brandContainer : Colors.transparent,
+          border: Border.all(color: selected ? tokens.brandPrimary : border),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: PravaTypography.buttonMedium.copyWith(
+              color: selected ? tokens.brandContent : secondary,
+              letterSpacing: 0,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ),
@@ -835,33 +1171,51 @@ class _RelationActions extends StatelessWidget {
     required this.isFriend,
     required this.following,
     required this.followedBy,
+    required this.requested,
+    required this.profileState,
     required this.pendingFollow,
     required this.openingChat,
     required this.border,
     required this.primary,
     required this.onFollow,
     required this.onMessage,
+    required this.onMore,
   });
 
   final bool isFriend;
   final bool following;
   final bool followedBy;
+  final bool requested;
+  final String profileState;
   final bool pendingFollow;
   final bool openingChat;
   final Color border;
   final Color primary;
   final VoidCallback onFollow;
   final VoidCallback onMessage;
+  final VoidCallback onMore;
 
   String get _followLabel {
+    if (profileState == 'blockedByViewer') return 'Unblock';
+    if (profileState == 'blocked') return 'Unavailable';
+    if (requested) return 'Requested';
     if (isFriend) return 'Friends';
     if (following) return 'Following';
     if (followedBy) return 'Follow back';
+    if (profileState == 'private') return 'Request Follow';
     return 'Follow';
   }
 
   @override
   Widget build(BuildContext context) {
+    final moreButton = _PublicIconActionButton(
+      icon: CupertinoIcons.ellipsis,
+      label: 'More profile actions',
+      onTap: onMore,
+      border: border,
+      primary: primary,
+    );
+
     if (isFriend) {
       return Row(
         children: [
@@ -884,17 +1238,309 @@ class _RelationActions extends StatelessWidget {
               onTap: pendingFollow ? null : onFollow,
             ),
           ),
+          const SizedBox(width: 10),
+          moreButton,
         ],
       );
     }
 
-    return _PublicActionButton(
-      label: _followLabel,
-      filled: !following,
-      loading: pendingFollow,
-      border: border,
-      primary: primary,
-      onTap: pendingFollow ? null : onFollow,
+    final canMessage =
+        profileState != 'private' &&
+        profileState != 'blocked' &&
+        profileState != 'blockedByViewer' &&
+        (following || followedBy);
+
+    return Row(
+      children: [
+        Expanded(
+          child: _PublicActionButton(
+            label: _followLabel,
+            filled: !following && !requested,
+            loading: pendingFollow,
+            border: border,
+            primary: primary,
+            onTap: pendingFollow || profileState == 'blocked' ? null : onFollow,
+          ),
+        ),
+        if (canMessage) ...[
+          const SizedBox(width: 10),
+          Expanded(
+            child: _PublicActionButton(
+              label: 'Message',
+              filled: false,
+              loading: openingChat,
+              border: border,
+              primary: primary,
+              onTap: openingChat ? null : onMessage,
+            ),
+          ),
+        ],
+        const SizedBox(width: 10),
+        moreButton,
+      ],
+    );
+  }
+}
+
+class _PublicIconActionButton extends StatelessWidget {
+  const _PublicIconActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.border,
+    required this.primary,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color border;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: border),
+          ),
+          child: Icon(icon, color: primary, size: 22),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileActionSheet extends StatelessWidget {
+  const _ProfileActionSheet({
+    required this.summary,
+    required this.following,
+    required this.followedBy,
+    required this.closeFriend,
+    required this.muted,
+    required this.restricted,
+    required this.incomingRequestPending,
+    required this.onCopyLink,
+    required this.onToggleFollow,
+    required this.onToggleCloseFriend,
+    required this.onToggleMute,
+    required this.onToggleRestrict,
+    required this.onRemoveFollower,
+    required this.onRemoveConnection,
+    required this.onBlock,
+    required this.onUnblock,
+    required this.onReport,
+  });
+
+  final PublicProfileSummary summary;
+  final bool following;
+  final bool followedBy;
+  final bool closeFriend;
+  final bool muted;
+  final bool restricted;
+  final bool incomingRequestPending;
+  final VoidCallback onCopyLink;
+  final VoidCallback onToggleFollow;
+  final VoidCallback onToggleCloseFriend;
+  final VoidCallback onToggleMute;
+  final VoidCallback onToggleRestrict;
+  final VoidCallback onRemoveFollower;
+  final VoidCallback onRemoveConnection;
+  final VoidCallback onBlock;
+  final VoidCallback onUnblock;
+  final VoidCallback onReport;
+
+  String get _followLabel {
+    if (summary.profileState == 'private' &&
+        summary.relationship.requestPending) {
+      return 'Cancel follow request';
+    }
+    if (following) return 'Unfollow';
+    if (incomingRequestPending || followedBy) return 'Follow back';
+    return summary.profileState == 'private' ? 'Request follow' : 'Follow';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    final isBlockedByViewer = summary.profileState == 'blockedByViewer';
+    final isBlocked = summary.profileState == 'blocked';
+    final isFriend = following && followedBy;
+    final actions = <_ProfileSheetAction>[
+      _ProfileSheetAction(
+        icon: CupertinoIcons.link,
+        label: 'Copy profile link',
+        onTap: onCopyLink,
+      ),
+      if (isBlockedByViewer)
+        _ProfileSheetAction(
+          icon: CupertinoIcons.hand_raised_slash,
+          label: 'Unblock',
+          onTap: onUnblock,
+          destructive: true,
+        )
+      else if (!isBlocked) ...[
+        _ProfileSheetAction(
+          icon: following
+              ? CupertinoIcons.person_badge_minus
+              : CupertinoIcons.person_badge_plus,
+          label: _followLabel,
+          onTap: onToggleFollow,
+        ),
+        if (following)
+          _ProfileSheetAction(
+            icon: closeFriend ? CupertinoIcons.star_slash : CupertinoIcons.star,
+            label: closeFriend
+                ? 'Remove from close friends'
+                : 'Add to close friends',
+            onTap: onToggleCloseFriend,
+          ),
+        _ProfileSheetAction(
+          icon: muted ? CupertinoIcons.bell : CupertinoIcons.bell_slash,
+          label: muted ? 'Unmute profile' : 'Mute profile',
+          onTap: onToggleMute,
+        ),
+        _ProfileSheetAction(
+          icon: restricted ? CupertinoIcons.lock_open : CupertinoIcons.lock,
+          label: restricted ? 'Remove restriction' : 'Restrict profile',
+          onTap: onToggleRestrict,
+        ),
+        if (followedBy)
+          _ProfileSheetAction(
+            icon: CupertinoIcons.person_crop_circle_badge_xmark,
+            label: 'Remove follower',
+            onTap: onRemoveFollower,
+          ),
+        if (isFriend)
+          _ProfileSheetAction(
+            icon: CupertinoIcons.person_2,
+            label: 'Remove friend',
+            onTap: onRemoveConnection,
+          ),
+        _ProfileSheetAction(
+          icon: CupertinoIcons.hand_raised,
+          label: 'Block profile',
+          onTap: onBlock,
+          destructive: true,
+        ),
+        _ProfileSheetAction(
+          icon: CupertinoIcons.exclamationmark_bubble,
+          label: 'Report profile',
+          onTap: onReport,
+          destructive: true,
+        ),
+      ],
+    ];
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+        decoration: BoxDecoration(
+          color: tokens.backgroundSurfaceRaised,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: tokens.borderSubtle),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.28),
+              blurRadius: 30,
+              offset: const Offset(0, 16),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: tokens.borderStrong,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              summary.user.displayName.isEmpty
+                  ? '@${summary.user.username}'
+                  : summary.user.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.titleSmall.copyWith(
+                color: tokens.textPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            for (final action in actions)
+              _ProfileActionTile(action: action, tokens: tokens),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileSheetAction {
+  const _ProfileSheetAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.destructive = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool destructive;
+}
+
+class _ProfileActionTile extends StatelessWidget {
+  const _ProfileActionTile({required this.action, required this.tokens});
+
+  final _ProfileSheetAction action;
+  final PravaThemeColors tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = action.destructive ? tokens.statusError : tokens.textPrimary;
+    return Semantics(
+      button: true,
+      label: action.label,
+      child: InkWell(
+        onTap: action.onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              Icon(action.icon, color: color, size: 22),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  action.label,
+                  style: PravaTypography.bodyMedium.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -939,13 +1585,83 @@ class _PublicActionButton extends StatelessWidget {
                 )
               : Text(
                   label,
-                  style: PravaTypography.button.copyWith(
+                  style: PravaTypography.buttonMedium.copyWith(
                     color: filled
                         ? tokens.textInverse
                         : (primary ?? tokens.brandContent),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileCoverBanner extends StatelessWidget {
+  const _ProfileCoverBanner({
+    required this.coverUrl,
+    required this.initials,
+    required this.border,
+  });
+
+  final String coverUrl;
+  final String initials;
+  final Color border;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return Semantics(
+      label: 'Profile cover photo',
+      image: true,
+      child: Container(
+        height: 132,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: border),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              tokens.brandPrimary.withValues(alpha: 0.34),
+              tokens.backgroundSurfaceSubtle,
+              tokens.brandContainer.withValues(alpha: 0.78),
+            ],
+          ),
+          image: coverUrl.trim().isEmpty
+              ? null
+              : DecorationImage(
+                  image: NetworkImage(coverUrl),
+                  fit: BoxFit.cover,
+                ),
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                tokens.backgroundCanvas.withValues(alpha: 0.54),
+              ],
+            ),
+          ),
+          child: Align(
+            alignment: Alignment.bottomRight,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                initials,
+                style: PravaTypography.displaySmall.copyWith(
+                  color: tokens.textInverse.withValues(alpha: 0.86),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -982,7 +1698,7 @@ class _PublicProfileAvatar extends StatelessWidget {
                 child: Center(
                   child: Text(
                     initials,
-                    style: PravaTypography.h2.copyWith(
+                    style: PravaTypography.titleLarge.copyWith(
                       color: tokens.brandContent,
                       letterSpacing: 0,
                       fontWeight: FontWeight.w800,
@@ -1020,14 +1736,14 @@ class _PublicProfileCount extends StatelessWidget {
             children: [
               TextSpan(
                 text: value,
-                style: PravaTypography.body.copyWith(
+                style: PravaTypography.bodyMedium.copyWith(
                   color: primary,
                   fontWeight: FontWeight.w800,
                 ),
               ),
               TextSpan(
                 text: ' $label',
-                style: PravaTypography.body.copyWith(color: primary),
+                style: PravaTypography.bodyMedium.copyWith(color: primary),
               ),
             ],
           ),
@@ -1069,7 +1785,7 @@ class _PublicProfileSection extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: PravaTypography.h3.copyWith(
+                    style: PravaTypography.titleSmall.copyWith(
                       color: primary,
                       letterSpacing: 0,
                       fontWeight: FontWeight.w800,
@@ -1145,7 +1861,9 @@ class _PublicInfoRow extends StatelessWidget {
                     value,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: PravaTypography.body.copyWith(color: secondary),
+                    style: PravaTypography.bodyMedium.copyWith(
+                      color: secondary,
+                    ),
                   ),
                 ],
               ],
@@ -1180,6 +1898,122 @@ class _HiddenInfoRow extends StatelessWidget {
   }
 }
 
+class _HighlightsPanel extends StatelessWidget {
+  const _HighlightsPanel({
+    required this.highlights,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+  });
+
+  final List<PublicProfileHighlight> highlights;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    if (highlights.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(24, 42, 24, 28),
+        child: Column(
+          children: [
+            Icon(CupertinoIcons.sparkles, size: 34, color: secondary),
+            const SizedBox(height: 12),
+            Text(
+              'No highlights yet',
+              style: PravaTypography.titleSmall.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Featured moments from this profile will appear here.',
+              textAlign: TextAlign.center,
+              style: PravaTypography.bodyMedium.copyWith(color: secondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      child: Column(
+        children: [
+          for (final item in highlights)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: tokens.backgroundSurfaceSubtle,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: border),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: tokens.brandContainer,
+                      borderRadius: BorderRadius.circular(14),
+                      image: item.coverUrl.trim().isEmpty
+                          ? null
+                          : DecorationImage(
+                              image: NetworkImage(item.coverUrl),
+                              fit: BoxFit.cover,
+                            ),
+                    ),
+                    child: item.coverUrl.trim().isEmpty
+                        ? Icon(
+                            CupertinoIcons.sparkles,
+                            color: tokens.brandContent,
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.title.trim().isEmpty
+                              ? 'Highlight'
+                              : item.title.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: PravaTypography.bodyLarge.copyWith(
+                            color: primary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          item.description.trim().isEmpty
+                              ? '${item.mediaUrls.length} media items'
+                              : item.description.trim(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: PravaTypography.bodySmall.copyWith(
+                            color: secondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PublicPostsList extends StatelessWidget {
   const _PublicPostsList({
     required this.posts,
@@ -1188,6 +2022,8 @@ class _PublicPostsList extends StatelessWidget {
     required this.border,
     required this.formatCount,
     required this.formatTime,
+    this.emptyTitle = 'No public posts',
+    this.emptySubtitle = 'Public posts from this profile will appear here.',
   });
 
   final List<PublicProfilePost> posts;
@@ -1196,6 +2032,8 @@ class _PublicPostsList extends StatelessWidget {
   final Color border;
   final String Function(int) formatCount;
   final String Function(DateTime) formatTime;
+  final String emptyTitle;
+  final String emptySubtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -1207,17 +2045,17 @@ class _PublicPostsList extends StatelessWidget {
             Icon(CupertinoIcons.text_bubble, size: 34, color: secondary),
             const SizedBox(height: 12),
             Text(
-              'No public posts',
-              style: PravaTypography.h3.copyWith(
+              emptyTitle,
+              style: PravaTypography.titleSmall.copyWith(
                 color: primary,
                 fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 4),
             Text(
-              'Public posts from this profile will appear here.',
+              emptySubtitle,
               textAlign: TextAlign.center,
-              style: PravaTypography.body.copyWith(color: secondary),
+              style: PravaTypography.bodyMedium.copyWith(color: secondary),
             ),
           ],
         ),
@@ -1356,7 +2194,7 @@ class _LockedState extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: PravaTypography.body.copyWith(color: secondary),
+                  style: PravaTypography.bodyMedium.copyWith(color: secondary),
                 ),
               ],
             ),
@@ -1446,7 +2284,7 @@ class _PublicProfileError extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             'Profile unavailable',
-            style: PravaTypography.h3.copyWith(
+            style: PravaTypography.titleSmall.copyWith(
               color: primary,
               fontWeight: FontWeight.w800,
             ),
@@ -1455,7 +2293,7 @@ class _PublicProfileError extends StatelessWidget {
           Text(
             'This profile could not be loaded right now.',
             textAlign: TextAlign.center,
-            style: PravaTypography.body.copyWith(color: secondary),
+            style: PravaTypography.bodyMedium.copyWith(color: secondary),
           ),
           const SizedBox(height: 16),
           Row(
@@ -1472,7 +2310,7 @@ class _PublicProfileError extends StatelessWidget {
                     ),
                     child: Text(
                       'Retry',
-                      style: PravaTypography.button.copyWith(
+                      style: PravaTypography.buttonMedium.copyWith(
                         color: tokens.textInverse,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1493,7 +2331,7 @@ class _PublicProfileError extends StatelessWidget {
                     ),
                     child: Text(
                       'Back',
-                      style: PravaTypography.button.copyWith(
+                      style: PravaTypography.buttonMedium.copyWith(
                         color: primary,
                         fontWeight: FontWeight.w800,
                       ),

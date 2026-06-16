@@ -6,8 +6,8 @@ class E2eeKeyRefreshScheduler {
   E2eeKeyRefreshScheduler({
     E2eeService? e2eeService,
     Duration interval = const Duration(hours: 12),
-  })  : _e2ee = e2eeService ?? E2eeService(),
-        _interval = interval;
+  }) : _e2ee = e2eeService ?? E2eeService(),
+       _interval = interval;
 
   final E2eeService _e2ee;
   final Duration _interval;

@@ -7,7 +7,7 @@ import '../crypto/random_generator.dart';
 /// ============================================================
 /// Traffic Obfuscation
 /// ============================================================
-/// Protects against traffic analysis: 
+/// Protects against traffic analysis:
 ///
 /// • Random padding to hide message sizes
 /// • Dummy traffic generation
@@ -25,7 +25,8 @@ final class TrafficObfuscation {
   /// Add random padding to message
   static Future<Uint8List> addPadding(Uint8List message) async {
     // Generate random padding length
-    final paddingLength = minPadding + Random.secure().nextInt(maxPadding - minPadding);
+    final paddingLength =
+        minPadding + Random.secure().nextInt(maxPadding - minPadding);
 
     // Generate random padding
     final padding = await RandomGenerator.bytes(paddingLength);
@@ -37,28 +38,26 @@ final class TrafficObfuscation {
     result[0] = (message.length >> 24) & 0xFF;
     result[1] = (message.length >> 16) & 0xFF;
     result[2] = (message.length >> 8) & 0xFF;
-    result[3] = message. length & 0xFF;
+    result[3] = message.length & 0xFF;
 
     // Copy message
-    result. setRange(4, 4 + message.length, message);
+    result.setRange(4, 4 + message.length, message);
 
     // Copy padding
-    result. setRange(4 + message.length, result.length, padding);
+    result.setRange(4 + message.length, result.length, padding);
 
     return result;
   }
 
   /// Remove padding from message
   static Uint8List removePadding(Uint8List padded) {
-    if (padded. length < 4) {
+    if (padded.length < 4) {
       throw ArgumentError('Padded message too short');
     }
 
     // Read original length
-    final originalLength = (padded[0] << 24) |
-        (padded[1] << 16) |
-        (padded[2] << 8) |
-        padded[3];
+    final originalLength =
+        (padded[0] << 24) | (padded[1] << 16) | (padded[2] << 8) | padded[3];
 
     if (originalLength < 0 || originalLength > padded.length - 4) {
       throw ArgumentError('Invalid padding');
@@ -85,7 +84,7 @@ final class TrafficObfuscation {
     result[3] = message.length & 0xFF;
 
     // Copy message and padding
-    result. setRange(4, 4 + message.length, message);
+    result.setRange(4, 4 + message.length, message);
     result.setRange(4 + message.length, targetSize, padding);
 
     return result;
@@ -96,7 +95,7 @@ final class TrafficObfuscation {
     Duration min = const Duration(milliseconds: 10),
     Duration max = const Duration(milliseconds: 100),
   }) {
-    final range = max. inMilliseconds - min.inMilliseconds;
+    final range = max.inMilliseconds - min.inMilliseconds;
     final delay = min.inMilliseconds + Random.secure().nextInt(range);
     return Duration(milliseconds: delay);
   }

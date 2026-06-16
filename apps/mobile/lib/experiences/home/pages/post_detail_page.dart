@@ -136,7 +136,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
                   padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
                   child: Text(
                     'Post',
-                    style: PravaTypography.h2.copyWith(
+                    style: PravaTypography.titleLarge.copyWith(
                       color: primary,
                       fontWeight: FontWeight.w800,
                     ),
@@ -173,7 +173,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
                               const SizedBox(height: 18),
                               Text(
                                 'Comments',
-                                style: PravaTypography.h3.copyWith(
+                                style: PravaTypography.titleSmall.copyWith(
                                   color: primary,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -256,7 +256,7 @@ class _PostDetailCard extends StatelessWidget {
                           : post.author.username,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: PravaTypography.body.copyWith(
+                      style: PravaTypography.bodyMedium.copyWith(
                         color: primary,
                         fontWeight: FontWeight.w800,
                       ),
@@ -427,7 +427,7 @@ class _CommentPreview extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   comment.body,
-                  style: PravaTypography.body.copyWith(color: primary),
+                  style: PravaTypography.bodyMedium.copyWith(color: primary),
                 ),
               ],
             ),
@@ -458,7 +458,7 @@ class _FeedAvatar extends StatelessWidget {
               author.username.isNotEmpty
                   ? author.username.substring(0, 1).toUpperCase()
                   : '@',
-              style: PravaTypography.body.copyWith(
+              style: PravaTypography.bodyMedium.copyWith(
                 color: tokens.brandContent,
                 fontWeight: FontWeight.w800,
               ),
@@ -479,7 +479,7 @@ class _CommentEmptyState extends StatelessWidget {
       child: Center(
         child: Text(
           'No comments yet',
-          style: PravaTypography.body.copyWith(color: secondary),
+          style: PravaTypography.bodyMedium.copyWith(color: secondary),
         ),
       ),
     );
@@ -504,7 +504,7 @@ class _PostMissingState extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               'Post unavailable',
-              style: PravaTypography.h3.copyWith(
+              style: PravaTypography.titleSmall.copyWith(
                 color: primary,
                 fontWeight: FontWeight.w800,
               ),

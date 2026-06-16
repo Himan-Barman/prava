@@ -8,14 +8,14 @@ import '../bridge/sodium_loader.dart';
 /// ============================================================
 /// Digital Signatures (Ed25519)
 /// ============================================================
-/// Implements Ed25519 digital signatures: 
+/// Implements Ed25519 digital signatures:
 ///
 /// • Detached signatures (signature separate from message)
 /// • Combined signatures (signature prepended to message)
 /// • Pre-key signing for X3DH
 /// • Batch verification support
 ///
-/// Security: 
+/// Security:
 /// • 128-bit security level (256-bit curve)
 /// • Deterministic (no random needed for signing)
 /// • SUF-CMA secure (strong unforgeability)
@@ -39,23 +39,14 @@ final class Signatures {
   // ─────────────────────────────────────────────────────────
 
   /// Create detached signature
-  static Future<Uint8List> sign(
-    Uint8List message,
-    SecureKey secretKey,
-  ) async {
+  static Future<Uint8List> sign(Uint8List message, SecureKey secretKey) async {
     final sodium = await SodiumLoader.sodium;
-    return sodium.crypto.sign.detached(
-      message: message,
-      secretKey:  secretKey,
-    );
+    return sodium.crypto.sign.detached(message: message, secretKey: secretKey);
   }
 
   /// Create detached signature synchronously
-  static Uint8List signSync(
-    Uint8List message,
-    SecureKey secretKey,
-  ) {
-    return SodiumLoader.sodiumSync.crypto.sign. detached(
+  static Uint8List signSync(Uint8List message, SecureKey secretKey) {
+    return SodiumLoader.sodiumSync.crypto.sign.detached(
       message: message,
       secretKey: secretKey,
     );
@@ -67,7 +58,7 @@ final class Signatures {
     Uint8List signature,
     Uint8List publicKey,
   ) async {
-    if (! _validateInputs(signature, publicKey)) {
+    if (!_validateInputs(signature, publicKey)) {
       return false;
     }
 
@@ -94,7 +85,7 @@ final class Signatures {
     }
 
     try {
-      return SodiumLoader.sodiumSync.crypto. sign.verifyDetached(
+      return SodiumLoader.sodiumSync.crypto.sign.verifyDetached(
         message: message,
         signature: signature,
         publicKey: publicKey,
@@ -114,21 +105,18 @@ final class Signatures {
     SecureKey secretKey,
   ) async {
     final sodium = await SodiumLoader.sodium;
-    return sodium.crypto. sign.call(
-      message: message,
-      secretKey: secretKey,
-    );
+    return sodium.crypto.sign.call(message: message, secretKey: secretKey);
   }
 
   /// Open and verify combined signature
-  static Future<Uint8List? > openCombined(
+  static Future<Uint8List?> openCombined(
     Uint8List signedMessage,
     Uint8List publicKey,
   ) async {
     if (publicKey.length != publicKeyBytes) {
       return null;
     }
-    if (signedMessage. length < signatureBytes) {
+    if (signedMessage.length < signatureBytes) {
       return null;
     }
 
@@ -136,7 +124,7 @@ final class Signatures {
       final sodium = await SodiumLoader.sodium;
       return sodium.crypto.sign.open(
         signedMessage: signedMessage,
-        publicKey:  publicKey,
+        publicKey: publicKey,
       );
     } catch (_) {
       return null;
@@ -186,7 +174,7 @@ final class Signatures {
     List<Uint8List> signatures,
     Uint8List publicKey,
   ) async {
-    if (messages.length != signatures. length) {
+    if (messages.length != signatures.length) {
       return false;
     }
 
@@ -210,7 +198,7 @@ final class Signatures {
 
     final results = <bool>[];
     for (var i = 0; i < messages.length; i++) {
-      results. add(await verify(messages[i], signatures[i], publicKey));
+      results.add(await verify(messages[i], signatures[i], publicKey));
     }
     return results;
   }
@@ -224,7 +212,7 @@ final class Signatures {
     final sodium = await SodiumLoader.sodium;
     // Public key is last 32 bytes of Ed25519 secret key
     final skBytes = secretKey.extractBytes();
-    final pk = Uint8List. fromList(skBytes.sublist(32, 64));
+    final pk = Uint8List.fromList(skBytes.sublist(32, 64));
     // Zero the extracted bytes
     for (var i = 0; i < skBytes.length; i++) {
       skBytes[i] = 0;

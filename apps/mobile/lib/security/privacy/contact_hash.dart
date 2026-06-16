@@ -30,9 +30,9 @@ final class ContactHash {
     final input = Uint8List.fromList(normalized.codeUnits);
 
     // Hash with salt
-    final fullHash = sodium.crypto. genericHash(
-      message:  Uint8List.fromList([... salt, ...input]),
-      outLen:  32,
+    final fullHash = sodium.crypto.genericHash(
+      message: Uint8List.fromList([...salt, ...input]),
+      outLen: 32,
     );
 
     // Truncate for privacy
@@ -56,13 +56,13 @@ final class ContactHash {
   /// Generate salt for contact discovery
   static Future<Uint8List> generateSalt() async {
     final sodium = await SodiumLoader.sodium;
-    return sodium.randombytes. buf(32);
+    return sodium.randombytes.buf(32);
   }
 
   /// Normalize phone number
   static String _normalize(String number) {
     // Remove all non-digit characters except +
-    final cleaned = number. replaceAll(RegExp(r'[^\d+]'), '');
+    final cleaned = number.replaceAll(RegExp(r'[^\d+]'), '');
 
     // Ensure E. 164 format
     if (cleaned.startsWith('+')) {

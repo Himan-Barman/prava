@@ -49,22 +49,49 @@ class PravaTheme {
       onTertiary: isDark ? PravaColors.graphite1000 : PravaColors.graphite0,
     );
 
-    final textTheme = TextTheme(
-      headlineLarge: PravaTypography.h1.copyWith(color: tokens.textPrimary),
-      headlineMedium: PravaTypography.h2.copyWith(color: tokens.textPrimary),
-      titleLarge: PravaTypography.h2.copyWith(color: tokens.textPrimary),
-      titleMedium: PravaTypography.bodyLarge.copyWith(
+    final textTheme = PravaTypography.textTheme.copyWith(
+      displayLarge: PravaTypography.displayLarge.copyWith(
         color: tokens.textPrimary,
-        fontWeight: FontWeight.w600,
+      ),
+      displayMedium: PravaTypography.displayMedium.copyWith(
+        color: tokens.textPrimary,
+      ),
+      displaySmall: PravaTypography.displaySmall.copyWith(
+        color: tokens.textPrimary,
+      ),
+      headlineLarge: PravaTypography.titleLarge.copyWith(
+        color: tokens.textPrimary,
+      ),
+      headlineMedium: PravaTypography.titleMedium.copyWith(
+        color: tokens.textPrimary,
+      ),
+      headlineSmall: PravaTypography.titleSmall.copyWith(
+        color: tokens.textPrimary,
+      ),
+      titleLarge: PravaTypography.titleLarge.copyWith(
+        color: tokens.textPrimary,
+      ),
+      titleMedium: PravaTypography.titleMedium.copyWith(
+        color: tokens.textPrimary,
+      ),
+      titleSmall: PravaTypography.titleSmall.copyWith(
+        color: tokens.textPrimary,
       ),
       bodyLarge: PravaTypography.bodyLarge.copyWith(color: tokens.textPrimary),
-      bodyMedium: PravaTypography.body.copyWith(color: tokens.textPrimary),
+      bodyMedium: PravaTypography.bodyMedium.copyWith(
+        color: tokens.textPrimary,
+      ),
       bodySmall: PravaTypography.bodySmall.copyWith(
         color: tokens.textSecondary,
       ),
-      labelLarge: PravaTypography.button.copyWith(color: tokens.textPrimary),
-      labelMedium: PravaTypography.caption.copyWith(
+      labelLarge: PravaTypography.buttonMedium.copyWith(
+        color: tokens.textPrimary,
+      ),
+      labelMedium: PravaTypography.chipLabel.copyWith(
         color: tokens.textSecondary,
+      ),
+      labelSmall: PravaTypography.tinyLabel.copyWith(
+        color: tokens.textTertiary,
       ),
     );
 
@@ -98,9 +125,8 @@ class PravaTheme {
         centerTitle: false,
         surfaceTintColor: Colors.transparent,
         iconTheme: IconThemeData(color: tokens.iconPrimary),
-        titleTextStyle: PravaTypography.h2.copyWith(
+        titleTextStyle: PravaTypography.titleLarge.copyWith(
           color: tokens.textPrimary,
-          fontWeight: FontWeight.w700,
         ),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
@@ -122,9 +148,11 @@ class PravaTheme {
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
-          return PravaTypography.caption.copyWith(
+          final role = selected
+              ? PravaTypography.navLabel
+              : PravaTypography.tinyLabel;
+          return role.copyWith(
             color: selected ? tokens.brandContent : tokens.textTertiary,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
           );
         }),
       ),
@@ -137,9 +165,15 @@ class PravaTheme {
           horizontal: 16,
           vertical: 18,
         ),
-        hintStyle: PravaTypography.body.copyWith(color: tokens.textTertiary),
-        labelStyle: PravaTypography.body.copyWith(color: tokens.textSecondary),
-        errorStyle: PravaTypography.caption.copyWith(color: tokens.statusError),
+        hintStyle: PravaTypography.inputPlaceholder.copyWith(
+          color: tokens.textTertiary,
+        ),
+        labelStyle: PravaTypography.fieldLabel.copyWith(
+          color: tokens.textSecondary,
+        ),
+        errorStyle: PravaTypography.errorText.copyWith(
+          color: tokens.statusError,
+        ),
         prefixIconColor: tokens.iconSecondary,
         suffixIconColor: tokens.iconSecondary,
         border: inputBorder(tokens.borderDefault),
@@ -163,9 +197,7 @@ class PravaTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
-          textStyle: PravaTypography.button.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+          textStyle: PravaTypography.buttonLarge,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -180,9 +212,7 @@ class PravaTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: tokens.brandContent,
-          textStyle: PravaTypography.button.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: PravaTypography.textButton,
         ),
       ),
       chipTheme: ChipThemeData(
@@ -190,13 +220,11 @@ class PravaTheme {
         selectedColor: tokens.brandContainer,
         disabledColor: tokens.backgroundPressed,
         side: BorderSide(color: tokens.borderSubtle),
-        labelStyle: PravaTypography.caption.copyWith(
+        labelStyle: PravaTypography.chipLabel.copyWith(
           color: tokens.textSecondary,
-          fontWeight: FontWeight.w600,
         ),
-        secondaryLabelStyle: PravaTypography.caption.copyWith(
+        secondaryLabelStyle: PravaTypography.buttonSmall.copyWith(
           color: tokens.brandContent,
-          fontWeight: FontWeight.w700,
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       ),
@@ -257,18 +285,20 @@ class PravaTheme {
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(color: tokens.borderSubtle),
         ),
-        textStyle: PravaTypography.body.copyWith(color: tokens.textPrimary),
+        textStyle: PravaTypography.menuLabel.copyWith(
+          color: tokens.textPrimary,
+        ),
       ),
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(
           color: tokens.textPrimary,
           borderRadius: BorderRadius.circular(8),
         ),
-        textStyle: PravaTypography.caption.copyWith(color: tokens.textInverse),
+        textStyle: PravaTypography.tooltip.copyWith(color: tokens.textInverse),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: tokens.backgroundSurfaceRaised,
-        contentTextStyle: PravaTypography.body.copyWith(
+        contentTextStyle: PravaTypography.toast.copyWith(
           color: tokens.textPrimary,
         ),
         behavior: SnackBarBehavior.floating,

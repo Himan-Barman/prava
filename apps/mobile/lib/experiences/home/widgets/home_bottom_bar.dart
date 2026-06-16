@@ -147,11 +147,11 @@ class _NavItem extends StatelessWidget {
               AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOutCubic,
-                style: PravaTypography.caption.copyWith(
-                  color: iconColor,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  fontSize: 11,
-                ),
+                style:
+                    (active
+                            ? PravaTypography.navLabel
+                            : PravaTypography.tinyLabel)
+                        .copyWith(color: iconColor),
                 child: Text(item.label),
               ),
             ],

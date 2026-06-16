@@ -7,7 +7,7 @@ import '../bridge/memory_allocator.dart';
 /// ============================================================
 /// SecureBuffer - Anti-Forensics Memory Container
 /// ============================================================
-/// Stores sensitive data in native memory: 
+/// Stores sensitive data in native memory:
 ///
 /// Security Guarantees:
 /// • No Dart GC access (prevents memory copies)
@@ -29,12 +29,12 @@ final class SecureBuffer {
 
   /// Create secure buffer from bytes (zeros source)
   SecureBuffer(Uint8List bytes, {String? label})
-      : length = bytes.length,
-        _label = label {
+    : length = bytes.length,
+      _label = label {
     _ptr = MemoryAllocator.allocate(bytes.length, label: label);
 
     // Copy bytes into native memory
-    for (var i = 0; i < bytes. length; i++) {
+    for (var i = 0; i < bytes.length; i++) {
       _ptr![i] = bytes[i];
     }
 
@@ -51,11 +51,11 @@ final class SecureBuffer {
 
   /// Create from pointer (takes ownership)
   SecureBuffer.fromPointer(Pointer<Uint8> ptr, this.length, {String? label})
-      : _ptr = ptr,
-        _label = label;
+    : _ptr = ptr,
+      _label = label;
 
   /// Check if buffer is valid
-  bool get isValid => ! _disposed && _ptr != null;
+  bool get isValid => !_disposed && _ptr != null;
 
   /// Check if disposed
   bool get isDisposed => _disposed;
@@ -105,7 +105,7 @@ final class SecureBuffer {
     _checkDisposed();
     other._checkDisposed();
 
-    if (length != other. length) return false;
+    if (length != other.length) return false;
 
     var result = 0;
     for (var i = 0; i < length; i++) {
@@ -127,7 +127,7 @@ final class SecureBuffer {
     if (_disposed) return;
 
     if (_ptr != null) {
-      MemoryAllocator. freeSecure(_ptr!, length);
+      MemoryAllocator.freeSecure(_ptr!, length);
       _ptr = null;
     }
 
@@ -149,7 +149,8 @@ final class SecureBuffer {
   }
 
   @override
-  String toString() => 'SecureBuffer(length: $length, disposed: $_disposed'
+  String toString() =>
+      'SecureBuffer(length: $length, disposed: $_disposed'
       '${_label != null ? ', label: $_label' : ''})';
 }
 

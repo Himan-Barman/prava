@@ -26,17 +26,15 @@ class DataExport {
       payload: json['payload'] is Map<String, dynamic>
           ? json['payload'] as Map<String, dynamic>
           : <String, dynamic>{},
-      createdAt:
-          DateTime.tryParse(json['createdAt']?.toString() ?? ''),
-      completedAt:
-          DateTime.tryParse(json['completedAt']?.toString() ?? ''),
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      completedAt: DateTime.tryParse(json['completedAt']?.toString() ?? ''),
     );
   }
 }
 
 class DataExportService {
   DataExportService({SecureStore? store})
-      : _client = ApiClient(store ?? SecureStore());
+    : _client = ApiClient(store ?? SecureStore());
 
   final ApiClient _client;
 

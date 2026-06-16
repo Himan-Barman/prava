@@ -140,7 +140,7 @@ class _MutedWordsPageState extends State<MutedWordsPage> {
                   children: [
                     Text(
                       'Add muted word',
-                      style: PravaTypography.h3.copyWith(
+                      style: PravaTypography.titleSmall.copyWith(
                         color: primary,
                         fontWeight: FontWeight.w700,
                       ),
@@ -156,6 +156,11 @@ class _MutedWordsPageState extends State<MutedWordsPage> {
                     PravaInput(
                       controller: _phraseController,
                       hint: 'Word or phrase',
+                      label: 'Word or phrase',
+                      fieldType: PravaInputFieldType.text,
+                      variant: PravaInputVariant.settings,
+                      prefixIcon: const Icon(Icons.volume_off_rounded),
+                      showClearButton: true,
                       inputFormatters: [LengthLimitingTextInputFormatter(120)],
                     ),
                     const SizedBox(height: 12),
@@ -170,7 +175,9 @@ class _MutedWordsPageState extends State<MutedWordsPage> {
                 if (_items.isEmpty)
                   Text(
                     'No muted words yet.',
-                    style: PravaTypography.body.copyWith(color: secondary),
+                    style: PravaTypography.bodyMedium.copyWith(
+                      color: secondary,
+                    ),
                   )
                 else
                   ..._items.map(
@@ -183,7 +190,7 @@ class _MutedWordsPageState extends State<MutedWordsPage> {
                             Expanded(
                               child: Text(
                                 word.phrase,
-                                style: PravaTypography.body.copyWith(
+                                style: PravaTypography.bodyMedium.copyWith(
                                   color: primary,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -193,7 +200,7 @@ class _MutedWordsPageState extends State<MutedWordsPage> {
                               onPressed: () => _removePhrase(word),
                               child: Text(
                                 'Remove',
-                                style: PravaTypography.button.copyWith(
+                                style: PravaTypography.buttonMedium.copyWith(
                                   color: PravaColors.accentPrimary,
                                 ),
                               ),

@@ -23,24 +23,21 @@ final class RootDetection {
       checks['root_paths'] = _checkRootPaths();
       checks['busybox'] = _checkBusybox();
       checks['rw_system'] = await _checkRwSystem();
-    } else if (Platform. isIOS) {
+    } else if (Platform.isIOS) {
       checks['cydia'] = _checkCydia();
       checks['jailbreak_paths'] = _checkJailbreakPaths();
       checks['sandbox'] = await _checkSandboxEscape();
     }
 
-    final isCompromised = checks. values.any((v) => v);
+    final isCompromised = checks.values.any((v) => v);
 
-    return RootCheckResult(
-      isCompromised: isCompromised,
-      checks: checks,
-    );
+    return RootCheckResult(isCompromised: isCompromised, checks: checks);
   }
 
   /// Quick check
   static Future<bool> isCompromised() async {
     final result = await check();
-    return result. isCompromised;
+    return result.isCompromised;
   }
 
   // Android checks
@@ -114,7 +111,9 @@ final class RootDetection {
 
   static Future<bool> _checkSandboxEscape() async {
     try {
-      final file = File('/private/test_${DateTime.now().millisecondsSinceEpoch}');
+      final file = File(
+        '/private/test_${DateTime.now().millisecondsSinceEpoch}',
+      );
       await file.writeAsString('test');
       await file.delete();
       return true; // Should not be able to write here
@@ -129,14 +128,12 @@ class RootCheckResult {
   final bool isCompromised;
   final Map<String, bool> checks;
 
-  const RootCheckResult({
-    required this. isCompromised,
-    required this. checks,
-  });
+  const RootCheckResult({required this.isCompromised, required this.checks});
 
   List<String> get failedChecks =>
       checks.entries.where((e) => e.value).map((e) => e.key).toList();
 
   @override
-  String toString() => 'RootCheckResult(compromised: $isCompromised, failed: $failedChecks)';
+  String toString() =>
+      'RootCheckResult(compromised: $isCompromised, failed: $failedChecks)';
 }

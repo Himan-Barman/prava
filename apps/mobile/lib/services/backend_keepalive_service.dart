@@ -7,8 +7,8 @@ class BackendKeepAliveService {
   BackendKeepAliveService({
     ApiClient? client,
     Duration interval = const Duration(minutes: 10),
-  })  : _client = client ?? ApiClient(SecureStore()),
-        _interval = interval;
+  }) : _client = client ?? ApiClient(SecureStore()),
+       _interval = interval;
 
   final ApiClient _client;
   final Duration _interval;

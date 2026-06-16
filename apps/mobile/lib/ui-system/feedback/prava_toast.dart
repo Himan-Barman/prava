@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../colors.dart';
+import '../typography.dart';
 import 'toast_type.dart';
 
 class PravaToast {
@@ -58,18 +59,13 @@ class PravaToast {
               children: [
                 Text(
                   title,
-                  style: TextStyle(
-                    color: foreground,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
+                  style: PravaTypography.toast.copyWith(color: foreground),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   message,
-                  style: TextStyle(
+                  style: PravaTypography.snackbarText.copyWith(
                     color: tokens.textPrimary,
-                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],

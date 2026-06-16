@@ -8,7 +8,7 @@ import 'random_generator.dart';
 /// ============================================================
 /// Cryptographic Key Generation
 /// ============================================================
-/// Implements Signal Protocol key hierarchy: 
+/// Implements Signal Protocol key hierarchy:
 ///
 /// Identity Keys (Ed25519):
 /// • Long-term device identity
@@ -50,11 +50,11 @@ final class KeyGeneration {
   /// Generate new Ed25519 identity key pair
   static Future<IdentityKeyPair> generateIdentityKeyPair() async {
     final sodium = await SodiumLoader.sodium;
-    final keyPair = sodium.crypto. sign. keyPair();
+    final keyPair = sodium.crypto.sign.keyPair();
 
     return IdentityKeyPair(
       publicKey: keyPair.publicKey,
-      secretKey: keyPair. secretKey,
+      secretKey: keyPair.secretKey,
     );
   }
 
@@ -68,10 +68,10 @@ final class KeyGeneration {
     final secureKey = sodium.secureCopy(seed);
 
     try {
-      final keyPair = sodium. crypto.sign.seedKeyPair(secureKey);
+      final keyPair = sodium.crypto.sign.seedKeyPair(secureKey);
       return IdentityKeyPair(
         publicKey: keyPair.publicKey,
-        secretKey: keyPair. secretKey,
+        secretKey: keyPair.secretKey,
       );
     } finally {
       secureKey.dispose();
@@ -90,17 +90,17 @@ final class KeyGeneration {
     final sodium = await SodiumLoader.sodium;
 
     // Generate X25519 key pair
-    final keyPair = sodium.crypto.box. keyPair();
+    final keyPair = sodium.crypto.box.keyPair();
 
     // Sign the public key with identity key
-    final signature = sodium.crypto. sign.detached(
+    final signature = sodium.crypto.sign.detached(
       message: keyPair.publicKey,
       secretKey: identityPrivateKey,
     );
 
     return SignedPreKey(
       keyId: keyId,
-      publicKey:  keyPair.publicKey,
+      publicKey: keyPair.publicKey,
       secretKey: keyPair.secretKey,
       signature: signature,
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -116,13 +116,13 @@ final class KeyGeneration {
     required int keyId,
   }) async {
     final sodium = await SodiumLoader.sodium;
-    final keyPair = sodium.crypto. box.keyPair();
+    final keyPair = sodium.crypto.box.keyPair();
 
     return OneTimePreKey(
-      keyId:  keyId,
+      keyId: keyId,
       publicKey: keyPair.publicKey,
-      secretKey:  keyPair.secretKey,
-      createdAt: DateTime. now().millisecondsSinceEpoch,
+      secretKey: keyPair.secretKey,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
     );
   }
 
@@ -149,7 +149,7 @@ final class KeyGeneration {
   /// Generate ephemeral key pair for X3DH
   static Future<EphemeralKeyPair> generateEphemeralKeyPair() async {
     final sodium = await SodiumLoader.sodium;
-    final keyPair = sodium.crypto. box.keyPair();
+    final keyPair = sodium.crypto.box.keyPair();
 
     return EphemeralKeyPair(
       publicKey: keyPair.publicKey,
@@ -160,10 +160,10 @@ final class KeyGeneration {
   /// Generate ratchet key pair for Double Ratchet
   static Future<RatchetKeyPair> generateRatchetKeyPair() async {
     final sodium = await SodiumLoader.sodium;
-    final keyPair = sodium.crypto. box.keyPair();
+    final keyPair = sodium.crypto.box.keyPair();
 
     return RatchetKeyPair(
-      publicKey: keyPair. publicKey,
+      publicKey: keyPair.publicKey,
       secretKey: keyPair.secretKey,
     );
   }
@@ -173,22 +173,24 @@ final class KeyGeneration {
   // ─────────────────────────────────────────────────────────
 
   /// Convert Ed25519 public key to X25519 public key
-  /// 
+  ///
   /// Uses libsodium's crypto_sign_ed25519_pk_to_curve25519
   static Future<Uint8List> ed25519PkToX25519(Uint8List ed25519PublicKey) async {
     if (ed25519PublicKey.length != ed25519PublicKeySize) {
-      throw ArgumentError('Ed25519 public key must be $ed25519PublicKeySize bytes');
+      throw ArgumentError(
+        'Ed25519 public key must be $ed25519PublicKeySize bytes',
+      );
     }
-    
+
     final sodium = await SodiumLoader.sodium;
-    
+
     // Use the sodium crypto_sign to convert Ed25519 pk to Curve25519
     // The method is available via the Sodium extension
     return _convertEd25519PkToX25519(sodium, ed25519PublicKey);
   }
 
   /// Convert Ed25519 secret key to X25519 secret key
-  /// 
+  ///
   /// Uses libsodium's crypto_sign_ed25519_sk_to_curve25519
   static Future<SecureKey> ed25519SkToX25519(SecureKey ed25519SecretKey) async {
     final sodium = await SodiumLoader.sodium;
@@ -196,15 +198,20 @@ final class KeyGeneration {
   }
 
   /// Internal:  Convert Ed25519 public key to X25519
-  static Uint8List _convertEd25519PkToX25519(Sodium sodium, Uint8List ed25519Pk) {
+  static Uint8List _convertEd25519PkToX25519(
+    Sodium sodium,
+    Uint8List ed25519Pk,
+  ) {
     // Extract the X25519 public key from Ed25519 public key
     // Ed25519 public key is the compressed Edwards point
     // X25519 public key is the u-coordinate of the corresponding Montgomery point
-    
+
     // Use sodium's built-in conversion if available, otherwise compute manually
     try {
       // Try using the sodium API directly
-      return sodium.crypto. sign.keyPair().publicKey; // Placeholder - see note below
+      return sodium.crypto.sign
+          .keyPair()
+          .publicKey; // Placeholder - see note below
     } catch (_) {
       // Fallback: The conversion is mathematically defined but complex
       // For production, ensure sodium_libs exposes this method
@@ -216,28 +223,28 @@ final class KeyGeneration {
   }
 
   /// Internal: Convert Ed25519 secret key to X25519
-  static SecureKey _convertEd25519SkToX25519(Sodium sodium, SecureKey ed25519Sk) {
+  static SecureKey _convertEd25519SkToX25519(
+    Sodium sodium,
+    SecureKey ed25519Sk,
+  ) {
     // The Ed25519 secret key contains the seed, from which we can derive X25519 key
     // Ed25519 sk = seed (32 bytes) + public key (32 bytes) = 64 bytes
     // X25519 sk = first 32 bytes hashed with SHA-512, then clamped
-    
+
     try {
       // Extract seed from Ed25519 secret key (first 32 bytes)
       final skBytes = ed25519Sk.extractBytes();
-      final seed = Uint8List. fromList(skBytes. sublist(0, 32));
-      
+      final seed = Uint8List.fromList(skBytes.sublist(0, 32));
+
       // Hash with SHA-512 and take first 32 bytes
-      final hash = sodium.crypto.genericHash(
-        message: seed,
-        outLen: 64,
-      );
-      
+      final hash = sodium.crypto.genericHash(message: seed, outLen: 64);
+
       // Clamp for X25519
-      final x25519Sk = Uint8List. fromList(hash.sublist(0, 32));
+      final x25519Sk = Uint8List.fromList(hash.sublist(0, 32));
       x25519Sk[0] &= 248;
       x25519Sk[31] &= 127;
       x25519Sk[31] |= 64;
-      
+
       // Zero sensitive data
       for (var i = 0; i < skBytes.length; i++) {
         skBytes[i] = 0;
@@ -245,7 +252,7 @@ final class KeyGeneration {
       for (var i = 0; i < seed.length; i++) {
         seed[i] = 0;
       }
-      
+
       return sodium.secureCopy(x25519Sk);
     } catch (e) {
       throw UnsupportedError(
@@ -290,10 +297,7 @@ class IdentityKeyPair {
   final Uint8List publicKey;
   final SecureKey secretKey;
 
-  const IdentityKeyPair({
-    required this.publicKey,
-    required this. secretKey,
-  });
+  const IdentityKeyPair({required this.publicKey, required this.secretKey});
 
   /// Get public key as hex string
   String get publicKeyHex =>
@@ -314,7 +318,7 @@ class SignedPreKey {
   final int timestamp;
 
   const SignedPreKey({
-    required this. keyId,
+    required this.keyId,
     required this.publicKey,
     required this.secretKey,
     required this.signature,
@@ -348,7 +352,7 @@ class OneTimePreKey {
 
   const OneTimePreKey({
     required this.keyId,
-    required this. publicKey,
+    required this.publicKey,
     required this.secretKey,
     required this.createdAt,
   });
@@ -364,14 +368,11 @@ class EphemeralKeyPair {
   final Uint8List publicKey;
   final SecureKey secretKey;
 
-  const EphemeralKeyPair({
-    required this.publicKey,
-    required this.secretKey,
-  });
+  const EphemeralKeyPair({required this.publicKey, required this.secretKey});
 
   /// Dispose secret key securely
   void dispose() {
-    secretKey. dispose();
+    secretKey.dispose();
   }
 }
 
@@ -380,10 +381,7 @@ class RatchetKeyPair {
   final Uint8List publicKey;
   final SecureKey secretKey;
 
-  const RatchetKeyPair({
-    required this.publicKey,
-    required this.secretKey,
-  });
+  const RatchetKeyPair({required this.publicKey, required this.secretKey});
 
   /// Dispose secret key securely
   void dispose() {

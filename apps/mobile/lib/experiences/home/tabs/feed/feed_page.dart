@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../../../../navigation/prava_navigator.dart';
 import '../../../../ui-system/colors.dart';
+import '../../../../ui-system/components/prava_input.dart';
 import '../../../../ui-system/typography.dart';
 import '../../../../ui-system/feedback/prava_toast.dart';
 import '../../../../ui-system/feedback/toast_type.dart';
@@ -20,6 +21,20 @@ import '../../../../services/local_time_service.dart';
 import '../../../../services/platform_bridge_service.dart';
 import '../../../../core/storage/secure_store.dart';
 import '../profile/public_profile_page.dart';
+
+class _FeedModeOption {
+  const _FeedModeOption({
+    required this.label,
+    required this.mode,
+    required this.icon,
+    this.lens,
+  });
+
+  final String label;
+  final String mode;
+  final IconData icon;
+  final String? lens;
+}
 
 class FeedPage extends StatefulWidget {
   const FeedPage({super.key, this.onChromeVisibilityChanged});
@@ -46,22 +61,73 @@ class _FeedPageState extends State<FeedPage> {
   final Set<String> _pendingLikes = <String>{};
   final Set<String> _pendingFollows = <String>{};
   final Set<String> _recordedImpressions = <String>{};
-  final String _feedSessionId =
-      'mobile-feed-${DateTime.now().microsecondsSinceEpoch}';
 
   List<FeedPost> _posts = <FeedPost>[];
+  List<FeedTopic> _topics = <FeedTopic>[];
+  List<FeedInterest> _interests = <FeedInterest>[];
+  List<CustomFeed> _customFeeds = <CustomFeed>[];
   AccountInfo? _composerAccount;
+  FeedPreferences? _preferences;
   bool _loading = true;
   bool _loadingMore = false;
   bool _posting = false;
+  bool _studioLoading = false;
   bool _hasMore = true;
-  int _segmentIndex = 0;
+  int _modeIndex = 0;
   String? _userId;
   bool _feedControlsVisible = true;
   double _lastScrollOffset = 0;
+  String? _nextCursor;
+  String? _feedSessionId =
+      'mobile-feed-${DateTime.now().microsecondsSinceEpoch}';
 
   static const int _pageSize = 20;
-  String _currentFeedMode() => _segmentIndex == 1 ? 'following' : 'for-you';
+  static const List<_FeedModeOption> _modeOptions = [
+    _FeedModeOption(
+      label: 'For you',
+      mode: 'for-you',
+      icon: CupertinoIcons.sparkles,
+      lens: 'balanced',
+    ),
+    _FeedModeOption(
+      label: 'Following',
+      mode: 'following',
+      icon: CupertinoIcons.person_2_fill,
+    ),
+    _FeedModeOption(
+      label: 'Friends',
+      mode: 'friends',
+      icon: CupertinoIcons.person_3_fill,
+      lens: 'friends_first',
+    ),
+    _FeedModeOption(
+      label: 'Latest',
+      mode: 'latest',
+      icon: CupertinoIcons.clock_fill,
+      lens: 'latest',
+    ),
+    _FeedModeOption(
+      label: 'Explore',
+      mode: 'explore',
+      icon: CupertinoIcons.compass_fill,
+      lens: 'discover',
+    ),
+    _FeedModeOption(
+      label: 'Talks',
+      mode: 'conversations',
+      icon: CupertinoIcons.chat_bubble_2_fill,
+      lens: 'conversations',
+    ),
+    _FeedModeOption(
+      label: 'Catch up',
+      mode: 'catch-up',
+      icon: CupertinoIcons.tray_full_fill,
+    ),
+  ];
+
+  _FeedModeOption get _currentMode => _modeOptions[_modeIndex];
+  String _currentFeedMode() => _currentMode.mode;
+  String? _currentLens() => _preferences?.lens ?? _currentMode.lens;
 
   FeedAuthor? get _composerAuthor {
     for (final post in _posts) {
@@ -91,6 +157,7 @@ class _FeedPageState extends State<FeedPage> {
   Future<void> _bootstrap() async {
     _userId = await _store.getUserId();
     unawaited(_loadComposerAccount());
+    unawaited(_loadFeedStudio());
     await _loadFeed(showSkeleton: true);
     await _realtime.connect(_handleRealtimeEvent);
   }
@@ -105,16 +172,21 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
-  Future<void> _switchSegment(int value) async {
-    if (value == _segmentIndex) return;
+  Future<void> _switchMode(int value) async {
+    if (value == _modeIndex || value < 0 || value >= _modeOptions.length) {
+      return;
+    }
 
     HapticFeedback.selectionClick();
     _setFeedChromeVisible(true);
     if (mounted) {
       setState(() {
-        _segmentIndex = value;
+        _modeIndex = value;
         _posts = [];
         _hasMore = true;
+        _nextCursor = null;
+        _feedSessionId =
+            'mobile-feed-${DateTime.now().microsecondsSinceEpoch}-$value';
         _recordedImpressions.clear();
       });
     }
@@ -126,22 +198,50 @@ class _FeedPageState extends State<FeedPage> {
     await _loadFeed(showSkeleton: true);
   }
 
+  Future<void> _loadFeedStudio() async {
+    if (_studioLoading) return;
+    _studioLoading = true;
+    try {
+      final results = await Future.wait<dynamic>([
+        _feedService.getPreferences(),
+        _feedService.listTopics(limit: 32),
+        _feedService.listInterests(),
+        _feedService.listCustomFeeds(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _preferences = results[0] as FeedPreferences;
+        _topics = results[1] as List<FeedTopic>;
+        _interests = results[2] as List<FeedInterest>;
+        _customFeeds = results[3] as List<CustomFeed>;
+      });
+    } catch (_) {
+      // Feed Studio data is optional for rendering the primary feed.
+    } finally {
+      _studioLoading = false;
+    }
+  }
+
   Future<void> _loadFeed({bool showSkeleton = false}) async {
     if (showSkeleton && mounted) {
       setState(() => _loading = true);
     }
 
     try {
-      final data = await _feedService.listFeed(
+      final page = await _feedService.listFeedPage(
         limit: _pageSize,
         mode: _currentFeedMode(),
+        lens: _currentLens(),
         sessionId: _feedSessionId,
       );
+      final data = page['items'] as List<FeedPost>? ?? <FeedPost>[];
       if (!mounted) return;
 
       setState(() {
         _posts = data;
-        _hasMore = data.length >= _pageSize;
+        _nextCursor = page['nextCursor']?.toString();
+        _feedSessionId = page['sessionId']?.toString() ?? _feedSessionId;
+        _hasMore = _nextCursor != null && _nextCursor!.isNotEmpty;
         _loading = false;
       });
       _recordPostImpressions(data);
@@ -158,16 +258,22 @@ class _FeedPageState extends State<FeedPage> {
 
   Future<void> _refreshFeed() async {
     try {
-      final posts = await _feedService.listFeed(
+      final page = await _feedService.listFeedPage(
         limit: _pageSize,
         mode: _currentFeedMode(),
-        sessionId: _feedSessionId,
+        lens: _currentLens(),
+        sessionId:
+            'mobile-feed-${DateTime.now().microsecondsSinceEpoch}-refresh',
       );
+      final posts = page['items'] as List<FeedPost>? ?? <FeedPost>[];
       if (!mounted) return;
 
       setState(() {
         _posts = posts;
-        _hasMore = posts.length >= _pageSize;
+        _nextCursor = page['nextCursor']?.toString();
+        _feedSessionId = page['sessionId']?.toString() ?? _feedSessionId;
+        _hasMore = _nextCursor != null && _nextCursor!.isNotEmpty;
+        _recordedImpressions.clear();
       });
       _recordPostImpressions(posts);
     } catch (_) {
@@ -245,27 +351,34 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   Future<void> _loadMore() async {
-    if (_posts.isEmpty || _loadingMore) return;
+    if (_posts.isEmpty || _loadingMore || _nextCursor == null) return;
 
     setState(() => _loadingMore = true);
 
     try {
-      final before = _posts.last.createdAt;
-      final data = await _feedService.listFeed(
-        before: before,
+      final page = await _feedService.listFeedPage(
+        cursor: _nextCursor,
         limit: _pageSize,
         mode: _currentFeedMode(),
+        lens: _currentLens(),
         sessionId: _feedSessionId,
       );
+      final data = page['items'] as List<FeedPost>? ?? <FeedPost>[];
 
       if (!mounted) return;
 
+      final existing = _posts.map((post) => post.id).toSet();
+      final fresh = data
+          .where((post) => post.id.isNotEmpty && !existing.contains(post.id))
+          .toList();
       setState(() {
-        _posts = [..._posts, ...data];
-        _hasMore = data.length >= _pageSize;
+        _posts = [..._posts, ...fresh];
+        _nextCursor = page['nextCursor']?.toString();
+        _feedSessionId = page['sessionId']?.toString() ?? _feedSessionId;
+        _hasMore = _nextCursor != null && _nextCursor!.isNotEmpty;
         _loadingMore = false;
       });
-      _recordPostImpressions(data);
+      _recordPostImpressions(fresh);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingMore = false);
@@ -347,7 +460,7 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   void _applyPostEvent(Map<String, dynamic> payload) {
-    if (_segmentIndex == 1) return;
+    if (_currentFeedMode() != 'for-you') return;
     final post = FeedPost.fromJson(payload);
     if (_posts.any((item) => item.id == post.id)) return;
     if (_posts.any(
@@ -668,6 +781,84 @@ class _FeedPageState extends State<FeedPage> {
     );
   }
 
+  void _openPostControls(FeedPost post) {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _PostControlsSheet(
+          post: post,
+          feedService: _feedService,
+          onPostRemoved: () {
+            if (!mounted) return;
+            setState(() => _posts.removeWhere((item) => item.id == post.id));
+          },
+          onFeedbackSaved: () {
+            if (!mounted) return;
+            PravaToast.show(
+              context,
+              message: 'Feed preference updated',
+              type: PravaToastType.success,
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openFeedStudio() async {
+    HapticFeedback.selectionClick();
+    await _loadFeedStudio();
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _FeedStudioSheet(
+          feedService: _feedService,
+          preferences: _preferences,
+          topics: _topics,
+          interests: _interests,
+          customFeeds: _customFeeds,
+          onPreferencesChanged: (preferences) {
+            if (!mounted) return;
+            setState(() => _preferences = preferences);
+            unawaited(_refreshFeed());
+          },
+          onTopicsChanged: () async {
+            await _loadFeedStudio();
+            if (mounted) setState(() {});
+          },
+          onOpenTopic: _openHashtagFeed,
+          onOpenCustomFeed: _openCustomFeed,
+          onReset: () async {
+            await _feedService.resetPersonalization();
+            await _loadFeedStudio();
+            if (!mounted) return;
+            await _refreshFeed();
+          },
+        );
+      },
+    );
+  }
+
+  void _openCustomFeed(CustomFeed feed) {
+    if (feed.id.isEmpty) return;
+    HapticFeedback.selectionClick();
+    Navigator.of(context, rootNavigator: true).push(
+      PravaNavigator.route(
+        HashtagFeedPage(tag: feed.name, mode: 'custom', customFeedId: feed.id),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
   TextSpan _buildPostSpan(String text, TextStyle base, TextStyle highlight) {
     final regex = RegExp(r'(@[a-zA-Z0-9_.]{2,32}|#[a-zA-Z0-9_]{2,32})');
     final spans = <TextSpan>[];
@@ -711,7 +902,6 @@ class _FeedPageState extends State<FeedPage> {
     final tokens = context.pravaColors;
     final primary = tokens.textPrimary;
     final secondary = tokens.textSecondary;
-    final surface = tokens.backgroundSurfaceSubtle;
 
     final visiblePosts = _posts;
 
@@ -731,39 +921,19 @@ class _FeedPageState extends State<FeedPage> {
                     opacity: _feedControlsVisible ? 1 : 0,
                     duration: const Duration(milliseconds: 120),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                      child: CupertinoSlidingSegmentedControl<int>(
-                        groupValue: _segmentIndex,
-                        backgroundColor: surface,
-                        thumbColor: tokens.brandPrimary,
-                        children: {
-                          0: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Text(
-                              'For you',
-                              style: PravaTypography.label.copyWith(
-                                color: _segmentIndex == 0
-                                    ? tokens.textInverse
-                                    : secondary,
-                              ),
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _FeedModeRail(
+                              modes: _modeOptions,
+                              activeIndex: _modeIndex,
+                              onChanged: _switchMode,
                             ),
                           ),
-                          1: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Text(
-                              'Following',
-                              style: PravaTypography.label.copyWith(
-                                color: _segmentIndex == 1
-                                    ? tokens.textInverse
-                                    : secondary,
-                              ),
-                            ),
-                          ),
-                        },
-                        onValueChanged: (value) {
-                          if (value == null) return;
-                          _switchSegment(value);
-                        },
+                          const SizedBox(width: 8),
+                          _FeedStudioButton(onTap: _openFeedStudio),
+                        ],
                       ),
                     ),
                   ),
@@ -809,9 +979,8 @@ class _FeedPageState extends State<FeedPage> {
                                       Text(
                                         'Be the first to share something premium.',
                                         textAlign: TextAlign.center,
-                                        style: PravaTypography.body.copyWith(
-                                          color: secondary,
-                                        ),
+                                        style: PravaTypography.bodyMedium
+                                            .copyWith(color: secondary),
                                       ),
                                     ],
                                   ),
@@ -837,6 +1006,7 @@ class _FeedPageState extends State<FeedPage> {
                                     onLike: () => _toggleLike(post),
                                     onComment: () => _openComments(post),
                                     onShare: () => _openShare(post),
+                                    onMore: () => _openPostControls(post),
                                     onFollow: () => _toggleFollow(post),
                                     onAuthorTap: () =>
                                         _openPublicProfile(post.author),
@@ -847,10 +1017,10 @@ class _FeedPageState extends State<FeedPage> {
                                     timeAgo: _formatTimeAgo(post.createdAt),
                                     bodySpan: _buildPostSpan(
                                       post.body,
-                                      PravaTypography.body.copyWith(
+                                      PravaTypography.bodyMedium.copyWith(
                                         color: primary,
                                       ),
-                                      PravaTypography.body.copyWith(
+                                      PravaTypography.bodyMedium.copyWith(
                                         color: tokens.linkDefault,
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -905,10 +1075,115 @@ class _FeedPageState extends State<FeedPage> {
   }
 }
 
+class _FeedModeRail extends StatelessWidget {
+  const _FeedModeRail({
+    required this.modes,
+    required this.activeIndex,
+    required this.onChanged,
+  });
+
+  final List<_FeedModeOption> modes;
+  final int activeIndex;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return SizedBox(
+      height: 42,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: modes.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final mode = modes[index];
+          final active = index == activeIndex;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onChanged(index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: active
+                    ? tokens.brandPrimary
+                    : tokens.backgroundSurfaceSubtle,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: active
+                      ? Colors.transparent
+                      : tokens.borderSubtle.withValues(alpha: 0.8),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    mode.icon,
+                    size: 17,
+                    color: active ? tokens.textInverse : tokens.iconSecondary,
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    mode.label,
+                    style: PravaTypography.caption.copyWith(
+                      color: active ? tokens.textInverse : tokens.textSecondary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _FeedStudioButton extends StatelessWidget {
+  const _FeedStudioButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return CupertinoButton(
+      minimumSize: const Size(42, 42),
+      padding: EdgeInsets.zero,
+      onPressed: onTap,
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: tokens.backgroundSurfaceSubtle,
+          shape: BoxShape.circle,
+          border: Border.all(color: tokens.borderSubtle),
+        ),
+        child: Icon(
+          CupertinoIcons.slider_horizontal_3,
+          size: 20,
+          color: tokens.iconPrimary,
+        ),
+      ),
+    );
+  }
+}
+
 class HashtagFeedPage extends StatefulWidget {
-  const HashtagFeedPage({super.key, required this.tag});
+  const HashtagFeedPage({
+    super.key,
+    required this.tag,
+    this.mode = 'topics',
+    this.customFeedId,
+  });
 
   final String tag;
+  final String mode;
+  final String? customFeedId;
 
   @override
   State<HashtagFeedPage> createState() => _HashtagFeedPageState();
@@ -930,6 +1205,9 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = true;
+  String? _nextCursor;
+  String? _sessionId =
+      'mobile-feed-topic-${DateTime.now().microsecondsSinceEpoch}';
   String? _userId;
 
   static const int _pageSize = 20;
@@ -957,15 +1235,20 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
   Future<void> _loadFeed({bool showSkeleton = false}) async {
     if (showSkeleton && mounted) setState(() => _loading = true);
     try {
-      final data = await _feedService.listFeed(
+      final page = await _feedService.listFeedPage(
         limit: _pageSize,
-        mode: 'for-you',
-        tag: widget.tag,
+        mode: widget.mode,
+        topic: widget.mode == 'custom' ? null : widget.tag,
+        customFeedId: widget.customFeedId,
+        sessionId: _sessionId,
       );
+      final data = page['items'] as List<FeedPost>? ?? <FeedPost>[];
       if (!mounted) return;
       setState(() {
         _posts = data;
-        _hasMore = data.length >= _pageSize;
+        _nextCursor = page['nextCursor']?.toString();
+        _sessionId = page['sessionId']?.toString() ?? _sessionId;
+        _hasMore = _nextCursor != null && _nextCursor!.isNotEmpty;
         _loading = false;
       });
     } catch (_) {
@@ -996,16 +1279,25 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
     if (_posts.isEmpty || _loadingMore) return;
     setState(() => _loadingMore = true);
     try {
-      final data = await _feedService.listFeed(
-        before: _posts.last.createdAt,
+      final page = await _feedService.listFeedPage(
+        cursor: _nextCursor,
         limit: _pageSize,
-        mode: 'for-you',
-        tag: widget.tag,
+        mode: widget.mode,
+        topic: widget.mode == 'custom' ? null : widget.tag,
+        customFeedId: widget.customFeedId,
+        sessionId: _sessionId,
       );
+      final data = page['items'] as List<FeedPost>? ?? <FeedPost>[];
       if (!mounted) return;
+      final existing = _posts.map((post) => post.id).toSet();
+      final fresh = data
+          .where((post) => post.id.isNotEmpty && !existing.contains(post.id))
+          .toList();
       setState(() {
-        _posts = [..._posts, ...data];
-        _hasMore = data.length >= _pageSize;
+        _posts = [..._posts, ...fresh];
+        _nextCursor = page['nextCursor']?.toString();
+        _sessionId = page['sessionId']?.toString() ?? _sessionId;
+        _hasMore = _nextCursor != null && _nextCursor!.isNotEmpty;
         _loadingMore = false;
       });
     } catch (_) {
@@ -1112,6 +1404,34 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
           platform: _platform,
           onShareUpdated: (count) {
             setState(() => post.shareCount = count);
+          },
+        );
+      },
+    );
+  }
+
+  void _openPostControls(FeedPost post) {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _PostControlsSheet(
+          post: post,
+          feedService: _feedService,
+          onPostRemoved: () {
+            if (!mounted) return;
+            setState(() => _posts.removeWhere((item) => item.id == post.id));
+          },
+          onFeedbackSaved: () {
+            if (!mounted) return;
+            PravaToast.show(
+              context,
+              message: 'Feed preference updated',
+              type: PravaToastType.success,
+            );
           },
         );
       },
@@ -1252,16 +1572,20 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '#${widget.tag}',
+                          widget.mode == 'custom'
+                              ? widget.tag
+                              : '#${widget.tag}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: PravaTypography.h2.copyWith(
+                          style: PravaTypography.titleLarge.copyWith(
                             color: primary,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                         Text(
-                          'Recent posts with strongest engagement',
+                          widget.mode == 'custom'
+                              ? 'Saved feed'
+                              : 'Recent posts with strongest engagement',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: PravaTypography.caption.copyWith(
@@ -1292,8 +1616,10 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
                               hasScrollBody: false,
                               child: Center(
                                 child: Text(
-                                  'No posts for this hashtag yet',
-                                  style: PravaTypography.body.copyWith(
+                                  widget.mode == 'custom'
+                                      ? 'No posts in this feed yet'
+                                      : 'No posts for this topic yet',
+                                  style: PravaTypography.bodyMedium.copyWith(
                                     color: secondary,
                                   ),
                                 ),
@@ -1318,6 +1644,7 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
                                     onLike: () => _toggleLike(post),
                                     onComment: () => _openComments(post),
                                     onShare: () => _openShare(post),
+                                    onMore: () => _openPostControls(post),
                                     onFollow: () => _toggleFollow(post),
                                     onAuthorTap: () =>
                                         _openPublicProfile(post.author),
@@ -1328,10 +1655,10 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
                                     timeAgo: _formatTimeAgo(post.createdAt),
                                     bodySpan: _buildPostSpan(
                                       post.body,
-                                      PravaTypography.body.copyWith(
+                                      PravaTypography.bodyMedium.copyWith(
                                         color: primary,
                                       ),
-                                      PravaTypography.body.copyWith(
+                                      PravaTypography.bodyMedium.copyWith(
                                         color: tokens.linkDefault,
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -1663,24 +1990,17 @@ class _ComposerCardState extends State<_ComposerCard> {
               Expanded(
                 child: SizedBox(
                   height: 118,
-                  child: TextField(
+                  child: PravaInput(
                     controller: widget.controller,
-                    minLines: null,
-                    maxLines: null,
+                    hint: 'Share something premium...',
+                    fieldType: PravaInputFieldType.post,
+                    variant: PravaInputVariant.borderless,
+                    size: PravaInputSize.medium,
                     expands: true,
                     keyboardType: TextInputType.multiline,
                     textInputAction: TextInputAction.newline,
                     textAlignVertical: TextAlignVertical.top,
                     scrollPhysics: const BouncingScrollPhysics(),
-                    style: PravaTypography.body.copyWith(color: primary),
-                    decoration: InputDecoration(
-                      hintText: 'Share something premium...',
-                      hintStyle: PravaTypography.body.copyWith(
-                        color: secondary,
-                      ),
-                      border: InputBorder.none,
-                      isDense: true,
-                    ),
                   ),
                 ),
               ),
@@ -1745,7 +2065,7 @@ class _ComposerCardState extends State<_ComposerCard> {
                               )
                             : Text(
                                 'Post',
-                                style: PravaTypography.button.copyWith(
+                                style: PravaTypography.buttonMedium.copyWith(
                                   color: canPost
                                       ? tokens.textInverse
                                       : tokens.textDisabled,
@@ -1813,7 +2133,7 @@ class _ComposerAvatar extends StatelessWidget {
                 child: Center(
                   child: Text(
                     name.isEmpty ? '@' : name[0].toUpperCase(),
-                    style: PravaTypography.h3.copyWith(
+                    style: PravaTypography.titleSmall.copyWith(
                       color: tokens.brandContent,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1879,7 +2199,7 @@ class _MentionSuggestionTile extends StatelessWidget {
                     name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: PravaTypography.body.copyWith(
+                    style: PravaTypography.bodyMedium.copyWith(
                       color: primary,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1948,7 +2268,7 @@ class _HashtagSuggestionTile extends StatelessWidget {
                 '#${tag.tag}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: PravaTypography.body.copyWith(
+                style: PravaTypography.bodyMedium.copyWith(
                   color: primary,
                   fontWeight: FontWeight.w800,
                 ),
@@ -2049,6 +2369,7 @@ class _PostCard extends StatelessWidget {
     required this.onLike,
     required this.onComment,
     required this.onShare,
+    required this.onMore,
     required this.onFollow,
     required this.onAuthorTap,
     required this.showFollow,
@@ -2063,6 +2384,7 @@ class _PostCard extends StatelessWidget {
   final VoidCallback onLike;
   final VoidCallback onComment;
   final VoidCallback onShare;
+  final VoidCallback onMore;
   final VoidCallback onFollow;
   final VoidCallback onAuthorTap;
   final bool showFollow;
@@ -2105,7 +2427,7 @@ class _PostCard extends StatelessWidget {
                             post.author.displayName.isNotEmpty
                                 ? post.author.displayName[0].toUpperCase()
                                 : '@',
-                            style: PravaTypography.h3.copyWith(
+                            style: PravaTypography.titleSmall.copyWith(
                               color: tokens.brandContent,
                             ),
                           ),
@@ -2126,7 +2448,7 @@ class _PostCard extends StatelessWidget {
                                 post.author.displayName.isNotEmpty
                                     ? post.author.displayName
                                     : post.author.username,
-                                style: PravaTypography.body.copyWith(
+                                style: PravaTypography.bodyMedium.copyWith(
                                   color: primary,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -2154,8 +2476,22 @@ class _PostCard extends StatelessWidget {
                     pending: pendingFollow,
                     onTap: onFollow,
                   ),
+                CupertinoButton(
+                  minimumSize: const Size(34, 34),
+                  padding: const EdgeInsets.only(left: 6),
+                  onPressed: onMore,
+                  child: Icon(
+                    CupertinoIcons.ellipsis,
+                    color: tokens.iconSecondary,
+                    size: 20,
+                  ),
+                ),
               ],
             ),
+            if ((post.recommendationExplanation ?? '').isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _RecommendationPill(text: post.recommendationExplanation!),
+            ],
             const SizedBox(height: 12),
             RichText(text: bodySpan, textWidthBasis: TextWidthBasis.parent),
             const SizedBox(height: 16),
@@ -2238,6 +2574,42 @@ class _ActionButton extends StatelessWidget {
             style: PravaTypography.caption.copyWith(
               color: color,
               fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecommendationPill extends StatelessWidget {
+  const _RecommendationPill({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: tokens.brandContainer.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(CupertinoIcons.sparkles, size: 13, color: tokens.brandContent),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.caption.copyWith(
+                color: tokens.brandContent,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -2542,7 +2914,7 @@ class _CommentSheetState extends State<_CommentSheet> {
                 children: [
                   Text(
                     'Comments',
-                    style: PravaTypography.h3.copyWith(color: primary),
+                    style: PravaTypography.titleSmall.copyWith(color: primary),
                   ),
                   const Spacer(),
                   Text(
@@ -2562,7 +2934,9 @@ class _CommentSheetState extends State<_CommentSheet> {
                   child: Center(
                     child: Text(
                       'No comments yet',
-                      style: PravaTypography.body.copyWith(color: secondary),
+                      style: PravaTypography.bodyMedium.copyWith(
+                        color: secondary,
+                      ),
                     ),
                   ),
                 )
@@ -2621,30 +2995,17 @@ class _CommentSheetState extends State<_CommentSheet> {
               Row(
                 children: [
                   Expanded(
-                    child: TextField(
+                    child: PravaInput(
                       controller: _controller,
+                      hint: _replyingTo == null
+                          ? 'Add a comment'
+                          : 'Write a reply',
                       focusNode: _focusNode,
+                      fieldType: PravaInputFieldType.comment,
+                      variant: PravaInputVariant.comment,
+                      size: PravaInputSize.small,
                       minLines: 1,
                       maxLines: 3,
-                      style: PravaTypography.body.copyWith(color: primary),
-                      decoration: InputDecoration(
-                        hintText: _replyingTo == null
-                            ? 'Add a comment'
-                            : 'Write a reply',
-                        hintStyle: PravaTypography.body.copyWith(
-                          color: secondary,
-                        ),
-                        filled: true,
-                        fillColor: tokens.backgroundSurfaceSubtle,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2885,7 +3246,7 @@ class _CommentBodyState extends State<_CommentBody> {
     if (author == null) {
       return Text(
         body,
-        style: PravaTypography.body.copyWith(color: widget.primary),
+        style: PravaTypography.bodyMedium.copyWith(color: widget.primary),
       );
     }
 
@@ -2895,16 +3256,794 @@ class _CommentBodyState extends State<_CommentBody> {
           TextSpan(
             text: '@${author.username} ',
             recognizer: _mentionRecognizer,
-            style: PravaTypography.body.copyWith(
+            style: PravaTypography.bodyMedium.copyWith(
               color: tokens.linkDefault,
               fontWeight: FontWeight.w800,
             ),
           ),
           TextSpan(
             text: body,
-            style: PravaTypography.body.copyWith(color: widget.primary),
+            style: PravaTypography.bodyMedium.copyWith(color: widget.primary),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PostControlsSheet extends StatefulWidget {
+  const _PostControlsSheet({
+    required this.post,
+    required this.feedService,
+    required this.onPostRemoved,
+    required this.onFeedbackSaved,
+  });
+
+  final FeedPost post;
+  final FeedService feedService;
+  final VoidCallback onPostRemoved;
+  final VoidCallback onFeedbackSaved;
+
+  @override
+  State<_PostControlsSheet> createState() => _PostControlsSheetState();
+}
+
+class _PostControlsSheetState extends State<_PostControlsSheet> {
+  FeedExplanation? _explanation;
+  bool _loadingWhy = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWhy();
+  }
+
+  Future<void> _loadWhy() async {
+    try {
+      final explanation = await widget.feedService.explainPost(widget.post.id);
+      if (!mounted) return;
+      setState(() {
+        _explanation = explanation;
+        _loadingWhy = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingWhy = false);
+    }
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    if (_saving) return;
+    HapticFeedback.selectionClick();
+    setState(() => _saving = true);
+    try {
+      await action();
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      PravaToast.show(
+        context,
+        message: 'Could not update feed',
+        type: PravaToastType.error,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.84,
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        decoration: BoxDecoration(
+          color: tokens.backgroundSurfaceRaised,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: secondary.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Feed controls',
+              style: PravaTypography.titleSmall.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: tokens.backgroundSurfaceSubtle,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: _loadingWhy
+                  ? const Center(child: CupertinoActivityIndicator())
+                  : Row(
+                      children: [
+                        Icon(
+                          CupertinoIcons.sparkles,
+                          color: tokens.brandContent,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _explanation?.explanation ??
+                                widget.post.recommendationExplanation ??
+                                'Recommended for you',
+                            style: PravaTypography.bodyMedium.copyWith(
+                              color: primary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+            const SizedBox(height: 12),
+            _FeedActionRow(
+              icon: CupertinoIcons.hand_thumbsup_fill,
+              title: 'Show more like this',
+              onTap: () => _run(() async {
+                await widget.feedService.showMore(widget.post.id);
+                widget.onFeedbackSaved();
+              }),
+            ),
+            _FeedActionRow(
+              icon: CupertinoIcons.hand_thumbsdown_fill,
+              title: 'Show fewer like this',
+              onTap: () => _run(() async {
+                await widget.feedService.showFewer(widget.post.id);
+                widget.onFeedbackSaved();
+              }),
+            ),
+            _FeedActionRow(
+              icon: CupertinoIcons.eye_slash_fill,
+              title: 'Not interested',
+              onTap: () => _run(() async {
+                await widget.feedService.markNotInterested(widget.post.id);
+                widget.onPostRemoved();
+              }),
+            ),
+            _FeedActionRow(
+              icon: CupertinoIcons.xmark_circle_fill,
+              title: 'Hide this post',
+              destructive: true,
+              onTap: () => _run(() async {
+                await widget.feedService.hidePost(widget.post.id);
+                widget.onPostRemoved();
+              }),
+            ),
+            if (_saving)
+              const Padding(
+                padding: EdgeInsets.only(top: 10),
+                child: Center(child: CupertinoActivityIndicator()),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedActionRow extends StatelessWidget {
+  const _FeedActionRow({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.destructive = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    final color = destructive ? tokens.statusError : tokens.textPrimary;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: PravaTypography.bodyMedium.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedStudioSheet extends StatefulWidget {
+  const _FeedStudioSheet({
+    required this.feedService,
+    required this.preferences,
+    required this.topics,
+    required this.interests,
+    required this.customFeeds,
+    required this.onPreferencesChanged,
+    required this.onTopicsChanged,
+    required this.onOpenTopic,
+    required this.onOpenCustomFeed,
+    required this.onReset,
+  });
+
+  final FeedService feedService;
+  final FeedPreferences? preferences;
+  final List<FeedTopic> topics;
+  final List<FeedInterest> interests;
+  final List<CustomFeed> customFeeds;
+  final ValueChanged<FeedPreferences> onPreferencesChanged;
+  final Future<void> Function() onTopicsChanged;
+  final ValueChanged<String> onOpenTopic;
+  final ValueChanged<CustomFeed> onOpenCustomFeed;
+  final Future<void> Function() onReset;
+
+  @override
+  State<_FeedStudioSheet> createState() => _FeedStudioSheetState();
+}
+
+class _FeedStudioSheetState extends State<_FeedStudioSheet> {
+  late FeedPreferences _preferences =
+      widget.preferences ??
+      FeedPreferences(
+        lens: 'balanced',
+        discoveryIntensity: 0.22,
+        friendPriority: 0.35,
+        latestPriority: 0.15,
+        reduceReposts: false,
+        reduceSensitiveContent: true,
+        preferredLanguages: const <String>[],
+        mutedKeywords: const <String>[],
+      );
+  final TextEditingController _customName = TextEditingController();
+  String? _customTopic;
+  bool _saving = false;
+
+  static const _lenses = <MapEntry<String, String>>[
+    MapEntry('balanced', 'Balanced'),
+    MapEntry('latest', 'Latest'),
+    MapEntry('deep_reads', 'Deep reads'),
+    MapEntry('conversations', 'Talks'),
+    MapEntry('friends_first', 'Friends'),
+    MapEntry('discover', 'Discover'),
+    MapEntry('professional', 'Pro'),
+  ];
+
+  @override
+  void dispose() {
+    _customName.dispose();
+    super.dispose();
+  }
+
+  Future<void> _savePreferences(Map<String, dynamic> patch) async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final updated = await widget.feedService.updatePreferences(patch);
+      if (!mounted) return;
+      setState(() {
+        _preferences = updated;
+        _saving = false;
+      });
+      widget.onPreferencesChanged(updated);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _toggleTopic(FeedTopic topic) async {
+    await widget.feedService.followTopic(topic.topic, !topic.followed);
+    await widget.onTopicsChanged();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _muteTopic(FeedTopic topic) async {
+    await widget.feedService.snoozeTopic(topic.topic);
+    await widget.onTopicsChanged();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _saveCustomFeed() async {
+    final name = _customName.text.trim();
+    final topic =
+        _customTopic ??
+        (widget.topics.isNotEmpty ? widget.topics.first.topic : '');
+    if (name.isEmpty || topic.isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      await widget.feedService.saveCustomFeed(
+        name: name,
+        includeTopics: [topic],
+      );
+      _customName.clear();
+      await widget.onTopicsChanged();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.92,
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+        decoration: BoxDecoration(
+          color: tokens.backgroundSurfaceRaised,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: secondary.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Text(
+                  'Feed Studio',
+                  style: PravaTypography.titleSmall.copyWith(
+                    color: primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const Spacer(),
+                if (_saving) const CupertinoActivityIndicator(),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView(
+                physics: const BouncingScrollPhysics(),
+                children: [
+                  _StudioSection(
+                    title: 'Lens',
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final lens in _lenses)
+                          _StudioChip(
+                            label: lens.value,
+                            active: _preferences.lens == lens.key,
+                            onTap: () => _savePreferences({'lens': lens.key}),
+                          ),
+                      ],
+                    ),
+                  ),
+                  _StudioSlider(
+                    label: 'Discovery',
+                    value: _preferences.discoveryIntensity,
+                    onChanged: (value) =>
+                        _savePreferences({'discoveryIntensity': value}),
+                  ),
+                  _StudioSlider(
+                    label: 'Friends priority',
+                    value: _preferences.friendPriority,
+                    onChanged: (value) =>
+                        _savePreferences({'friendPriority': value}),
+                  ),
+                  _StudioSlider(
+                    label: 'Latest priority',
+                    value: _preferences.latestPriority,
+                    onChanged: (value) =>
+                        _savePreferences({'latestPriority': value}),
+                  ),
+                  _StudioSwitch(
+                    label: 'Reduce reposts',
+                    value: _preferences.reduceReposts,
+                    onChanged: (value) =>
+                        _savePreferences({'reduceReposts': value}),
+                  ),
+                  _StudioSwitch(
+                    label: 'Reduce sensitive content',
+                    value: _preferences.reduceSensitiveContent,
+                    onChanged: (value) =>
+                        _savePreferences({'reduceSensitiveContent': value}),
+                  ),
+                  _StudioSection(
+                    title: 'Topics',
+                    child: Column(
+                      children: [
+                        for (final topic in widget.topics.take(8))
+                          _TopicControlRow(
+                            topic: topic,
+                            onOpen: () => widget.onOpenTopic(topic.topic),
+                            onFollow: () => _toggleTopic(topic),
+                            onSnooze: () => _muteTopic(topic),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (widget.interests.isNotEmpty)
+                    _StudioSection(
+                      title: 'Your interests',
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final interest in widget.interests.take(10))
+                            _StudioChip(
+                              label: '#${interest.topic}',
+                              active: interest.score > 0,
+                              onTap: () => widget.onOpenTopic(interest.topic),
+                            ),
+                        ],
+                      ),
+                    ),
+                  _StudioSection(
+                    title: 'Custom feeds',
+                    child: Column(
+                      children: [
+                        for (final feed in widget.customFeeds.take(5))
+                          _CustomFeedRow(
+                            feed: feed,
+                            onOpen: () => widget.onOpenCustomFeed(feed),
+                          ),
+                        const SizedBox(height: 8),
+                        PravaInput(
+                          controller: _customName,
+                          hint: 'New feed name',
+                          fieldType: PravaInputFieldType.name,
+                          variant: PravaInputVariant.settings,
+                          prefixIcon: const Icon(CupertinoIcons.square_list),
+                          showClearButton: true,
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final topic in widget.topics.take(6))
+                              _StudioChip(
+                                label: '#${topic.topic}',
+                                active: _customTopic == topic.topic,
+                                onTap: () =>
+                                    setState(() => _customTopic = topic.topic),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        CupertinoButton(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          color: tokens.brandPrimary,
+                          borderRadius: BorderRadius.circular(16),
+                          onPressed: _saving ? null : _saveCustomFeed,
+                          child: Text(
+                            'Save custom feed',
+                            style: PravaTypography.buttonMedium.copyWith(
+                              color: tokens.textInverse,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    onPressed: _saving
+                        ? null
+                        : () async {
+                            setState(() => _saving = true);
+                            try {
+                              await widget.onReset();
+                              if (context.mounted) Navigator.of(context).pop();
+                            } finally {
+                              if (mounted) setState(() => _saving = false);
+                            }
+                          },
+                    child: Text(
+                      'Reset personalization',
+                      style: PravaTypography.bodyMedium.copyWith(
+                        color: tokens.statusError,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StudioSection extends StatelessWidget {
+  const _StudioSection({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: PravaTypography.caption.copyWith(
+              color: tokens.textSecondary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _StudioChip extends StatelessWidget {
+  const _StudioChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? tokens.brandPrimary : tokens.backgroundSurfaceSubtle,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: PravaTypography.caption.copyWith(
+            color: active ? tokens.textInverse : tokens.textSecondary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StudioSlider extends StatelessWidget {
+  const _StudioSlider({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 116,
+            child: Text(
+              label,
+              style: PravaTypography.caption.copyWith(
+                color: tokens.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: CupertinoSlider(
+              value: value.clamp(0, 1),
+              onChanged: onChanged,
+              activeColor: tokens.brandPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StudioSwitch extends StatelessWidget {
+  const _StudioSwitch({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: PravaTypography.bodyMedium.copyWith(
+                color: tokens.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          CupertinoSwitch(
+            value: value,
+            activeTrackColor: tokens.brandPrimary,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TopicControlRow extends StatelessWidget {
+  const _TopicControlRow({
+    required this.topic,
+    required this.onOpen,
+    required this.onFollow,
+    required this.onSnooze,
+  });
+
+  final FeedTopic topic;
+  final VoidCallback onOpen;
+  final VoidCallback onFollow;
+  final VoidCallback onSnooze;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: onOpen,
+              child: Text(
+                '#${topic.topic}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: PravaTypography.bodyMedium.copyWith(
+                  color: tokens.textPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+          CupertinoButton(
+            minimumSize: const Size(32, 32),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            onPressed: onFollow,
+            child: Text(
+              topic.followed ? 'Following' : 'Follow',
+              style: PravaTypography.caption.copyWith(
+                color: tokens.brandContent,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          CupertinoButton(
+            minimumSize: const Size(32, 32),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            onPressed: onSnooze,
+            child: Icon(
+              CupertinoIcons.moon_zzz_fill,
+              color: tokens.iconSecondary,
+              size: 17,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomFeedRow extends StatelessWidget {
+  const _CustomFeedRow({required this.feed, required this.onOpen});
+
+  final CustomFeed feed;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return InkWell(
+      onTap: onOpen,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Icon(
+              CupertinoIcons.rectangle_stack_fill,
+              color: tokens.brandContent,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                feed.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: PravaTypography.bodyMedium.copyWith(
+                  color: tokens.textPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3042,7 +4181,7 @@ class _ShareSheetState extends State<_ShareSheet> {
               children: [
                 Text(
                   'Share post',
-                  style: PravaTypography.h3.copyWith(color: primary),
+                  style: PravaTypography.titleSmall.copyWith(color: primary),
                 ),
                 const Spacer(),
                 Icon(
@@ -3073,7 +4212,7 @@ class _ShareSheetState extends State<_ShareSheet> {
                     Expanded(
                       child: Text(
                         'Share with another app',
-                        style: PravaTypography.body.copyWith(
+                        style: PravaTypography.bodyMedium.copyWith(
                           color: primary,
                           fontWeight: FontWeight.w700,
                         ),
@@ -3110,7 +4249,7 @@ class _ShareSheetState extends State<_ShareSheet> {
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Text(
                   'No chats available yet',
-                  style: PravaTypography.body.copyWith(color: secondary),
+                  style: PravaTypography.bodyMedium.copyWith(color: secondary),
                 ),
               )
             else
@@ -3153,7 +4292,7 @@ class _ShareSheetState extends State<_ShareSheet> {
                                 children: [
                                   Text(
                                     convo.title,
-                                    style: PravaTypography.body.copyWith(
+                                    style: PravaTypography.bodyMedium.copyWith(
                                       color: primary,
                                       fontWeight: FontWeight.w600,
                                     ),

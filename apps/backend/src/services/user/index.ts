@@ -14,19 +14,43 @@ import {
 } from "../../lib/security.js";
 import { enqueueNotificationEvent } from "../notification/repository.js";
 
-const PROFILE_VISIBILITY_VALUES = ["everyone", "followers", "friends", "onlyMe"] as const;
+const PROFILE_VISIBILITY_VALUES = [
+  "public",
+  "everyone",
+  "followers",
+  "friends",
+  "closeFriends",
+  "onlyMe",
+  "hidden",
+] as const;
 type ProfileVisibility = (typeof PROFILE_VISIBILITY_VALUES)[number];
 type ProfileVisibilityMap = Record<string, ProfileVisibility>;
 
 const DEFAULT_PROFILE_VISIBILITY: ProfileVisibilityMap = {
-  bio: "everyone",
+  displayName: "public",
+  username: "public",
+  avatar: "public",
+  cover: "public",
+  bio: "public",
   location: "friends",
-  website: "everyone",
-  joined: "everyone",
-  posts: "everyone",
-  followers: "everyone",
-  following: "everyone",
+  website: "public",
+  joined: "public",
+  posts: "public",
+  replies: "public",
+  media: "public",
+  highlights: "public",
+  about: "public",
+  friends: "friends",
+  followers: "public",
+  following: "public",
+  onlineStatus: "friends",
+  lastActive: "friends",
   likes: "onlyMe",
+  saved: "onlyMe",
+  drafts: "onlyMe",
+  archive: "onlyMe",
+  hiddenPosts: "onlyMe",
+  analytics: "onlyMe",
 };
 
 const DEFAULT_SETTINGS = {
@@ -160,6 +184,10 @@ function normalizeVisibilityValue(
   return fallback;
 }
 
+function canonicalVisibility(value: ProfileVisibility): ProfileVisibility {
+  return value === "everyone" ? "public" : value;
+}
+
 function normalizeProfileVisibility(value: unknown): ProfileVisibilityMap {
   const incoming =
     value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -190,10 +218,32 @@ async function shouldCreateNotification(userId: string, categoryKey: string) {
 }
 
 type ProfileRelationship = {
+  state: string;
   isSelf: boolean;
   isFollowing: boolean;
   isFollowedBy: boolean;
   isFriend: boolean;
+  isCloseFriend: boolean;
+  requestPending: boolean;
+  incomingRequestPending: boolean;
+  isBlockedByViewer: boolean;
+  hasBlockedViewer: boolean;
+  isMuted: boolean;
+  isRestricted: boolean;
+};
+
+type ProfileAction = {
+  key: string;
+  label: string;
+  style: string;
+  enabled: boolean;
+};
+
+type ProfileTab = {
+  key: string;
+  label: string;
+  visible: boolean;
+  ownerOnly: boolean;
 };
 
 function minVisibility(
@@ -201,10 +251,13 @@ function minVisibility(
   minimum: ProfileVisibility
 ): ProfileVisibility {
   const rank: Record<ProfileVisibility, number> = {
+    public: 0,
     everyone: 0,
     followers: 1,
     friends: 2,
-    onlyMe: 3,
+    closeFriends: 3,
+    onlyMe: 4,
+    hidden: 5,
   };
   return rank[current] < rank[minimum] ? minimum : current;
 }
@@ -214,9 +267,11 @@ function canViewByVisibility(
   relationship: ProfileRelationship
 ): boolean {
   if (relationship.isSelf) return true;
-  if (visibility === "everyone") return true;
+  const level = canonicalVisibility(visibility);
+  if (level === "public") return true;
   if (visibility === "followers") return relationship.isFollowing;
   if (visibility === "friends") return relationship.isFriend;
+  if (visibility === "closeFriends") return relationship.isCloseFriend;
   return false;
 }
 
@@ -225,10 +280,19 @@ function buildProfileVisibility(
   relationship: ProfileRelationship
 ) {
   const profileVisibility = normalizeProfileVisibility(settings?.profileVisibility);
-  const effectiveVisibility = settings?.privateAccount && !relationship.isSelf
+  const restrictedAccount =
+    settings?.privateAccount &&
+    !relationship.isSelf &&
+    !relationship.isFollowing &&
+    !relationship.isFriend &&
+    !relationship.isCloseFriend;
+  const effectiveVisibility = restrictedAccount
     ? {
         ...profileVisibility,
         posts: minVisibility(profileVisibility.posts, "followers"),
+        replies: minVisibility(profileVisibility.replies, "followers"),
+        media: minVisibility(profileVisibility.media, "followers"),
+        highlights: minVisibility(profileVisibility.highlights, "followers"),
         followers: minVisibility(profileVisibility.followers, "followers"),
         following: minVisibility(profileVisibility.following, "followers"),
       }
@@ -245,6 +309,7 @@ function buildProfileVisibility(
     fields: effectiveVisibility,
     visible,
     privateAccount: settings?.privateAccount === true,
+    restricted: restrictedAccount,
   };
 }
 
@@ -262,6 +327,30 @@ function escapeLike(value: string): string {
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeProfileResourceVisibility(value: unknown): ProfileVisibility {
+  return normalizeVisibilityValue(value, "public");
+}
+
+function normalizeUrl(value: unknown): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://${raw}`);
+    ensure(["http:", "https:"].includes(url.protocol), 400, "Invalid URL");
+    return url.toString();
+  } catch {
+    throw new HttpError(400, "Invalid URL");
+  }
+}
+
+function stringList(value: unknown, limit = 20): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .slice(0, limit);
 }
 
 function nextUsernameChangeDate(value: unknown): Date | null {
@@ -313,6 +402,10 @@ function mapProfilePost(post: any) {
     likeCount: Number(post.like_count || 0),
     commentCount: Number(post.comment_count || 0),
     shareCount: Number(post.share_count || 0),
+    readCount: Number(post.read_count || post.impression_count || 0),
+    mediaUrls: Array.isArray(post.media_urls) ? post.media_urls : [],
+    postType: post.post_type || "post",
+    parentPostId: post.parent_post_id || null,
     mentions: Array.isArray(post.mentions) ? post.mentions : [],
     hashtags: Array.isArray(post.hashtags) ? post.hashtags : [],
   };
@@ -447,22 +540,304 @@ async function loadUsersByIds(ids: string[]): Promise<any[]> {
 async function buildStats(userId: string) {
   const stats = await queryOne(
     `SELECT
-       (SELECT COUNT(*)::int FROM posts WHERE author_id = $1) AS posts,
+       (SELECT COUNT(*)::int FROM posts WHERE author_id = $1 AND deleted_at IS NULL AND COALESCE(visibility, 'public') <> 'draft') AS posts,
+       (SELECT COUNT(*)::int FROM posts WHERE author_id = $1 AND deleted_at IS NULL AND post_type = 'reply') AS replies,
+       (SELECT COUNT(*)::int FROM posts WHERE author_id = $1 AND deleted_at IS NULL AND COALESCE(media_urls, '[]'::jsonb) <> '[]'::jsonb) AS media,
        (SELECT COUNT(*)::int FROM follows WHERE following_id = $1) AS followers,
        (SELECT COUNT(*)::int FROM follows WHERE follower_id = $1) AS following,
+       (SELECT COUNT(*)::int
+        FROM follows f1
+        JOIN follows f2 ON f2.follower_id = f1.following_id AND f2.following_id = f1.follower_id
+        WHERE f1.follower_id = $1) AS friends,
+       (SELECT COUNT(*)::int FROM close_friends WHERE owner_id = $1) AS close_friends,
        (SELECT COALESCE(SUM(like_count), 0)::int FROM posts WHERE author_id = $1) AS likes`,
     [userId]
   );
 
   return {
     posts: Number(stats?.posts || 0),
+    replies: Number(stats?.replies || 0),
+    media: Number(stats?.media || 0),
     followers: Number(stats?.followers || 0),
     following: Number(stats?.following || 0),
+    friends: Number(stats?.friends || 0),
+    closeFriends: Number(stats?.close_friends || 0),
     likes: Number(stats?.likes || 0),
   };
 }
 
-async function buildProfileSummary(viewerUserId: string, targetUserId: string, limit: number) {
+async function buildOwnerCounts(userId: string) {
+  const counts = await queryOne(
+    `SELECT
+       (SELECT COUNT(*)::int FROM post_saves WHERE user_id = $1) AS saved,
+       (SELECT COUNT(*)::int FROM posts WHERE author_id = $1 AND COALESCE(visibility, '') = 'draft') AS drafts,
+       (SELECT COUNT(*)::int FROM posts WHERE author_id = $1 AND COALESCE(visibility, '') = 'archived') AS archive,
+       (SELECT COUNT(*)::int FROM post_hidden WHERE user_id = $1) AS hidden_posts,
+       (SELECT COUNT(*)::int FROM profile_views WHERE profile_user_id = $1) AS profile_viewers,
+       (SELECT COALESCE(SUM(view_count), 0)::int FROM profile_views WHERE profile_user_id = $1) AS profile_views`,
+    [userId]
+  );
+  return {
+    saved: Number(counts?.saved || 0),
+    drafts: Number(counts?.drafts || 0),
+    archive: Number(counts?.archive || 0),
+    hiddenPosts: Number(counts?.hidden_posts || 0),
+    profileViewers: Number(counts?.profile_viewers || 0),
+    profileViews: Number(counts?.profile_views || 0),
+  };
+}
+
+async function buildMutualFriends(viewerUserId: string, targetUserId: string, limit = 3) {
+  if (viewerUserId === targetUserId) {
+    return { count: 0, items: [] };
+  }
+  const rows = await queryMany(
+    `WITH viewer_friends AS (
+       SELECT f1.following_id AS user_id
+       FROM follows f1
+       JOIN follows f2 ON f2.follower_id = f1.following_id AND f2.following_id = f1.follower_id
+       WHERE f1.follower_id = $1
+     ),
+     target_friends AS (
+       SELECT f1.following_id AS user_id
+       FROM follows f1
+       JOIN follows f2 ON f2.follower_id = f1.following_id AND f2.following_id = f1.follower_id
+       WHERE f1.follower_id = $2
+     ),
+     mutual AS (
+       SELECT vf.user_id
+       FROM viewer_friends vf
+       JOIN target_friends tf ON tf.user_id = vf.user_id
+     )
+     SELECT u.user_id, u.username, u.display_name, u.avatar_url, u.is_verified,
+            (SELECT COUNT(*) FROM mutual)::int AS total_count
+     FROM mutual m
+     JOIN users u ON u.user_id = m.user_id AND u.deleted_at IS NULL
+     ORDER BY u.is_verified DESC, u.display_name_lower ASC
+     LIMIT $3`,
+    [viewerUserId, targetUserId, limit]
+  );
+  return {
+    count: Number(rows[0]?.total_count || 0),
+    items: rows.map((row) => ({
+      id: row.user_id,
+      username: row.username,
+      displayName: row.display_name || row.username,
+      avatarUrl: row.avatar_url || "",
+      isVerified: row.is_verified === true,
+    })),
+  };
+}
+
+function relationshipState(relationship: ProfileRelationship): string {
+  if (relationship.isSelf) return "self";
+  if (relationship.isBlockedByViewer) return "blockedByViewer";
+  if (relationship.hasBlockedViewer) return "blocked";
+  if (relationship.isRestricted) return "restricted";
+  if (relationship.isCloseFriend) return "closeFriend";
+  if (relationship.isFriend) return "friend";
+  if (relationship.requestPending) return "requestPending";
+  if (relationship.isFollowing) return "follower";
+  if (relationship.isFollowedBy) return "following";
+  return "nonFollower";
+}
+
+function buildProfileActions(
+  relationship: ProfileRelationship,
+  visibility: any,
+  settings: any
+) {
+  if (relationship.hasBlockedViewer) {
+    return [];
+  }
+  if (relationship.isBlockedByViewer) {
+    return [
+      { key: "unblock", label: "Unblock", style: "danger", enabled: true },
+    ];
+  }
+  if (relationship.isSelf) {
+    return [
+      { key: "editProfile", label: "Edit Profile", style: "primary", enabled: true },
+      { key: "shareProfile", label: "Share Profile", style: "subtle", enabled: true },
+      { key: "settings", label: "Settings", style: "subtle", enabled: true },
+      { key: "analytics", label: "View Analytics", style: "subtle", enabled: true },
+      { key: "previewAs", label: "Preview As", style: "subtle", enabled: true },
+    ];
+  }
+
+  const actions: ProfileAction[] = [];
+  if (visibility.restricted && relationship.requestPending) {
+    actions.push({ key: "cancelRequest", label: "Requested", style: "subtle", enabled: true });
+  } else if (visibility.restricted) {
+    actions.push({ key: "requestFollow", label: "Request Follow", style: "primary", enabled: true });
+  } else if (relationship.isFriend) {
+    actions.push({ key: "friends", label: "Friends", style: "subtle", enabled: true });
+  } else if (relationship.isFollowing) {
+    actions.push({ key: "following", label: "Following", style: "subtle", enabled: true });
+  } else if (relationship.requestPending) {
+    actions.push({ key: "cancelRequest", label: "Requested", style: "subtle", enabled: true });
+  } else {
+    actions.push({
+      key: relationship.isFollowedBy ? "followBack" : "follow",
+      label: relationship.isFollowedBy ? "Follow back" : "Follow",
+      style: "primary",
+      enabled: true,
+    });
+  }
+
+  const canMessage =
+    settings?.messagePreview !== false &&
+    (relationship.isFriend || relationship.isFollowing || settings?.privateAccount !== true);
+  if (canMessage) {
+    actions.push({ key: "message", label: "Message", style: "subtle", enabled: true });
+  }
+  actions.push({ key: "shareProfile", label: "Share", style: "icon", enabled: true });
+  actions.push({ key: "more", label: "More", style: "icon", enabled: true });
+  return actions;
+}
+
+function buildProfileTabs(relationship: ProfileRelationship, visibility: any, badges: any[] = []) {
+  if (relationship.hasBlockedViewer || relationship.isBlockedByViewer) {
+    return [];
+  }
+  if (visibility.restricted && !relationship.isSelf) {
+    return [];
+  }
+  const can = (key: string) => visibility?.visible?.[key] === true || relationship.isSelf;
+  const tabs: ProfileTab[] = [
+    { key: "posts", label: "Posts", visible: can("posts"), ownerOnly: false },
+    { key: "replies", label: "Replies", visible: can("replies"), ownerOnly: false },
+    { key: "media", label: "Media", visible: can("media"), ownerOnly: false },
+    { key: "highlights", label: "Highlights", visible: can("highlights"), ownerOnly: false },
+    { key: "about", label: "About", visible: can("about"), ownerOnly: false },
+    { key: "friends", label: "Friends", visible: can("friends"), ownerOnly: false },
+    { key: "badges", label: "Badges", visible: badges.length > 0, ownerOnly: false },
+  ].filter((tab) => tab.visible);
+
+  if (relationship.isSelf) {
+    tabs.push(
+      { key: "saved", label: "Saved", visible: true, ownerOnly: true },
+      { key: "drafts", label: "Drafts", visible: true, ownerOnly: true },
+      { key: "archive", label: "Archive", visible: true, ownerOnly: true },
+      { key: "hidden", label: "Hidden", visible: true, ownerOnly: true },
+      { key: "analytics", label: "Analytics", visible: true, ownerOnly: true }
+    );
+  }
+
+  return tabs;
+}
+
+function completionScore(user: any, settings: any): number {
+  const checks = [
+    Boolean(user.avatar_url),
+    Boolean(user.cover_url),
+    Boolean(user.bio),
+    Boolean(user.website),
+    Boolean(user.location),
+    Boolean(user.display_name),
+    settings?.privateAccount !== undefined,
+  ];
+  const done = checks.filter(Boolean).length;
+  return Math.round((done / checks.length) * 100);
+}
+
+async function recordProfileView(viewerUserId: string, targetUserId: string) {
+  if (viewerUserId === targetUserId) return;
+  await query(
+    `INSERT INTO profile_views (viewer_id, profile_user_id, view_count, first_viewed_at, last_viewed_at)
+     VALUES ($1, $2, 1, $3, $3)
+     ON CONFLICT (viewer_id, profile_user_id)
+     DO UPDATE SET view_count = profile_views.view_count + 1,
+                   last_viewed_at = EXCLUDED.last_viewed_at`,
+    [viewerUserId, targetUserId, now()]
+  );
+}
+
+async function buildProfileCollections(
+  userId: string,
+  limit: number,
+  relationship: ProfileRelationship
+) {
+  const [badges, links, highlights, pinnedRows] = await Promise.all([
+    queryMany(
+      `SELECT badge_id, badge_type, label, icon, awarded_at, expires_at, visibility
+       FROM profile_badges
+       WHERE user_id = $1
+         AND (expires_at IS NULL OR expires_at > NOW())
+       ORDER BY awarded_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    ),
+    queryMany(
+      `SELECT link_id, title, url, position, visibility
+       FROM profile_links
+       WHERE user_id = $1
+       ORDER BY position ASC, created_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    ),
+    queryMany(
+      `SELECT highlight_id, title, description, cover_url, post_ids, media_urls, position, visibility, created_at
+       FROM profile_highlights
+       WHERE user_id = $1
+       ORDER BY position ASC, created_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    ),
+    queryMany(
+      `SELECT p.*
+       FROM profile_pinned_posts pp
+       JOIN posts p ON p.post_id = pp.post_id
+       WHERE pp.user_id = $1 AND p.deleted_at IS NULL
+       ORDER BY pp.position ASC, pp.pinned_at DESC
+       LIMIT $2`,
+      [userId, Math.min(limit, 5)]
+    ),
+  ]);
+
+  return {
+    badges: badges
+      .filter((row) => canViewByVisibility(normalizeProfileResourceVisibility(row.visibility), relationship))
+      .map((row) => ({
+        id: row.badge_id,
+        type: row.badge_type,
+        label: row.label,
+        icon: row.icon || "",
+        awardedAt: toIso(row.awarded_at),
+        expiresAt: toIso(row.expires_at),
+      })),
+    links: links
+      .filter((row) => canViewByVisibility(normalizeProfileResourceVisibility(row.visibility), relationship))
+      .map((row) => ({
+        id: row.link_id,
+        title: row.title || "",
+        url: row.url || "",
+        position: Number(row.position || 0),
+        visibility: row.visibility || "public",
+      })),
+    highlights: highlights
+      .filter((row) => canViewByVisibility(normalizeProfileResourceVisibility(row.visibility), relationship))
+      .map((row) => ({
+        id: row.highlight_id,
+        title: row.title || "",
+        description: row.description || "",
+        coverUrl: row.cover_url || "",
+        postIds: Array.isArray(row.post_ids) ? row.post_ids : [],
+        mediaUrls: Array.isArray(row.media_urls) ? row.media_urls : [],
+        position: Number(row.position || 0),
+        visibility: row.visibility || "public",
+        createdAt: toIso(row.created_at),
+      })),
+    pinnedPosts: pinnedRows.map(mapProfilePost),
+  };
+}
+
+async function buildProfileSummary(
+  viewerUserId: string,
+  targetUserId: string,
+  limit: number,
+  previewAs = ""
+) {
   const user = await queryOne(
     `SELECT *
      FROM users
@@ -473,8 +848,23 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
     throw new HttpError(404, "User not found");
   }
 
-  const isSelf = viewerUserId === targetUserId;
-  const [settingsDoc, isFollowing, isFollowedBy] = await Promise.all([
+  const realSelf = viewerUserId === targetUserId;
+  const previewMode = realSelf && ["public", "follower", "friend", "closeFriend"].includes(previewAs)
+    ? previewAs
+    : "";
+  const isSelf = realSelf && !previewMode;
+  const [
+    settingsDoc,
+    isFollowing,
+    isFollowedBy,
+    requestPending,
+    incomingRequestPending,
+    blockedByViewer,
+    hasBlockedViewer,
+    closeFriend,
+    muted,
+    restricted,
+  ] = await Promise.all([
     queryOne(
       `SELECT settings FROM user_settings WHERE user_id = $1`,
       [targetUserId]
@@ -491,82 +881,355 @@ async function buildProfileSummary(viewerUserId: string, targetUserId: string, l
           `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
           [targetUserId, viewerUserId]
         ),
+    isSelf
+      ? Promise.resolve(null)
+      : queryOne(
+          `SELECT 1 FROM follow_requests WHERE requester_id = $1 AND target_id = $2 AND status = 'pending'`,
+          [viewerUserId, targetUserId]
+        ),
+    isSelf
+      ? Promise.resolve(null)
+      : queryOne(
+          `SELECT 1 FROM follow_requests WHERE requester_id = $1 AND target_id = $2 AND status = 'pending'`,
+          [targetUserId, viewerUserId]
+        ),
+    isSelf
+      ? Promise.resolve(null)
+      : queryOne(
+          `SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`,
+          [viewerUserId, targetUserId]
+        ),
+    isSelf
+      ? Promise.resolve(null)
+      : queryOne(
+          `SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`,
+          [targetUserId, viewerUserId]
+        ),
+    isSelf
+      ? Promise.resolve(null)
+      : queryOne(
+          `SELECT 1 FROM close_friends WHERE owner_id = $1 AND user_id = $2`,
+          [targetUserId, viewerUserId]
+        ),
+    isSelf
+      ? Promise.resolve(null)
+      : queryOne(
+          `SELECT 1 FROM user_mutes WHERE muter_id = $1 AND muted_id = $2`,
+          [viewerUserId, targetUserId]
+        ),
+    isSelf
+      ? Promise.resolve(null)
+      : queryOne(
+          `SELECT 1 FROM restricted_users WHERE owner_id = $1 AND restricted_id = $2`,
+          [targetUserId, viewerUserId]
+        ),
   ]);
   const relationship: ProfileRelationship = {
+    state: "",
     isSelf,
     isFollowing: !!isFollowing,
     isFollowedBy: !!isFollowedBy,
     isFriend: !!isFollowing && !!isFollowedBy,
+    isCloseFriend: !!closeFriend,
+    requestPending: !!requestPending,
+    incomingRequestPending: !!incomingRequestPending,
+    isBlockedByViewer: !!blockedByViewer,
+    hasBlockedViewer: !!hasBlockedViewer,
+    isMuted: !!muted,
+    isRestricted: !!restricted,
   };
+  if (previewMode) {
+    relationship.isFollowing = ["follower", "friend", "closeFriend"].includes(previewMode);
+    relationship.isFollowedBy = ["friend", "closeFriend"].includes(previewMode);
+    relationship.isFriend = ["friend", "closeFriend"].includes(previewMode);
+    relationship.isCloseFriend = previewMode === "closeFriend";
+    relationship.requestPending = false;
+    relationship.incomingRequestPending = false;
+    relationship.isBlockedByViewer = false;
+    relationship.hasBlockedViewer = false;
+    relationship.isMuted = false;
+    relationship.isRestricted = false;
+  }
+  relationship.state = relationshipState(relationship);
   const settings = mergeSettings(settingsDoc?.settings || {});
   const visibility = buildProfileVisibility(settings, relationship);
   const visible = visibility.visible as Record<string, boolean>;
   const details = user.details || {};
+  const blocked = relationship.isBlockedByViewer || relationship.hasBlockedViewer;
 
-  const [stats, posts, tags, mentions, mentionedPosts] = await Promise.all([
+  const [
+    stats,
+    ownerCounts,
+    collections,
+    mutualFriends,
+    posts,
+    replies,
+    mediaPosts,
+    tags,
+    mentions,
+    mentionedPosts,
+    analyticsRow,
+  ] = await Promise.all([
     buildStats(targetUserId),
-    visible.posts
+    isSelf ? buildOwnerCounts(targetUserId) : Promise.resolve({
+      saved: 0,
+      drafts: 0,
+      archive: 0,
+      hiddenPosts: 0,
+      profileViewers: 0,
+      profileViews: 0,
+    }),
+    blocked ? Promise.resolve({
+      badges: [],
+      links: [],
+      highlights: [],
+      pinnedPosts: [],
+    }) : buildProfileCollections(targetUserId, limit, relationship),
+    blocked ? Promise.resolve({ count: 0, items: [] }) : buildMutualFriends(viewerUserId, targetUserId, 3),
+    visible.posts && !blocked
       ? queryMany(
           `SELECT *
            FROM posts
            WHERE author_id = $1
+             AND deleted_at IS NULL
+             AND COALESCE(visibility, 'public') NOT IN ('draft', 'archived')
+             AND (post_type IS NULL OR post_type = 'post')
            ORDER BY created_at DESC
            LIMIT $2`,
           [targetUserId, limit]
         )
       : Promise.resolve([]),
-    visible.posts ? buildProfileTags(targetUserId, limit) : Promise.resolve([]),
-    visible.posts ? buildProfileMentions(targetUserId, limit) : Promise.resolve([]),
+    visible.replies && !blocked
+      ? queryMany(
+          `SELECT *
+           FROM posts
+           WHERE author_id = $1
+             AND deleted_at IS NULL
+             AND (post_type = 'reply' OR parent_post_id IS NOT NULL)
+           ORDER BY created_at DESC
+           LIMIT $2`,
+          [targetUserId, limit]
+        )
+      : Promise.resolve([]),
+    visible.media && !blocked
+      ? queryMany(
+          `SELECT *
+           FROM posts
+           WHERE author_id = $1
+             AND deleted_at IS NULL
+             AND COALESCE(media_urls, '[]'::jsonb) <> '[]'::jsonb
+           ORDER BY created_at DESC
+           LIMIT $2`,
+          [targetUserId, limit]
+        )
+      : Promise.resolve([]),
+    visible.posts && !blocked ? buildProfileTags(targetUserId, limit) : Promise.resolve([]),
+    visible.posts && !blocked ? buildProfileMentions(targetUserId, limit) : Promise.resolve([]),
     isSelf ? buildMentionedPosts(user.username, limit) : Promise.resolve([]),
+    isSelf
+      ? queryOne(
+          `SELECT
+             (SELECT COALESCE(SUM(impression_count), 0)::int FROM posts WHERE author_id = $1) AS post_reach,
+             (SELECT COUNT(*)::int FROM follows WHERE following_id = $1 AND created_at > NOW() - INTERVAL '30 days') AS new_followers,
+             (SELECT COALESCE(SUM(like_count + comment_count + share_count), 0)::int FROM posts WHERE author_id = $1) AS engagement,
+             (SELECT post_id FROM posts WHERE author_id = $1 AND deleted_at IS NULL ORDER BY impression_count DESC, created_at DESC LIMIT 1) AS most_viewed_post_id`,
+          [targetUserId]
+        )
+      : Promise.resolve(null),
   ]);
+  if (!blocked) {
+    await recordProfileView(viewerUserId, targetUserId);
+  }
+
+  const badges = collections.badges;
+  const actions = buildProfileActions(relationship, visibility, settings);
+  const tabs = buildProfileTabs(relationship, visibility, badges);
+  const restrictedReasons: string[] = [];
+  if (visibility.restricted) {
+    restrictedReasons.push("private_account");
+  }
+  if (blocked) {
+    restrictedReasons.push(relationship.isBlockedByViewer ? "blocked_by_viewer" : "blocked");
+  }
 
   const summary = {
+    profileState: relationship.hasBlockedViewer
+      ? "blocked"
+      : relationship.isBlockedByViewer
+      ? "blockedByViewer"
+      : visibility.restricted
+      ? "private"
+      : "public",
     user: {
       id: user.user_id,
       username: user.username,
       displayName: user.display_name || user.username,
-      bio: visible.bio ? (user.bio || "") : "",
-      location: visible.location ? (user.location || "") : "",
-      website: visible.website ? (user.website || "") : "",
-      avatarUrl: user.avatar_url || "",
-      coverUrl: user.cover_url || "",
-      pinnedDetails: details.pinnedDetails || "",
-      category: details.category || "",
-      aiCreator: details.aiCreator === true,
-      hometown: visible.location ? (details.hometown || "") : "",
+      bio: !blocked && visible.bio ? (user.bio || "") : "",
+      location: !blocked && visible.location ? (user.location || "") : "",
+      website: !blocked && visible.website ? (user.website || "") : "",
+      avatarUrl: relationship.hasBlockedViewer ? "" : (user.avatar_url || ""),
+      avatarBlurhash: details.avatarBlurhash || "",
+      coverUrl: !blocked && visible.cover ? (user.cover_url || "") : "",
+      coverBlurhash: details.coverBlurhash || "",
+      themeAccentColor: details.themeAccentColor || "",
+      profileGradient: details.profileGradient || "",
+      profileBadgeStyle: details.profileBadgeStyle || "",
+      profileLayoutType: details.profileLayoutType || "social",
+      pinnedDetails: !blocked ? (details.pinnedDetails || "") : "",
+      category: !blocked ? (details.category || "") : "",
+      aiCreator: !blocked && details.aiCreator === true,
+      hometown: !blocked && visible.location ? (details.hometown || "") : "",
       phoneCountryCode: isSelf ? (details.phoneCountryCode || "") : "",
       phoneNumber: isSelf ? (details.phoneNumber || "") : "",
       isVerified: user.is_verified === true,
-      createdAt: visible.joined ? toIso(user.created_at) : null,
+      verificationType: details.verificationType || (user.is_verified ? "verified" : ""),
+      accountType: details.accountType || "personal",
+      accountStatus: details.accountStatus || "active",
+      onlineStatus: !blocked && visible.onlineStatus && settings.activityStatus !== false
+        ? (new Date().getTime() - new Date(user.last_seen_at).getTime() < 5 * 60 * 1000 ? "online" : "offline")
+        : "",
+      lastActiveAt: !blocked && visible.lastActive && settings.activityStatus !== false ? toIso(user.last_seen_at) : null,
+      createdAt: !blocked && visible.joined ? toIso(user.created_at) : null,
     },
     stats: {
-      posts: visible.posts ? stats.posts : 0,
-      followers: visible.followers ? stats.followers : 0,
-      following: visible.following ? stats.following : 0,
-      likes: visible.likes ? stats.likes : 0,
+      posts: !blocked && visible.posts ? stats.posts : 0,
+      replies: !blocked && visible.replies ? stats.replies : 0,
+      media: !blocked && visible.media ? stats.media : 0,
+      followers: !blocked && visible.followers ? stats.followers : 0,
+      following: !blocked && visible.following ? stats.following : 0,
+      friends: !blocked && visible.friends ? stats.friends : 0,
+      mutualFriends: !blocked ? mutualFriends.count : 0,
+      closeFriends: isSelf ? stats.closeFriends : 0,
+      likes: isSelf || visible.likes ? stats.likes : 0,
+      saved: isSelf ? ownerCounts.saved : 0,
+      drafts: isSelf ? ownerCounts.drafts : 0,
+      archive: isSelf ? ownerCounts.archive : 0,
+      hiddenPosts: isSelf ? ownerCounts.hiddenPosts : 0,
     },
     posts: posts.map(mapProfilePost),
+    replies: replies.map(mapProfilePost),
+    mediaPosts: mediaPosts.map(mapProfilePost),
     tags: tags.map(mapProfileTag),
     mentions: mentions.map(mapProfileMention),
     mentionedPosts: mentionedPosts.map(mapProfilePost),
+    mutualFriends: mutualFriends.items,
+    badges,
+    links: blocked ? [] : collections.links,
+    highlights: !blocked && visible.highlights ? collections.highlights : [],
+    pinnedPosts: !blocked && visible.posts ? collections.pinnedPosts : [],
+    viewerRelation: relationship.state,
+    viewer_relation: relationship.state,
     visibility,
     relationship,
+    actions,
+    tabs,
+    contentPreview: {
+      pinnedPosts: !blocked && visible.posts ? collections.pinnedPosts : [],
+      recentPosts: posts.slice(0, Math.min(posts.length, 3)).map(mapProfilePost),
+      highlights: !blocked && visible.highlights ? collections.highlights.slice(0, 5) : [],
+    },
+    privacyRestrictions: restrictedReasons,
+    privacy_restrictions: restrictedReasons,
   };
 
   if (isSelf) {
-    const likedPosts = await queryMany(
-      `SELECT p.*
-       FROM post_likes pl
-       JOIN posts p ON p.post_id = pl.post_id
-       WHERE pl.user_id = $1
-       ORDER BY pl.created_at DESC
-       LIMIT $2`,
-      [targetUserId, limit]
-    );
+    const [likedPosts, savedPosts, draftPosts, archivedPosts, hiddenPosts] = await Promise.all([
+      queryMany(
+        `SELECT p.*
+         FROM post_likes pl
+         JOIN posts p ON p.post_id = pl.post_id
+         WHERE pl.user_id = $1
+         ORDER BY pl.created_at DESC
+         LIMIT $2`,
+        [targetUserId, limit]
+      ),
+      queryMany(
+        `SELECT p.*
+         FROM post_saves ps
+         JOIN posts p ON p.post_id = ps.post_id
+         WHERE ps.user_id = $1
+         ORDER BY ps.created_at DESC
+         LIMIT $2`,
+        [targetUserId, limit]
+      ),
+      queryMany(
+        `SELECT *
+         FROM posts
+         WHERE author_id = $1 AND COALESCE(visibility, '') = 'draft'
+         ORDER BY updated_at DESC
+         LIMIT $2`,
+        [targetUserId, limit]
+      ),
+      queryMany(
+        `SELECT *
+         FROM posts
+         WHERE author_id = $1 AND COALESCE(visibility, '') = 'archived'
+         ORDER BY updated_at DESC
+         LIMIT $2`,
+        [targetUserId, limit]
+      ),
+      queryMany(
+        `SELECT p.*
+         FROM post_hidden ph
+         JOIN posts p ON p.post_id = ph.post_id
+         WHERE ph.user_id = $1
+         ORDER BY ph.created_at DESC
+         LIMIT $2`,
+        [targetUserId, limit]
+      ),
+    ]);
 
     return {
       ...summary,
       liked: likedPosts.map(mapProfilePost),
+      saved: savedPosts.map(mapProfilePost),
+      drafts: draftPosts.map(mapProfilePost),
+      archive: archivedPosts.map(mapProfilePost),
+      hidden: hiddenPosts.map(mapProfilePost),
+      ownerTools: {
+        completion: {
+          score: completionScore(user, settings),
+          missing: [
+            !user.avatar_url ? "avatar" : "",
+            !user.cover_url ? "cover" : "",
+            !user.bio ? "bio" : "",
+            !user.website ? "website" : "",
+            !user.location ? "location" : "",
+          ].filter(Boolean),
+        },
+        accountHealth: {
+          status: user.is_verified ? "trusted" : "good",
+          label: user.is_verified ? "Verified account" : "Good standing",
+          risk: "low",
+        },
+        verification: {
+          verified: user.is_verified === true,
+          type: details.verificationType || "",
+        },
+        privacyCheckup: {
+          privateAccount: settings.privateAccount === true,
+          activityStatus: settings.activityStatus !== false,
+          visibleFields: Object.entries(visibility.visible).filter(([, value]) => value).length,
+        },
+        analytics: {
+          profileViews: ownerCounts.profileViews,
+          profileViewers: ownerCounts.profileViewers,
+          postReach: Number(analyticsRow?.post_reach || 0),
+          newFollowers: Number(analyticsRow?.new_followers || 0),
+          engagement: Number(analyticsRow?.engagement || 0),
+          mostViewedPostId: analyticsRow?.most_viewed_post_id || "",
+          growthTrend: Number(analyticsRow?.new_followers || 0) >= 0 ? "up" : "flat",
+        },
+        shortcuts: [
+          { key: "saved", label: "Saved posts", count: ownerCounts.saved },
+          { key: "drafts", label: "Drafts", count: ownerCounts.drafts },
+          { key: "archive", label: "Archived posts", count: ownerCounts.archive },
+          { key: "hidden", label: "Hidden posts", count: ownerCounts.hiddenPosts },
+          { key: "blocked", label: "Blocked users", count: 0 },
+          { key: "closeFriends", label: "Close friends", count: stats.closeFriends },
+        ],
+        previewModes: ["public", "follower", "friend", "closeFriend"],
+      },
     };
   }
 
@@ -1389,11 +2052,20 @@ export default async function userService(app: any) {
           ),
     ]);
     const relationship: ProfileRelationship = {
+      state: "",
       isSelf,
       isFollowing: !!isFollowing,
       isFollowedBy: !!isFollowedBy,
       isFriend: !!isFollowing && !!isFollowedBy,
+      isCloseFriend: false,
+      requestPending: false,
+      incomingRequestPending: false,
+      isBlockedByViewer: false,
+      hasBlockedViewer: false,
+      isMuted: false,
+      isRestricted: false,
     };
+    relationship.state = relationshipState(relationship);
     const settings = mergeSettings(settingsDoc?.settings || {});
     const visibility = buildProfileVisibility(settings, relationship);
     const visible = visibility.visible as Record<string, boolean>;
@@ -1460,7 +2132,14 @@ export default async function userService(app: any) {
 
   app.get("/me/profile", { preHandler: requireAuth }, async (request: any) => {
     const limit = parseLimit(request.query?.limit, 12, 1, 50);
-    return buildProfileSummary(request.user.userId, request.user.userId, limit);
+    const previewAs = String(request.query?.previewAs || request.query?.as || "").trim();
+    return buildProfileSummary(request.user.userId, request.user.userId, limit, previewAs);
+  });
+
+  app.get("/me/profile/preview", { preHandler: requireAuth }, async (request: any) => {
+    const limit = parseLimit(request.query?.limit, 12, 1, 50);
+    const previewAs = String(request.query?.as || "public").trim();
+    return buildProfileSummary(request.user.userId, request.user.userId, limit, previewAs);
   });
 
   app.get("/:userId/profile", { preHandler: requireAuth }, async (request: any) => {
@@ -1468,7 +2147,6 @@ export default async function userService(app: any) {
     ensure(targetUserId.length >= 8, 400, "Invalid user");
     const limit = parseLimit(request.query?.limit, 12, 1, 50);
 
-    await ensureNotBlocked(request.user.userId, targetUserId);
     return buildProfileSummary(request.user.userId, targetUserId, limit);
   });
 
@@ -1508,6 +2186,310 @@ export default async function userService(app: any) {
     );
 
     return { settings };
+  });
+
+  app.get("/me/profile-views", { preHandler: requireAuth }, async (request: any) => {
+    const limit = parseLimit(request.query?.limit, 20, 1, 100);
+    const rows = await queryMany(
+      `SELECT pv.viewer_id, pv.view_count, pv.first_viewed_at, pv.last_viewed_at,
+              u.username, u.display_name, u.avatar_url, u.is_verified
+       FROM profile_views pv
+       JOIN users u ON u.user_id = pv.viewer_id AND u.deleted_at IS NULL
+       WHERE pv.profile_user_id = $1
+       ORDER BY pv.last_viewed_at DESC
+       LIMIT $2`,
+      [request.user.userId, limit]
+    );
+
+    return {
+      items: rows.map((row) => ({
+        viewer: {
+          id: row.viewer_id,
+          username: row.username,
+          displayName: row.display_name || row.username,
+          avatarUrl: row.avatar_url || "",
+          isVerified: row.is_verified === true,
+        },
+        viewCount: Number(row.view_count || 0),
+        firstViewedAt: toIso(row.first_viewed_at),
+        lastViewedAt: toIso(row.last_viewed_at),
+      })),
+    };
+  });
+
+  app.get("/me/profile-links", { preHandler: requireAuth }, async (request: any) => {
+    const rows = await queryMany(
+      `SELECT link_id, title, url, position, visibility, created_at, updated_at
+       FROM profile_links
+       WHERE user_id = $1
+       ORDER BY position ASC, created_at DESC`,
+      [request.user.userId]
+    );
+
+    return {
+      items: rows.map((row) => ({
+        id: row.link_id,
+        title: row.title || "",
+        url: row.url || "",
+        position: Number(row.position || 0),
+        visibility: row.visibility || "public",
+        createdAt: toIso(row.created_at),
+        updatedAt: toIso(row.updated_at),
+      })),
+    };
+  });
+
+  app.post("/me/profile-links", { preHandler: requireAuth }, async (request: any) => {
+    const body = request.body || {};
+    const title = String(body.title || "").trim().slice(0, 80);
+    const url = normalizeUrl(body.url);
+    ensure(url.length > 0, 400, "URL is required");
+    const position = Math.max(0, Math.min(99, Number.parseInt(String(body.position || "0"), 10) || 0));
+    const visibility = normalizeProfileResourceVisibility(body.visibility);
+    const linkId = generateId();
+    const ts = now();
+
+    await query(
+      `INSERT INTO profile_links (link_id, user_id, title, url, position, visibility, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+      [linkId, request.user.userId, title, url, position, visibility, ts]
+    );
+
+    return {
+      item: {
+        id: linkId,
+        title,
+        url,
+        position,
+        visibility,
+        createdAt: toIso(ts),
+        updatedAt: toIso(ts),
+      },
+    };
+  });
+
+  app.put("/me/profile-links/:linkId", { preHandler: requireAuth }, async (request: any) => {
+    const linkId = String(request.params.linkId || "").trim();
+    ensure(linkId.length >= 8, 400, "Invalid link");
+    const existing = await queryOne(
+      `SELECT * FROM profile_links WHERE link_id = $1 AND user_id = $2`,
+      [linkId, request.user.userId]
+    );
+    ensure(existing, 404, "Profile link not found");
+
+    const body = request.body || {};
+    const title = body.title === undefined ? existing.title : String(body.title || "").trim().slice(0, 80);
+    const url = body.url === undefined ? existing.url : normalizeUrl(body.url);
+    ensure(String(url || "").length > 0, 400, "URL is required");
+    const position = body.position === undefined
+      ? Number(existing.position || 0)
+      : Math.max(0, Math.min(99, Number.parseInt(String(body.position || "0"), 10) || 0));
+    const visibility = body.visibility === undefined
+      ? normalizeProfileResourceVisibility(existing.visibility)
+      : normalizeProfileResourceVisibility(body.visibility);
+    const ts = now();
+
+    await query(
+      `UPDATE profile_links
+       SET title = $3, url = $4, position = $5, visibility = $6, updated_at = $7
+       WHERE link_id = $1 AND user_id = $2`,
+      [linkId, request.user.userId, title, url, position, visibility, ts]
+    );
+
+    return {
+      item: {
+        id: linkId,
+        title,
+        url,
+        position,
+        visibility,
+        updatedAt: toIso(ts),
+      },
+    };
+  });
+
+  app.delete("/me/profile-links/:linkId", { preHandler: requireAuth }, async (request: any) => {
+    const linkId = String(request.params.linkId || "").trim();
+    ensure(linkId.length >= 8, 400, "Invalid link");
+    const result = await query(
+      `DELETE FROM profile_links WHERE link_id = $1 AND user_id = $2`,
+      [linkId, request.user.userId]
+    );
+    return { removed: (result.rowCount || 0) > 0 };
+  });
+
+  app.get("/me/profile-highlights", { preHandler: requireAuth }, async (request: any) => {
+    const rows = await queryMany(
+      `SELECT highlight_id, title, description, cover_url, post_ids, media_urls,
+              visibility, position, created_at, updated_at
+       FROM profile_highlights
+       WHERE user_id = $1
+       ORDER BY position ASC, created_at DESC`,
+      [request.user.userId]
+    );
+
+    return {
+      items: rows.map((row) => ({
+        id: row.highlight_id,
+        title: row.title || "",
+        description: row.description || "",
+        coverUrl: row.cover_url || "",
+        postIds: Array.isArray(row.post_ids) ? row.post_ids : [],
+        mediaUrls: Array.isArray(row.media_urls) ? row.media_urls : [],
+        visibility: row.visibility || "public",
+        position: Number(row.position || 0),
+        createdAt: toIso(row.created_at),
+        updatedAt: toIso(row.updated_at),
+      })),
+    };
+  });
+
+  app.post("/me/profile-highlights", { preHandler: requireAuth }, async (request: any) => {
+    const body = request.body || {};
+    const highlightId = generateId();
+    const title = String(body.title || "").trim().slice(0, 80);
+    ensure(title.length > 0, 400, "Highlight title is required");
+    const description = String(body.description || "").trim().slice(0, 240);
+    const coverUrl = body.coverUrl ? normalizeUrl(body.coverUrl) : "";
+    const postIds = stringList(body.postIds, 50);
+    const mediaUrls = stringList(body.mediaUrls, 50);
+    const visibility = normalizeProfileResourceVisibility(body.visibility);
+    const position = Math.max(0, Math.min(99, Number.parseInt(String(body.position || "0"), 10) || 0));
+    const ts = now();
+
+    await query(
+      `INSERT INTO profile_highlights
+       (highlight_id, user_id, title, description, cover_url, post_ids, media_urls, visibility, position, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
+      [
+        highlightId,
+        request.user.userId,
+        title,
+        description,
+        coverUrl,
+        JSON.stringify(postIds),
+        JSON.stringify(mediaUrls),
+        visibility,
+        position,
+        ts,
+      ]
+    );
+
+    return {
+      item: {
+        id: highlightId,
+        title,
+        description,
+        coverUrl,
+        postIds,
+        mediaUrls,
+        visibility,
+        position,
+        createdAt: toIso(ts),
+        updatedAt: toIso(ts),
+      },
+    };
+  });
+
+  app.put("/me/profile-highlights/:highlightId", { preHandler: requireAuth }, async (request: any) => {
+    const highlightId = String(request.params.highlightId || "").trim();
+    ensure(highlightId.length >= 8, 400, "Invalid highlight");
+    const existing = await queryOne(
+      `SELECT * FROM profile_highlights WHERE highlight_id = $1 AND user_id = $2`,
+      [highlightId, request.user.userId]
+    );
+    ensure(existing, 404, "Highlight not found");
+    const body = request.body || {};
+    const title = body.title === undefined ? existing.title : String(body.title || "").trim().slice(0, 80);
+    ensure(String(title || "").length > 0, 400, "Highlight title is required");
+    const description = body.description === undefined
+      ? existing.description
+      : String(body.description || "").trim().slice(0, 240);
+    const coverUrl = body.coverUrl === undefined
+      ? existing.cover_url
+      : (body.coverUrl ? normalizeUrl(body.coverUrl) : "");
+    const postIds = body.postIds === undefined ? existing.post_ids || [] : stringList(body.postIds, 50);
+    const mediaUrls = body.mediaUrls === undefined ? existing.media_urls || [] : stringList(body.mediaUrls, 50);
+    const visibility = body.visibility === undefined
+      ? normalizeProfileResourceVisibility(existing.visibility)
+      : normalizeProfileResourceVisibility(body.visibility);
+    const position = body.position === undefined
+      ? Number(existing.position || 0)
+      : Math.max(0, Math.min(99, Number.parseInt(String(body.position || "0"), 10) || 0));
+    const ts = now();
+
+    await query(
+      `UPDATE profile_highlights
+       SET title = $3, description = $4, cover_url = $5, post_ids = $6,
+           media_urls = $7, visibility = $8, position = $9, updated_at = $10
+       WHERE highlight_id = $1 AND user_id = $2`,
+      [
+        highlightId,
+        request.user.userId,
+        title,
+        description,
+        coverUrl,
+        JSON.stringify(postIds),
+        JSON.stringify(mediaUrls),
+        visibility,
+        position,
+        ts,
+      ]
+    );
+
+    return {
+      item: {
+        id: highlightId,
+        title,
+        description,
+        coverUrl,
+        postIds,
+        mediaUrls,
+        visibility,
+        position,
+        updatedAt: toIso(ts),
+      },
+    };
+  });
+
+  app.delete("/me/profile-highlights/:highlightId", { preHandler: requireAuth }, async (request: any) => {
+    const highlightId = String(request.params.highlightId || "").trim();
+    ensure(highlightId.length >= 8, 400, "Invalid highlight");
+    const result = await query(
+      `DELETE FROM profile_highlights WHERE highlight_id = $1 AND user_id = $2`,
+      [highlightId, request.user.userId]
+    );
+    return { removed: (result.rowCount || 0) > 0 };
+  });
+
+  app.put("/me/profile-pinned-posts/:postId", { preHandler: requireAuth }, async (request: any) => {
+    const postId = String(request.params.postId || "").trim();
+    ensure(postId.length >= 8, 400, "Invalid post");
+    const post = await queryOne(
+      `SELECT post_id FROM posts WHERE post_id = $1 AND author_id = $2 AND deleted_at IS NULL`,
+      [postId, request.user.userId]
+    );
+    ensure(post, 404, "Post not found");
+    const position = Math.max(0, Math.min(9, Number.parseInt(String(request.body?.position || "0"), 10) || 0));
+    const ts = now();
+    await query(
+      `INSERT INTO profile_pinned_posts (user_id, post_id, position, pinned_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, post_id)
+       DO UPDATE SET position = EXCLUDED.position, pinned_at = EXCLUDED.pinned_at`,
+      [request.user.userId, postId, position, ts]
+    );
+    return { pinned: true, postId, position, pinnedAt: toIso(ts) };
+  });
+
+  app.delete("/me/profile-pinned-posts/:postId", { preHandler: requireAuth }, async (request: any) => {
+    const postId = String(request.params.postId || "").trim();
+    ensure(postId.length >= 8, 400, "Invalid post");
+    const result = await query(
+      `DELETE FROM profile_pinned_posts WHERE user_id = $1 AND post_id = $2`,
+      [request.user.userId, postId]
+    );
+    return { pinned: false, removed: (result.rowCount || 0) > 0 };
   });
 
   app.get("/me/blocks", { preHandler: requireAuth }, async (request: any) => {
@@ -1646,6 +2628,115 @@ export default async function userService(app: any) {
     );
 
     return { muted: false, changed: (result.rowCount || 0) > 0 };
+  });
+
+  app.put("/:targetUserId/restrict", { preHandler: requireAuth }, async (request: any) => {
+    const targetUserId = String(request.params.targetUserId || "").trim();
+    const restricted = request.body?.restricted !== false;
+    ensure(targetUserId.length >= 8, 400, "Invalid user");
+    ensure(targetUserId !== request.user.userId, 400, "Cannot restrict self");
+    await ensureUserExists(targetUserId);
+
+    if (!restricted) {
+      const result = await query(
+        `DELETE FROM restricted_users WHERE owner_id = $1 AND restricted_id = $2`,
+        [request.user.userId, targetUserId]
+      );
+      return { restricted: false, changed: (result.rowCount || 0) > 0 };
+    }
+
+    const reason = String(request.body?.reason || "").trim().slice(0, 160);
+    await query(
+      `INSERT INTO restricted_users (owner_id, restricted_id, reason, created_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (owner_id, restricted_id)
+       DO UPDATE SET reason = EXCLUDED.reason`,
+      [request.user.userId, targetUserId, reason, now()]
+    );
+
+    return { restricted: true };
+  });
+
+  app.delete("/:targetUserId/restrict", { preHandler: requireAuth }, async (request: any) => {
+    const targetUserId = String(request.params.targetUserId || "").trim();
+    ensure(targetUserId.length >= 8, 400, "Invalid user");
+    const result = await query(
+      `DELETE FROM restricted_users WHERE owner_id = $1 AND restricted_id = $2`,
+      [request.user.userId, targetUserId]
+    );
+    return { restricted: false, changed: (result.rowCount || 0) > 0 };
+  });
+
+  app.put("/:targetUserId/close-friend", { preHandler: requireAuth }, async (request: any) => {
+    const targetUserId = String(request.params.targetUserId || "").trim();
+    const closeFriend = request.body?.closeFriend !== false;
+    ensure(targetUserId.length >= 8, 400, "Invalid user");
+    ensure(targetUserId !== request.user.userId, 400, "Cannot add self");
+    await ensureUserExists(targetUserId);
+
+    if (!closeFriend) {
+      const result = await query(
+        `DELETE FROM close_friends WHERE owner_id = $1 AND user_id = $2`,
+        [request.user.userId, targetUserId]
+      );
+      return { closeFriend: false, changed: (result.rowCount || 0) > 0 };
+    }
+
+    const followsTarget = await queryOne(
+      `SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2`,
+      [request.user.userId, targetUserId]
+    );
+    ensure(followsTarget, 400, "Follow this user before adding to close friends");
+
+    await query(
+      `INSERT INTO close_friends (owner_id, user_id, created_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (owner_id, user_id) DO NOTHING`,
+      [request.user.userId, targetUserId, now()]
+    );
+
+    return { closeFriend: true };
+  });
+
+  app.delete("/:targetUserId/close-friend", { preHandler: requireAuth }, async (request: any) => {
+    const targetUserId = String(request.params.targetUserId || "").trim();
+    ensure(targetUserId.length >= 8, 400, "Invalid user");
+    const result = await query(
+      `DELETE FROM close_friends WHERE owner_id = $1 AND user_id = $2`,
+      [request.user.userId, targetUserId]
+    );
+    return { closeFriend: false, changed: (result.rowCount || 0) > 0 };
+  });
+
+  app.post("/:targetUserId/report", { preHandler: requireAuth }, async (request: any) => {
+    const targetUserId = String(request.params.targetUserId || "").trim();
+    ensure(targetUserId.length >= 8, 400, "Invalid user");
+    ensure(targetUserId !== request.user.userId, 400, "Cannot report self");
+    await ensureUserExists(targetUserId);
+
+    const allowedReasons = new Set(["spam", "abuse", "impersonation", "harassment", "privacy", "other"]);
+    const reason = String(request.body?.reason || "other").trim();
+    const safeReason = allowedReasons.has(reason) ? reason : "other";
+    const details = String(request.body?.details || "").trim().slice(0, 1000);
+    const reportId = generateId();
+    const ts = now();
+
+    await query(
+      `INSERT INTO profile_reports
+       (report_id, reporter_user_id, profile_user_id, reason, details, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'open', $6, $6)`,
+      [reportId, request.user.userId, targetUserId, safeReason, details, ts]
+    );
+
+    return {
+      reported: true,
+      report: {
+        id: reportId,
+        reason: safeReason,
+        status: "open",
+        createdAt: toIso(ts),
+      },
+    };
   });
 
   app.get("/me/muted-words", { preHandler: requireAuth }, async (request: any) => {
@@ -1805,11 +2896,46 @@ export default async function userService(app: any) {
     );
 
     if (existing) {
+      await withTransaction(async (client) => {
+        await client.query(
+          `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
+          [request.user.userId, targetUserId]
+        );
+        await client.query(
+          `DELETE FROM follow_requests WHERE requester_id = $1 AND target_id = $2`,
+          [request.user.userId, targetUserId]
+        );
+      });
+      return { following: false, requested: false };
+    }
+
+    const targetSettingsDoc = await queryOne(
+      `SELECT settings FROM user_settings WHERE user_id = $1`,
+      [targetUserId]
+    );
+    const targetSettings = mergeSettings(targetSettingsDoc?.settings || {});
+    if (targetSettings.privateAccount === true) {
+      const ts = now();
       await query(
-        `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
-        [request.user.userId, targetUserId]
+        `INSERT INTO follow_requests (requester_id, target_id, status, created_at, updated_at)
+         VALUES ($1, $2, 'pending', $3, $3)
+         ON CONFLICT (requester_id, target_id)
+         DO UPDATE SET status = 'pending',
+                       updated_at = EXCLUDED.updated_at,
+                       responded_at = NULL`,
+        [request.user.userId, targetUserId, ts]
       );
-      return { following: false };
+      if (await shouldCreateNotification(targetUserId, "notifyFollows")) {
+        await enqueueNotificationEvent({
+          eventType: "FOLLOW_REQUEST_RECEIVED",
+          recipientUserId: targetUserId,
+          actorUserId: request.user.userId,
+          entityType: "user",
+          entityId: request.user.userId,
+          payload: { followerId: request.user.userId, requestStatus: "pending" },
+        });
+      }
+      return { following: false, requested: true };
     }
 
     const ts = now();
@@ -1834,7 +2960,7 @@ export default async function userService(app: any) {
       }
     });
 
-    return { following: true };
+    return { following: true, requested: false };
   });
 
   app.put("/:targetUserId/follow", { preHandler: requireAuth }, async (request: any) => {
@@ -1846,6 +2972,39 @@ export default async function userService(app: any) {
     await ensureNotBlocked(request.user.userId, targetUserId);
 
     if (follow) {
+      const targetSettingsDoc = await queryOne(
+        `SELECT settings FROM user_settings WHERE user_id = $1`,
+        [targetUserId]
+      );
+      const targetSettings = mergeSettings(targetSettingsDoc?.settings || {});
+      if (targetSettings.privateAccount === true) {
+        const ts = now();
+        const result = await query(
+          `INSERT INTO follow_requests (requester_id, target_id, status, created_at, updated_at)
+           VALUES ($1, $2, 'pending', $3, $3)
+           ON CONFLICT (requester_id, target_id)
+           DO UPDATE SET status = 'pending',
+                         updated_at = EXCLUDED.updated_at,
+                         responded_at = NULL`,
+          [request.user.userId, targetUserId, ts]
+        );
+        if ((result.rowCount || 0) > 0 && await shouldCreateNotification(targetUserId, "notifyFollows")) {
+          await enqueueNotificationEvent({
+            eventType: "FOLLOW_REQUEST_RECEIVED",
+            recipientUserId: targetUserId,
+            actorUserId: request.user.userId,
+            entityType: "user",
+            entityId: request.user.userId,
+            payload: { followerId: request.user.userId, requestStatus: "pending" },
+          });
+        }
+        return {
+          following: false,
+          requested: true,
+          changed: (result.rowCount || 0) > 0,
+        };
+      }
+
       const ts = now();
       const result = await query(
         `INSERT INTO follows (follower_id, following_id, created_at)
@@ -1865,19 +3024,65 @@ export default async function userService(app: any) {
       }
       return {
         following: true,
+        requested: false,
         changed: (result.rowCount || 0) > 0,
       };
     }
 
-    const result = await query(
-      `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
-      [request.user.userId, targetUserId]
-    );
+    const result = await withTransaction(async (client) => {
+      const deleteFollow = await client.query(
+        `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
+        [request.user.userId, targetUserId]
+      );
+      await client.query(
+        `DELETE FROM follow_requests WHERE requester_id = $1 AND target_id = $2`,
+        [request.user.userId, targetUserId]
+      );
+      return deleteFollow;
+    });
 
     return {
       following: false,
+      requested: false,
       changed: (result.rowCount || 0) > 0,
     };
+  });
+
+  app.post("/:targetUserId/follow-request/accept", { preHandler: requireAuth }, async (request: any) => {
+    const targetUserId = String(request.params.targetUserId || "").trim();
+    ensure(targetUserId.length >= 8, 400, "Invalid user");
+    await ensureUserExists(targetUserId);
+    await ensureNotBlocked(request.user.userId, targetUserId);
+    const ts = now();
+    const accepted = await withTransaction(async (client) => {
+      const requestRow = await client.query(
+        `UPDATE follow_requests
+         SET status = 'accepted', updated_at = $3, responded_at = $3
+         WHERE requester_id = $1 AND target_id = $2 AND status = 'pending'`,
+        [targetUserId, request.user.userId, ts]
+      );
+      if ((requestRow.rowCount || 0) === 0) return false;
+      await client.query(
+        `INSERT INTO follows (follower_id, following_id, created_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (follower_id, following_id) DO NOTHING`,
+        [targetUserId, request.user.userId, ts]
+      );
+      return true;
+    });
+    return { accepted, following: accepted };
+  });
+
+  app.post("/:targetUserId/follow-request/reject", { preHandler: requireAuth }, async (request: any) => {
+    const targetUserId = String(request.params.targetUserId || "").trim();
+    ensure(targetUserId.length >= 8, 400, "Invalid user");
+    const result = await query(
+      `UPDATE follow_requests
+       SET status = 'rejected', updated_at = $3, responded_at = $3
+       WHERE requester_id = $1 AND target_id = $2 AND status = 'pending'`,
+      [targetUserId, request.user.userId, now()]
+    );
+    return { rejected: (result.rowCount || 0) > 0 };
   });
 
   app.delete("/:targetUserId/follower", { preHandler: requireAuth }, async (request: any) => {

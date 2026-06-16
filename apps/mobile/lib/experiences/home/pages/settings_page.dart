@@ -391,7 +391,7 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                   Text(
                     'Prava settings look smooth at any size.',
                     textAlign: TextAlign.center,
-                    style: PravaTypography.body.copyWith(
+                    style: PravaTypography.bodyMedium.copyWith(
                       color: isDark
                           ? PravaColors.darkTextPrimary
                           : PravaColors.lightTextPrimary,
@@ -1170,7 +1170,7 @@ class _SettingsTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       'Settings',
-      style: PravaTypography.h2.copyWith(
+      style: PravaTypography.titleLarge.copyWith(
         color: primary,
         fontWeight: FontWeight.w800,
       ),
@@ -1214,7 +1214,7 @@ class _SettingsCategoryTile extends StatelessWidget {
                       meta.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: PravaTypography.body.copyWith(
+                      style: PravaTypography.bodyMedium.copyWith(
                         color: primary,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1286,7 +1286,7 @@ class _SettingsSection extends StatelessWidget {
       children: [
         Text(
           title,
-          style: PravaTypography.h3.copyWith(
+          style: PravaTypography.titleSmall.copyWith(
             color: primary,
             fontWeight: FontWeight.w800,
           ),
@@ -1344,7 +1344,7 @@ class _SettingsTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: PravaTypography.body.copyWith(
+                    style: PravaTypography.bodyMedium.copyWith(
                       color: textColor,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1404,7 +1404,7 @@ class _SettingsToggleTile extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: PravaTypography.body.copyWith(
+                  style: PravaTypography.bodyMedium.copyWith(
                     color: color,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1469,7 +1469,10 @@ class _SettingsSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Text(title, style: PravaTypography.h3.copyWith(color: primary)),
+          Text(
+            title,
+            style: PravaTypography.titleSmall.copyWith(color: primary),
+          ),
           const SizedBox(height: 16),
           child,
         ],

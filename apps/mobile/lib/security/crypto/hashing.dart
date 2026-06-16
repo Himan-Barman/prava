@@ -7,7 +7,7 @@ import '../bridge/sodium_loader.dart';
 /// ============================================================
 /// Cryptographic Hashing & Key Derivation
 /// ============================================================
-/// Implements secure hashing and key derivation functions: 
+/// Implements secure hashing and key derivation functions:
 ///
 /// • BLAKE2b:  Fast, secure general-purpose hashing
 /// • HKDF: Key derivation for Signal Protocol
@@ -36,10 +36,7 @@ final class Hashing {
   }) async {
     _validateOutputLength(outputLength);
     final sodium = await SodiumLoader.sodium;
-    return sodium.crypto. genericHash(
-      message: data,
-      outLen: outputLength,
-    );
+    return sodium.crypto.genericHash(message: data, outLen: outputLength);
   }
 
   /// Compute BLAKE2b hash synchronously
@@ -48,8 +45,8 @@ final class Hashing {
     int outputLength = defaultHashLength,
   }) {
     _validateOutputLength(outputLength);
-    return SodiumLoader. sodiumSync.crypto.genericHash(
-      message:  data,
+    return SodiumLoader.sodiumSync.crypto.genericHash(
+      message: data,
       outLen: outputLength,
     );
   }
@@ -68,9 +65,9 @@ final class Hashing {
 
     try {
       return sodium.crypto.genericHash(
-        message:  data,
+        message: data,
         key: secureKey,
-        outLen:  outputLength,
+        outLen: outputLength,
       );
     } finally {
       secureKey.dispose();
@@ -96,8 +93,8 @@ final class Hashing {
     if (salt != null && salt.isNotEmpty) {
       final saltKey = sodium.secureCopy(salt);
       try {
-        prk = sodium.crypto. genericHash(
-          message:  inputKeyMaterial,
+        prk = sodium.crypto.genericHash(
+          message: inputKeyMaterial,
           key: saltKey,
           outLen: 64,
         );
@@ -105,24 +102,18 @@ final class Hashing {
         saltKey.dispose();
       }
     } else {
-      prk = sodium.crypto.genericHash(
-        message:  inputKeyMaterial,
-        outLen: 64,
-      );
+      prk = sodium.crypto.genericHash(message: inputKeyMaterial, outLen: 64);
     }
 
     // Expand phase with info
     Uint8List okm;
     if (info != null && info.isNotEmpty) {
       okm = sodium.crypto.genericHash(
-        message:  Uint8List.fromList([... prk, ...info]),
-        outLen:  outputLength,
-      );
-    } else {
-      okm = sodium.crypto. genericHash(
-        message: prk,
+        message: Uint8List.fromList([...prk, ...info]),
         outLen: outputLength,
       );
+    } else {
+      okm = sodium.crypto.genericHash(message: prk, outLen: outputLength);
     }
 
     return okm;
@@ -137,17 +128,14 @@ final class Hashing {
     final sodium = await SodiumLoader.sodium;
 
     // Combine root key and DH output
-    final input = Uint8List.fromList([... rootKey, ...dhOutput]);
+    final input = Uint8List.fromList([...rootKey, ...dhOutput]);
 
     // Derive 64 bytes:  32 for root key, 32 for chain key
-    final derived = sodium.crypto. genericHash(
-      message: input,
-      outLen: 64,
-    );
+    final derived = sodium.crypto.genericHash(message: input, outLen: 64);
 
     return RootKeyDerivation(
-      rootKey: derived. sublist(0, 32),
-      chainKey: derived. sublist(32, 64),
+      rootKey: derived.sublist(0, 32),
+      chainKey: derived.sublist(32, 64),
     );
   }
 
@@ -158,14 +146,14 @@ final class Hashing {
 
     // Message key = HMAC(chainKey, 0x01)
     final messageKey = sodium.crypto.genericHash(
-      message:  Uint8List.fromList([0x01, ...chainKey]),
+      message: Uint8List.fromList([0x01, ...chainKey]),
       outLen: 32,
     );
 
     // Next chain key = HMAC(chainKey, 0x02)
     final nextChainKey = sodium.crypto.genericHash(
-      message:  Uint8List.fromList([0x02, ...chainKey]),
-      outLen:  32,
+      message: Uint8List.fromList([0x02, ...chainKey]),
+      outLen: 32,
     );
 
     return ChainKeyDerivation(
@@ -198,7 +186,7 @@ final class Hashing {
     // Convert password string to Int8List for pwhash. call
     final passwordBytes = Int8List.fromList(password.codeUnits);
 
-    return sodium.crypto.pwhash. call(
+    return sodium.crypto.pwhash.call(
       password: passwordBytes,
       salt: salt,
       outLen: outputLength,
@@ -210,21 +198,21 @@ final class Hashing {
   /// Generate password hash for storage
   static Future<String> hashPassword(String password) async {
     final sodium = await SodiumLoader.sodium;
-    
+
     // pwhash.str expects String directly
     return sodium.crypto.pwhash.str(
       password: password,
       opsLimit: sodium.crypto.pwhash.opsLimitModerate,
-      memLimit: sodium.crypto.pwhash. memLimitModerate,
+      memLimit: sodium.crypto.pwhash.memLimitModerate,
     );
   }
 
   /// Verify password against stored hash
   static Future<bool> verifyPassword(String password, String storedHash) async {
     final sodium = await SodiumLoader.sodium;
-    
+
     // pwhash.strVerify expects String for password
-    return sodium. crypto.pwhash.strVerify(
+    return sodium.crypto.pwhash.strVerify(
       passwordHash: storedHash,
       password: password,
     );
@@ -275,17 +263,17 @@ final class Hashing {
     switch (strength) {
       case PasswordHashStrength.interactive:
         return (
-          sodium.crypto. pwhash.opsLimitInteractive,
-          sodium.crypto.pwhash. memLimitInteractive,
+          sodium.crypto.pwhash.opsLimitInteractive,
+          sodium.crypto.pwhash.memLimitInteractive,
         );
       case PasswordHashStrength.moderate:
         return (
-          sodium.crypto. pwhash. opsLimitModerate,
-          sodium. crypto.pwhash.memLimitModerate,
+          sodium.crypto.pwhash.opsLimitModerate,
+          sodium.crypto.pwhash.memLimitModerate,
         );
       case PasswordHashStrength.sensitive:
         return (
-          sodium.crypto.pwhash. opsLimitSensitive,
+          sodium.crypto.pwhash.opsLimitSensitive,
           sodium.crypto.pwhash.memLimitSensitive,
         );
     }
@@ -309,10 +297,7 @@ class RootKeyDerivation {
   final Uint8List rootKey;
   final Uint8List chainKey;
 
-  const RootKeyDerivation({
-    required this.rootKey,
-    required this. chainKey,
-  });
+  const RootKeyDerivation({required this.rootKey, required this.chainKey});
 }
 
 /// Result of chain key derivation
@@ -322,6 +307,6 @@ class ChainKeyDerivation {
 
   const ChainKeyDerivation({
     required this.messageKey,
-    required this. nextChainKey,
+    required this.nextChainKey,
   });
 }

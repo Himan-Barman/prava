@@ -200,7 +200,7 @@ class _MessageRequestsPageState extends State<MessageRequestsPage> {
                       const SizedBox(width: 12),
                       Text(
                         'Message requests',
-                        style: PravaTypography.h3.copyWith(
+                        style: PravaTypography.titleSmall.copyWith(
                           color: primary,
                           fontWeight: FontWeight.w700,
                         ),
@@ -306,11 +306,12 @@ class _RequestCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundColor:
-                    PravaColors.accentPrimary.withValues(alpha: 0.16),
+                backgroundColor: PravaColors.accentPrimary.withValues(
+                  alpha: 0.16,
+                ),
                 child: Text(
                   initial,
-                  style: PravaTypography.h3.copyWith(
+                  style: PravaTypography.titleSmall.copyWith(
                     color: PravaColors.accentPrimary,
                     fontWeight: FontWeight.w700,
                   ),
@@ -325,7 +326,7 @@ class _RequestCard extends StatelessWidget {
                       name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: PravaTypography.body.copyWith(
+                      style: PravaTypography.bodyMedium.copyWith(
                         color: primary,
                         fontWeight: FontWeight.w700,
                       ),
@@ -335,9 +336,7 @@ class _RequestCard extends StatelessWidget {
                       preview,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: PravaTypography.caption.copyWith(
-                        color: secondary,
-                      ),
+                      style: PravaTypography.caption.copyWith(color: secondary),
                     ),
                   ],
                 ),
@@ -404,16 +403,14 @@ class _RequestButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: filled ? PravaColors.accentPrimary : Colors.transparent,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: filled ? Colors.transparent : border,
-          ),
+          border: Border.all(color: filled ? Colors.transparent : border),
         ),
         child: Center(
           child: pending
               ? const CupertinoActivityIndicator(radius: 8)
               : Text(
                   label,
-                  style: PravaTypography.button.copyWith(
+                  style: PravaTypography.buttonMedium.copyWith(
                     color: filled ? Colors.white : PravaColors.accentPrimary,
                     fontWeight: FontWeight.w700,
                   ),
@@ -425,10 +422,7 @@ class _RequestButton extends StatelessWidget {
 }
 
 class _EmptyRequests extends StatelessWidget {
-  const _EmptyRequests({
-    required this.primary,
-    required this.secondary,
-  });
+  const _EmptyRequests({required this.primary, required this.secondary});
 
   final Color primary;
   final Color secondary;
@@ -444,7 +438,7 @@ class _EmptyRequests extends StatelessWidget {
         Text(
           'No message requests',
           textAlign: TextAlign.center,
-          style: PravaTypography.h3.copyWith(
+          style: PravaTypography.titleSmall.copyWith(
             color: primary,
             fontWeight: FontWeight.w700,
           ),
@@ -453,7 +447,7 @@ class _EmptyRequests extends StatelessWidget {
         Text(
           'Messages from people who are not friends appear here first.',
           textAlign: TextAlign.center,
-          style: PravaTypography.body.copyWith(color: secondary),
+          style: PravaTypography.bodyMedium.copyWith(color: secondary),
         ),
       ],
     );

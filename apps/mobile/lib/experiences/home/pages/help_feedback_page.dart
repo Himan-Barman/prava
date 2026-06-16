@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../../../ui-system/background.dart';
 import '../../../ui-system/colors.dart';
+import '../../../ui-system/components/prava_input.dart';
 import '../../../ui-system/typography.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
@@ -238,7 +239,7 @@ class _TopBar extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: PravaTypography.h2.copyWith(
+              style: PravaTypography.titleLarge.copyWith(
                 color: primary,
                 fontWeight: FontWeight.w800,
               ),
@@ -395,7 +396,7 @@ class _HelpSection extends StatelessWidget {
               Expanded(
                 child: Text(
                   'All systems operational',
-                  style: PravaTypography.body.copyWith(
+                  style: PravaTypography.bodyMedium.copyWith(
                     color: primary,
                     fontWeight: FontWeight.w600,
                   ),
@@ -405,7 +406,7 @@ class _HelpSection extends StatelessWidget {
                 onPressed: () => _showToast(context, 'Status page coming soon'),
                 child: Text(
                   'Details',
-                  style: PravaTypography.button.copyWith(
+                  style: PravaTypography.buttonMedium.copyWith(
                     color: PravaColors.accentPrimary,
                   ),
                 ),
@@ -480,17 +481,12 @@ class _ReportSection extends StatelessWidget {
                 }).toList(),
               ),
               const SizedBox(height: 12),
-              TextField(
+              PravaInput(
                 controller: reportController,
+                hint: 'Describe what happened...',
+                fieldType: PravaInputFieldType.post,
+                variant: PravaInputVariant.settings,
                 maxLines: 5,
-                style: PravaTypography.body.copyWith(color: primary),
-                decoration: InputDecoration(
-                  hintText: 'Describe what happened...',
-                  hintStyle: PravaTypography.body.copyWith(color: secondary),
-                  border: InputBorder.none,
-                  filled: true,
-                  fillColor: isDark ? Colors.white10 : Colors.black12,
-                ),
               ),
               const SizedBox(height: 12),
               _ToggleRow(
@@ -553,7 +549,7 @@ class _FeedbackSection extends StatelessWidget {
             children: [
               Text(
                 'How is Prava today?',
-                style: PravaTypography.body.copyWith(
+                style: PravaTypography.bodyMedium.copyWith(
                   color: primary,
                   fontWeight: FontWeight.w600,
                 ),
@@ -572,17 +568,12 @@ class _FeedbackSection extends StatelessWidget {
                 activeColor: PravaColors.accentPrimary,
               ),
               const SizedBox(height: 6),
-              TextField(
+              PravaInput(
                 controller: feedbackController,
+                hint: 'Share your ideas or feedback...',
+                fieldType: PravaInputFieldType.post,
+                variant: PravaInputVariant.settings,
                 maxLines: 4,
-                style: PravaTypography.body.copyWith(color: primary),
-                decoration: InputDecoration(
-                  hintText: 'Share your ideas or feedback...',
-                  hintStyle: PravaTypography.body.copyWith(color: secondary),
-                  border: InputBorder.none,
-                  filled: true,
-                  fillColor: isDark ? Colors.white10 : Colors.black12,
-                ),
               ),
               const SizedBox(height: 12),
               _ToggleRow(
@@ -628,7 +619,7 @@ class _SectionCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: PravaTypography.h3.copyWith(
+            style: PravaTypography.titleSmall.copyWith(
               color: primary,
               fontWeight: FontWeight.w700,
             ),
@@ -675,7 +666,7 @@ class _ActionTile extends StatelessWidget {
       ),
       title: Text(
         title,
-        style: PravaTypography.body.copyWith(
+        style: PravaTypography.bodyMedium.copyWith(
           color: primary,
           fontWeight: FontWeight.w600,
         ),
@@ -722,7 +713,7 @@ class _ToggleRow extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: PravaTypography.body.copyWith(
+                style: PravaTypography.bodyMedium.copyWith(
                   color: primary,
                   fontWeight: FontWeight.w600,
                 ),
@@ -776,7 +767,7 @@ class _PrimaryButton extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: PravaTypography.button.copyWith(color: Colors.white),
+          style: PravaTypography.buttonMedium.copyWith(color: Colors.white),
         ),
       ),
     );

@@ -9,14 +9,14 @@ import '../crypto/hashing.dart';
 /// ============================================================
 /// Chain Key Management
 /// ============================================================
-/// Manages symmetric-key ratchet chains for Double Ratchet: 
+/// Manages symmetric-key ratchet chains for Double Ratchet:
 ///
 /// Chain Key (CK):
 /// • 32-byte symmetric key
 /// • Advanced after each message
 /// • Derives message keys
 ///
-/// Derivation: 
+/// Derivation:
 /// • Message Key = HMAC(CK, 0x01)
 /// • Next Chain Key = HMAC(CK, 0x02)
 ///
@@ -28,7 +28,7 @@ final class ChainKey {
   final Uint8List _key;
   final int index;
 
-  ChainKey. _(this._key, this.index);
+  ChainKey._(this._key, this.index);
 
   /// Create chain key from bytes
   factory ChainKey.fromBytes(Uint8List key, {int index = 0}) {
@@ -52,8 +52,8 @@ final class ChainKey {
     final derived = await Hashing.kdfChainKey(_key);
 
     return ChainKeyAdvance(
-      messageKey: derived. messageKey,
-      nextChainKey:  ChainKey._(derived.nextChainKey, index + 1),
+      messageKey: derived.messageKey,
+      nextChainKey: ChainKey._(derived.nextChainKey, index + 1),
     );
   }
 
@@ -63,13 +63,13 @@ final class ChainKey {
 
     // Message key = HMAC(CK, 0x01)
     final messageKey = sodium.crypto.genericHash(
-      message:  Uint8List.fromList([0x01, ..._key]),
+      message: Uint8List.fromList([0x01, ..._key]),
       outLen: 32,
     );
 
     // Next chain key = HMAC(CK, 0x02)
     final nextChainKey = sodium.crypto.genericHash(
-      message:  Uint8List. fromList([0x02, ..._key]),
+      message: Uint8List.fromList([0x02, ..._key]),
       outLen: 32,
     );
 
@@ -81,22 +81,19 @@ final class ChainKey {
 
   /// Convert to SecureKey
   Future<SecureKey> toSecureKey() async {
-    final sodium = await SodiumLoader. sodium;
+    final sodium = await SodiumLoader.sodium;
     return sodium.secureCopy(_key);
   }
 
   /// Zero the key material
   void dispose() {
-    for (var i = 0; i < _key. length; i++) {
+    for (var i = 0; i < _key.length; i++) {
       _key[i] = 0;
     }
   }
 
   /// Serialize for storage
-  Map<String, dynamic> toJson() => {
-        'key': _key.toList(),
-        'index': index,
-      };
+  Map<String, dynamic> toJson() => {'key': _key.toList(), 'index': index};
 
   /// Deserialize from storage
   factory ChainKey.fromJson(Map<String, dynamic> json) {
@@ -115,10 +112,7 @@ class ChainKeyAdvance {
   /// Next chain key after advancement
   final ChainKey nextChainKey;
 
-  const ChainKeyAdvance({
-    required this. messageKey,
-    required this.nextChainKey,
-  });
+  const ChainKeyAdvance({required this.messageKey, required this.nextChainKey});
 
   /// Zero the message key
   void disposeMessageKey() {

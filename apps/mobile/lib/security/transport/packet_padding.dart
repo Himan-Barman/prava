@@ -34,7 +34,7 @@ final class PacketPadding {
 
   /// Pad to specific size
   static Future<Uint8List> pad(Uint8List data, int targetSize) async {
-    if (data. length + 2 > targetSize) {
+    if (data.length + 2 > targetSize) {
       throw ArgumentError('Data too large for target size');
     }
 
@@ -44,14 +44,14 @@ final class PacketPadding {
     final result = Uint8List(targetSize);
 
     // Store length (2 bytes, big-endian)
-    result[0] = (data. length >> 8) & 0xFF;
+    result[0] = (data.length >> 8) & 0xFF;
     result[1] = data.length & 0xFF;
 
     // Copy data
-    result.setRange(2, 2 + data. length, data);
+    result.setRange(2, 2 + data.length, data);
 
     // Copy random padding
-    result. setRange(2 + data.length, targetSize, padding);
+    result.setRange(2 + data.length, targetSize, padding);
 
     return result;
   }

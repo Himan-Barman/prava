@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../ui-system/colors.dart';
+import '../../../../ui-system/components/prava_input.dart';
 import '../../../../ui-system/typography.dart';
 import '../../../../ui-system/skeleton/chat_list_skeleton.dart';
 import '../../../../navigation/prava_navigator.dart';
@@ -857,17 +858,9 @@ class _ChatsPageState extends State<ChatsPage> {
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: border),
                         ),
-                        child: CupertinoSearchTextField(
+                        child: PravaSearchInput(
                           controller: _searchController,
-                          placeholder: 'Search chats',
-                          backgroundColor: Colors.transparent,
-                          itemColor: tokens.iconSecondary,
-                          style: PravaTypography.body.copyWith(
-                            color: tokens.textPrimary,
-                          ),
-                          placeholderStyle: PravaTypography.body.copyWith(
-                            color: tokens.textTertiary,
-                          ),
+                          hint: 'Search chats',
                         ),
                       ),
                     ),
@@ -1135,7 +1128,7 @@ class _ChatTile extends StatelessWidget {
                           ? Icon(CupertinoIcons.person_2_fill, color: accent)
                           : Text(
                               chat.name[0].toUpperCase(),
-                              style: PravaTypography.h3.copyWith(
+                              style: PravaTypography.titleSmall.copyWith(
                                 color: accent,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -1167,7 +1160,7 @@ class _ChatTile extends StatelessWidget {
                           Expanded(
                             child: Text(
                               chat.name,
-                              style: PravaTypography.body.copyWith(
+                              style: PravaTypography.bodyMedium.copyWith(
                                 color: primary,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -1419,7 +1412,7 @@ class _EmptyChatsState extends StatelessWidget {
           child: Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: PravaTypography.body.copyWith(color: secondary),
+            style: PravaTypography.bodyMedium.copyWith(color: secondary),
           ),
         ),
       ],

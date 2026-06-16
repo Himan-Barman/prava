@@ -64,30 +64,49 @@ class ProfileUser {
 class ProfileStats {
   ProfileStats({
     required this.posts,
+    required this.replies,
+    required this.media,
     required this.followers,
     required this.following,
+    required this.friends,
+    required this.mutualFriends,
+    required this.closeFriends,
     required this.likes,
+    required this.saved,
+    required this.drafts,
+    required this.archive,
+    required this.hiddenPosts,
   });
 
   final int posts;
+  final int replies;
+  final int media;
   final int followers;
   final int following;
+  final int friends;
+  final int mutualFriends;
+  final int closeFriends;
   final int likes;
+  final int saved;
+  final int drafts;
+  final int archive;
+  final int hiddenPosts;
 
   factory ProfileStats.fromJson(Map<String, dynamic> json) {
     return ProfileStats(
-      posts: json['posts'] is int
-          ? json['posts'] as int
-          : int.tryParse(json['posts']?.toString() ?? '') ?? 0,
-      followers: json['followers'] is int
-          ? json['followers'] as int
-          : int.tryParse(json['followers']?.toString() ?? '') ?? 0,
-      following: json['following'] is int
-          ? json['following'] as int
-          : int.tryParse(json['following']?.toString() ?? '') ?? 0,
-      likes: json['likes'] is int
-          ? json['likes'] as int
-          : int.tryParse(json['likes']?.toString() ?? '') ?? 0,
+      posts: _intValue(json['posts']),
+      replies: _intValue(json['replies']),
+      media: _intValue(json['media']),
+      followers: _intValue(json['followers']),
+      following: _intValue(json['following']),
+      friends: _intValue(json['friends']),
+      mutualFriends: _intValue(json['mutualFriends']),
+      closeFriends: _intValue(json['closeFriends']),
+      likes: _intValue(json['likes']),
+      saved: _intValue(json['saved']),
+      drafts: _intValue(json['drafts']),
+      archive: _intValue(json['archive']),
+      hiddenPosts: _intValue(json['hiddenPosts']),
     );
   }
 }
@@ -100,6 +119,8 @@ class ProfileFeedPost {
     required this.likeCount,
     required this.commentCount,
     required this.shareCount,
+    required this.readCount,
+    required this.mediaUrls,
     required this.mentions,
     required this.hashtags,
   });
@@ -110,6 +131,8 @@ class ProfileFeedPost {
   final int likeCount;
   final int commentCount;
   final int shareCount;
+  final int readCount;
+  final List<String> mediaUrls;
   final List<String> mentions;
   final List<String> hashtags;
 
@@ -129,11 +152,100 @@ class ProfileFeedPost {
       shareCount: json['shareCount'] is int
           ? json['shareCount'] as int
           : int.tryParse(json['shareCount']?.toString() ?? '') ?? 0,
+      readCount: _intValue(json['readCount']),
+      mediaUrls: (json['mediaUrls'] as List<dynamic>? ?? [])
+          .map((value) => value.toString())
+          .toList(),
       mentions: (json['mentions'] as List<dynamic>? ?? [])
           .map((m) => m.toString())
           .toList(),
       hashtags: (json['hashtags'] as List<dynamic>? ?? [])
           .map((t) => t.toString())
+          .toList(),
+    );
+  }
+}
+
+class ProfileOwnerShortcut {
+  ProfileOwnerShortcut({
+    required this.key,
+    required this.label,
+    required this.count,
+  });
+
+  final String key;
+  final String label;
+  final int count;
+
+  factory ProfileOwnerShortcut.fromJson(Map<String, dynamic> json) {
+    return ProfileOwnerShortcut(
+      key: json['key']?.toString() ?? '',
+      label: json['label']?.toString() ?? '',
+      count: _intValue(json['count']),
+    );
+  }
+}
+
+class ProfileOwnerTools {
+  ProfileOwnerTools({
+    required this.completionScore,
+    required this.accountHealthLabel,
+    required this.accountRisk,
+    required this.verified,
+    required this.privateAccount,
+    required this.profileViews,
+    required this.postReach,
+    required this.newFollowers,
+    required this.engagement,
+    required this.shortcuts,
+    required this.previewModes,
+  });
+
+  final int completionScore;
+  final String accountHealthLabel;
+  final String accountRisk;
+  final bool verified;
+  final bool privateAccount;
+  final int profileViews;
+  final int postReach;
+  final int newFollowers;
+  final int engagement;
+  final List<ProfileOwnerShortcut> shortcuts;
+  final List<String> previewModes;
+
+  factory ProfileOwnerTools.fromJson(Map<String, dynamic>? json) {
+    final data = json ?? {};
+    final completion = data['completion'] is Map
+        ? Map<String, dynamic>.from(data['completion'] as Map)
+        : <String, dynamic>{};
+    final accountHealth = data['accountHealth'] is Map
+        ? Map<String, dynamic>.from(data['accountHealth'] as Map)
+        : <String, dynamic>{};
+    final verification = data['verification'] is Map
+        ? Map<String, dynamic>.from(data['verification'] as Map)
+        : <String, dynamic>{};
+    final privacy = data['privacyCheckup'] is Map
+        ? Map<String, dynamic>.from(data['privacyCheckup'] as Map)
+        : <String, dynamic>{};
+    final analytics = data['analytics'] is Map
+        ? Map<String, dynamic>.from(data['analytics'] as Map)
+        : <String, dynamic>{};
+    return ProfileOwnerTools(
+      completionScore: _intValue(completion['score']),
+      accountHealthLabel: accountHealth['label']?.toString() ?? 'Good standing',
+      accountRisk: accountHealth['risk']?.toString() ?? 'low',
+      verified: verification['verified'] == true,
+      privateAccount: privacy['privateAccount'] == true,
+      profileViews: _intValue(analytics['profileViews']),
+      postReach: _intValue(analytics['postReach']),
+      newFollowers: _intValue(analytics['newFollowers']),
+      engagement: _intValue(analytics['engagement']),
+      shortcuts: (data['shortcuts'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(ProfileOwnerShortcut.fromJson)
+          .toList(),
+      previewModes: (data['previewModes'] as List<dynamic>? ?? [])
+          .map((value) => value.toString())
           .toList(),
     );
   }
@@ -207,6 +319,9 @@ class ProfileSummary {
     required this.mentionedPosts,
     required this.liked,
     required this.visibility,
+    required this.ownerTools,
+    required this.profileState,
+    required this.viewerRelation,
   });
 
   final ProfileUser user;
@@ -217,6 +332,9 @@ class ProfileSummary {
   final List<ProfileFeedPost> mentionedPosts;
   final List<ProfileFeedPost> liked;
   final ProfileVisibility visibility;
+  final ProfileOwnerTools ownerTools;
+  final String profileState;
+  final String viewerRelation;
 
   factory ProfileSummary.fromJson(Map<String, dynamic> json) {
     final posts = (json['posts'] as List<dynamic>? ?? [])
@@ -255,6 +373,11 @@ class ProfileSummary {
       visibility: ProfileVisibility.fromSummaryJson(
         json['visibility'] as Map<String, dynamic>?,
       ),
+      ownerTools: ProfileOwnerTools.fromJson(
+        json['ownerTools'] as Map<String, dynamic>?,
+      ),
+      profileState: json['profileState']?.toString() ?? 'public',
+      viewerRelation: json['viewerRelation']?.toString() ?? '',
     );
   }
 }
@@ -270,6 +393,20 @@ class ProfileService {
       '/users/me/profile',
       auth: true,
       query: {'limit': limit.toString()},
+    );
+
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    return ProfileSummary.fromJson(payload);
+  }
+
+  Future<ProfileSummary> fetchProfilePreview(
+    String mode, {
+    int limit = 12,
+  }) async {
+    final data = await _client.get(
+      '/users/me/profile/preview',
+      auth: true,
+      query: {'as': mode, 'limit': limit.toString()},
     );
 
     final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
@@ -299,4 +436,9 @@ class ProfileService {
       settings is Map<String, dynamic> ? settings : payload,
     );
   }
+}
+
+int _intValue(dynamic value) {
+  if (value is int) return value;
+  return int.tryParse(value?.toString() ?? '') ?? 0;
 }

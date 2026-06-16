@@ -22,18 +22,13 @@ class BlockedUser {
       username: json['username']?.toString() ?? '',
       displayName: json['displayName']?.toString() ?? '',
       isVerified: json['isVerified'] == true,
-      blockedAt:
-          DateTime.tryParse(json['blockedAt']?.toString() ?? ''),
+      blockedAt: DateTime.tryParse(json['blockedAt']?.toString() ?? ''),
     );
   }
 }
 
 class MutedWord {
-  MutedWord({
-    required this.id,
-    required this.phrase,
-    required this.createdAt,
-  });
+  MutedWord({required this.id, required this.phrase, required this.createdAt});
 
   final String id;
   final String phrase;
@@ -43,15 +38,14 @@ class MutedWord {
     return MutedWord(
       id: json['id']?.toString() ?? '',
       phrase: json['phrase']?.toString() ?? '',
-      createdAt:
-          DateTime.tryParse(json['createdAt']?.toString() ?? ''),
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
     );
   }
 }
 
 class PrivacyService {
   PrivacyService({SecureStore? store})
-      : _client = ApiClient(store ?? SecureStore());
+    : _client = ApiClient(store ?? SecureStore());
 
   final ApiClient _client;
 

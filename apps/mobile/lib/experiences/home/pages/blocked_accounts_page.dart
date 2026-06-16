@@ -85,7 +85,7 @@ class _BlockedAccountsPageState extends State<BlockedAccountsPage> {
           ? Center(
               child: Text(
                 'No blocked accounts',
-                style: PravaTypography.body.copyWith(color: secondary),
+                style: PravaTypography.bodyMedium.copyWith(color: secondary),
               ),
             )
           : ListView.builder(
@@ -108,7 +108,7 @@ class _BlockedAccountsPageState extends State<BlockedAccountsPage> {
                             user.displayName.isNotEmpty
                                 ? user.displayName.substring(0, 1).toUpperCase()
                                 : 'P',
-                            style: PravaTypography.body.copyWith(
+                            style: PravaTypography.bodyMedium.copyWith(
                               color: PravaColors.accentPrimary,
                               fontWeight: FontWeight.w700,
                             ),
@@ -126,10 +126,11 @@ class _BlockedAccountsPageState extends State<BlockedAccountsPage> {
                                       user.displayName,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: PravaTypography.body.copyWith(
-                                        color: primary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                      style: PravaTypography.bodyMedium
+                                          .copyWith(
+                                            color: primary,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                     ),
                                   ),
                                   if (user.isVerified) ...[
@@ -156,7 +157,7 @@ class _BlockedAccountsPageState extends State<BlockedAccountsPage> {
                           onPressed: () => _unblock(user),
                           child: Text(
                             'Unblock',
-                            style: PravaTypography.button.copyWith(
+                            style: PravaTypography.buttonMedium.copyWith(
                               color: PravaColors.accentPrimary,
                             ),
                           ),

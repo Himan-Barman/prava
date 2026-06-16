@@ -26,7 +26,7 @@ class LegalPage extends StatelessWidget {
         children: [
           Text(
             title,
-            style: PravaTypography.h3.copyWith(
+            style: PravaTypography.titleSmall.copyWith(
               color: primary,
               fontWeight: FontWeight.w700,
             ),
@@ -34,7 +34,10 @@ class LegalPage extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             content,
-            style: PravaTypography.body.copyWith(color: secondary, height: 1.5),
+            style: PravaTypography.bodyMedium.copyWith(
+              color: secondary,
+              height: 1.5,
+            ),
           ),
         ],
       ),

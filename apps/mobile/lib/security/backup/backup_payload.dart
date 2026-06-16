@@ -5,7 +5,7 @@ import 'dart:typed_data';
 /// ============================================================
 /// Backup Payload
 /// ============================================================
-/// Complete account state for backup/restore: 
+/// Complete account state for backup/restore:
 ///
 /// • Identity keys
 /// • All session states
@@ -56,18 +56,18 @@ final class BackupPayload {
 
   /// Serialize to JSON
   Map<String, dynamic> toJson() => {
-        'version': version,
-        'identity':  identity,
-        'sessions': sessions,
-        'preKeys':  preKeys,
-        'signedPreKey': signedPreKey,
-        'devices': devices,
-        'createdAt':  createdAt,
-      };
+    'version': version,
+    'identity': identity,
+    'sessions': sessions,
+    'preKeys': preKeys,
+    'signedPreKey': signedPreKey,
+    'devices': devices,
+    'createdAt': createdAt,
+  };
 
   /// Deserialize from JSON
   factory BackupPayload.fromJson(Map<String, dynamic> json) {
-    final version = json['version'] as int?  ?? 1;
+    final version = json['version'] as int? ?? 1;
 
     if (version > currentVersion) {
       throw BackupVersionException(
@@ -77,17 +77,18 @@ final class BackupPayload {
 
     return BackupPayload(
       version: version,
-      identity:  json['identity'] as Map<String, dynamic>,
-      sessions:  (json['sessions'] as List)
+      identity: json['identity'] as Map<String, dynamic>,
+      sessions: (json['sessions'] as List)
           .map((e) => e as Map<String, dynamic>)
           .toList(),
       preKeys: json['preKeys'] as Map<String, dynamic>,
       signedPreKey: json['signedPreKey'] as Map<String, dynamic>,
-      devices: (json['devices'] as List?)
+      devices:
+          (json['devices'] as List?)
               ?.map((e) => e as Map<String, dynamic>)
               .toList() ??
           [],
-      createdAt:  json['createdAt'] as int,
+      createdAt: json['createdAt'] as int,
     );
   }
 
@@ -97,9 +98,9 @@ final class BackupPayload {
   }
 
   /// Decode from bytes
-  factory BackupPayload. decode(Uint8List bytes) {
+  factory BackupPayload.decode(Uint8List bytes) {
     final json = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-    return BackupPayload. fromJson(json);
+    return BackupPayload.fromJson(json);
   }
 
   /// Get creation date
@@ -109,7 +110,7 @@ final class BackupPayload {
   int get sessionCount => sessions.length;
 
   /// Device count
-  int get deviceCount => devices. length;
+  int get deviceCount => devices.length;
 }
 
 /// Backup version exception

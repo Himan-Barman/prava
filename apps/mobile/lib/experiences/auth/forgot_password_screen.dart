@@ -78,11 +78,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       final message = err is ApiException
           ? err.message
           : 'Unable to send reset code';
-      PravaToast.show(
-        context,
-        message: message,
-        type: PravaToastType.error,
-      );
+      PravaToast.show(context, message: message, type: PravaToastType.error);
     }
   }
 
@@ -90,19 +86,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     HapticFeedback.selectionClick();
     PravaNavigator.push(
       context,
-      ResetPasswordScreen(
-        email: _emailController.text.trim(),
-      ),
+      ResetPasswordScreen(email: _emailController.text.trim()),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryText =
-        isDark ? PravaColors.darkTextPrimary : PravaColors.lightTextPrimary;
-    final secondaryText =
-        isDark ? PravaColors.darkTextSecondary : PravaColors.lightTextSecondary;
+    final primaryText = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondaryText = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
@@ -127,7 +123,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     children: [
                       Text(
                         'Reset your password',
-                        style: PravaTypography.h1.copyWith(
+                        style: PravaTypography.displayMedium.copyWith(
                           letterSpacing: -0.6,
                           color: primaryText,
                         ),
@@ -135,7 +131,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       const SizedBox(height: 8),
                       Text(
                         'Enter your email and we will send a secure reset code.',
-                        style: PravaTypography.body.copyWith(
+                        style: PravaTypography.bodyMedium.copyWith(
                           color: secondaryText,
                         ),
                       ),
@@ -143,6 +139,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       PravaInput(
                         hint: 'Email address',
                         controller: _emailController,
+                        fieldType: PravaInputFieldType.email,
+                        variant: PravaInputVariant.auth,
+                        prefixIcon: const Icon(Icons.mail_rounded),
+                        showClearButton: true,
+                        requiredField: true,
                         keyboardType: TextInputType.emailAddress,
                         autofillHints: const [AutofillHints.email],
                       ),
@@ -172,7 +173,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                             children: [
                               Text(
                                 'Check your inbox',
-                                style: PravaTypography.body.copyWith(
+                                style: PravaTypography.bodyMedium.copyWith(
                                   color: primaryText,
                                   fontWeight: FontWeight.w600,
                                 ),

@@ -139,7 +139,7 @@ class HomeOverflowMenu {
             Expanded(
               child: Text(
                 label,
-                style: PravaTypography.body.copyWith(
+                style: PravaTypography.bodyMedium.copyWith(
                   color: labelColor,
                   fontWeight: FontWeight.w600,
                 ),

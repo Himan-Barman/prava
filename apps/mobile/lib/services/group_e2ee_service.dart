@@ -15,9 +15,9 @@ class GroupE2eeService {
   static const String distributionType = 'sender_key_distribution';
 
   GroupE2eeService({SecureStore? store, E2eeService? e2ee})
-      : _store = store ?? SecureStore(),
-        _deviceIdStore = DeviceIdStore(store ?? SecureStore()),
-        _e2ee = e2ee ?? E2eeService(store: store ?? SecureStore());
+    : _store = store ?? SecureStore(),
+      _deviceIdStore = DeviceIdStore(store ?? SecureStore()),
+      _e2ee = e2ee ?? E2eeService(store: store ?? SecureStore());
 
   final SecureStore _store;
   final DeviceIdStore _deviceIdStore;
@@ -45,7 +45,8 @@ class GroupE2eeService {
       senderId: userId,
       deviceId: deviceId,
     );
-    final needsRotate = existing == null ||
+    final needsRotate =
+        existing == null ||
         existing.signaturePrivateKey == null ||
         SenderKeyRatchet.needsRotation(existing);
 
@@ -56,20 +57,11 @@ class GroupE2eeService {
         senderId: userId,
         deviceId: deviceId,
       );
-      await SenderKeyStore.saveSenderKey(
-        senderKey: created,
-        isOwn: true,
-      );
-      return GroupSenderKeyBundle(
-        senderKey: created,
-        needsDistribution: true,
-      );
+      await SenderKeyStore.saveSenderKey(senderKey: created, isOwn: true);
+      return GroupSenderKeyBundle(senderKey: created, needsDistribution: true);
     }
 
-    return GroupSenderKeyBundle(
-      senderKey: existing,
-      needsDistribution: false,
-    );
+    return GroupSenderKeyBundle(senderKey: existing, needsDistribution: false);
   }
 
   Future<GroupEncryptResult?> encryptGroupMessage({
@@ -95,10 +87,7 @@ class GroupE2eeService {
       senderKey: senderKey,
     );
 
-    await SenderKeyStore.saveSenderKey(
-      senderKey: senderKey,
-      isOwn: true,
-    );
+    await SenderKeyStore.saveSenderKey(senderKey: senderKey, isOwn: true);
 
     return GroupEncryptResult(
       body: _encodeGroupEnvelope(message),
@@ -199,10 +188,7 @@ class GroupE2eeService {
     final senderKey = SenderKeyDistribution.processDistributionMessage(
       message: message,
     );
-    await SenderKeyStore.saveSenderKey(
-      senderKey: senderKey,
-      isOwn: false,
-    );
+    await SenderKeyStore.saveSenderKey(senderKey: senderKey, isOwn: false);
 
     return GroupDistributionResult(
       groupId: message.groupId,
@@ -212,10 +198,7 @@ class GroupE2eeService {
   }
 
   String _encodeGroupEnvelope(SenderKeyMessage message) {
-    final payload = {
-      'v': 1,
-      'message': message.toJson(),
-    };
+    final payload = {'v': 1, 'message': message.toJson()};
     return '$groupEnvelopePrefix${base64Encode(utf8.encode(jsonEncode(payload)))}';
   }
 

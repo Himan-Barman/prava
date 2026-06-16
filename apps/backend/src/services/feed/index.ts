@@ -5,12 +5,30 @@ import { publishToFeedSubscribers } from "../realtime/hub.js";
 import { enqueueNotificationEvent } from "../notification/repository.js";
 import {
   buildFeedPage,
+  clearFeedServedHistory,
+  deleteCustomFeed,
+  explainPostRecommendation,
+  exportFeedSettings,
+  followTopic,
+  getFeedPreferences,
   ingestFeedEvents,
+  listCustomFeeds,
+  listFeedTopics,
+  listInferredInterests,
   markPostHidden,
   markPostNotInterested,
+  normalizeFeedMode,
+  muteTopic,
+  recordFeedFeedback,
   recordFeedEvent,
+  removeInferredInterest,
+  resetFeedPersonalization,
   runFeedAggregationJobs,
+  saveCustomFeed,
   startFeedAggregationScheduler,
+  unfollowTopic,
+  unmuteTopic,
+  updateFeedPreferences,
 } from "./recommendation.js";
 
 const MAX_POST_WORDS = 200;
@@ -87,7 +105,10 @@ function mapFeedPost(post: any, author: any, liked: boolean, followed: boolean) 
     readCount: Number(post.read_count || 0),
     rankScore: Number(post.rank_score || 0),
     recommendationReason: post.recommendation_reason || null,
+    recommendationExplanation: post.recommendation_explanation || null,
+    recommendationMetadata: post.recommendation_metadata || null,
     recommendationReasons: Array.isArray(post.recommendation_reasons) ? post.recommendation_reasons : [],
+    candidateSources: Array.isArray(post.candidate_sources) ? post.candidate_sources : [],
     liked,
     followed,
     mentions: Array.isArray(post.mentions) ? post.mentions : [],
@@ -152,6 +173,7 @@ async function hydrateFeedPage(page: Awaited<ReturnType<typeof buildFeedPage>>, 
   return {
     items: await hydrateFeedPosts(page.items, currentUserId),
     nextCursor: page.nextCursor,
+    sessionId: page.sessionId,
     metrics: page.metrics,
   };
 }
@@ -350,7 +372,7 @@ export default async function feedService(app: any) {
   app.get("/", { preHandler: requireAuth }, async (request: any) => {
     const q = request.query || {};
     const limit = parseLimit(q.limit, 20, 1, 50);
-    const mode = String(q.mode || "for-you");
+    const mode = normalizeFeedMode(q.mode);
     const tag = normalizeTag(q.tag);
 
     const before = parseDateCursor(q.before);
@@ -362,10 +384,14 @@ export default async function feedService(app: any) {
 
     const page = await buildFeedPage({
       viewerId: request.user.userId,
-      mode: mode === "following" ? "following" : "for-you",
+      mode,
       limit,
       before,
       sessionId: String(q.sessionId || "").trim(),
+      lens: String(q.lens || "").trim(),
+      topic: String(q.topic || "").trim(),
+      customFeedId: String(q.feedId || "").trim(),
+      scope: String(q.scope || "").trim(),
     });
 
     request.log?.info?.(page.metrics, "feed served");
@@ -382,6 +408,7 @@ export default async function feedService(app: any) {
       cursor: String(q.cursor || "").trim(),
       before: parseDateCursor(q.before),
       sessionId: String(q.sessionId || "").trim(),
+      lens: String(q.lens || "").trim(),
     });
 
     request.log?.info?.(page.metrics, "for-you feed served");
@@ -398,9 +425,111 @@ export default async function feedService(app: any) {
       cursor: String(q.cursor || "").trim(),
       before: parseDateCursor(q.before),
       sessionId: String(q.sessionId || "").trim(),
+      lens: String(q.lens || "").trim(),
     });
 
     request.log?.info?.(page.metrics, "following feed served");
+    return hydrateFeedPage(page, request.user.userId);
+  });
+
+  app.get("/friends", { preHandler: requireAuth }, async (request: any) => {
+    const q = request.query || {};
+    const page = await buildFeedPage({
+      viewerId: request.user.userId,
+      mode: "friends",
+      limit: parseLimit(q.limit, 20, 1, 50),
+      cursor: String(q.cursor || "").trim(),
+      before: parseDateCursor(q.before),
+      sessionId: String(q.sessionId || "").trim(),
+      lens: String(q.lens || "friends_first").trim(),
+    });
+    return hydrateFeedPage(page, request.user.userId);
+  });
+
+  app.get("/latest", { preHandler: requireAuth }, async (request: any) => {
+    const q = request.query || {};
+    const page = await buildFeedPage({
+      viewerId: request.user.userId,
+      mode: "latest",
+      limit: parseLimit(q.limit, 20, 1, 50),
+      cursor: String(q.cursor || "").trim(),
+      before: parseDateCursor(q.before),
+      sessionId: String(q.sessionId || "").trim(),
+      lens: String(q.lens || "latest").trim(),
+      scope: String(q.scope || "network").trim(),
+    });
+    return hydrateFeedPage(page, request.user.userId);
+  });
+
+  app.get("/explore", { preHandler: requireAuth }, async (request: any) => {
+    const q = request.query || {};
+    const page = await buildFeedPage({
+      viewerId: request.user.userId,
+      mode: "explore",
+      limit: parseLimit(q.limit, 20, 1, 50),
+      cursor: String(q.cursor || "").trim(),
+      before: parseDateCursor(q.before),
+      sessionId: String(q.sessionId || "").trim(),
+      lens: String(q.lens || "discover").trim(),
+    });
+    return hydrateFeedPage(page, request.user.userId);
+  });
+
+  app.get("/conversations", { preHandler: requireAuth }, async (request: any) => {
+    const q = request.query || {};
+    const page = await buildFeedPage({
+      viewerId: request.user.userId,
+      mode: "conversations",
+      limit: parseLimit(q.limit, 20, 1, 50),
+      cursor: String(q.cursor || "").trim(),
+      before: parseDateCursor(q.before),
+      sessionId: String(q.sessionId || "").trim(),
+      lens: String(q.lens || "conversations").trim(),
+    });
+    return hydrateFeedPage(page, request.user.userId);
+  });
+
+  app.get("/catch-up", { preHandler: requireAuth }, async (request: any) => {
+    const q = request.query || {};
+    const page = await buildFeedPage({
+      viewerId: request.user.userId,
+      mode: "catch-up",
+      limit: parseLimit(q.limit, 20, 1, 50),
+      cursor: String(q.cursor || "").trim(),
+      before: parseDateCursor(q.before),
+      sessionId: String(q.sessionId || "").trim(),
+      lens: String(q.lens || "balanced").trim(),
+    });
+    return hydrateFeedPage(page, request.user.userId);
+  });
+
+  app.get("/topic/:topic", { preHandler: requireAuth }, async (request: any) => {
+    const q = request.query || {};
+    const page = await buildFeedPage({
+      viewerId: request.user.userId,
+      mode: "topics",
+      topic: String(request.params.topic || "").trim(),
+      limit: parseLimit(q.limit, 20, 1, 50),
+      cursor: String(q.cursor || "").trim(),
+      before: parseDateCursor(q.before),
+      sessionId: String(q.sessionId || "").trim(),
+      lens: String(q.lens || "").trim(),
+    });
+    return hydrateFeedPage(page, request.user.userId);
+  });
+
+  app.get("/custom/:feedId", { preHandler: requireAuth }, async (request: any) => {
+    const q = request.query || {};
+    const page = await buildFeedPage({
+      viewerId: request.user.userId,
+      mode: "custom",
+      customFeedId: String(request.params.feedId || "").trim(),
+      limit: parseLimit(q.limit, 20, 1, 50),
+      cursor: String(q.cursor || "").trim(),
+      before: parseDateCursor(q.before),
+      sessionId: String(q.sessionId || "").trim(),
+      lens: String(q.lens || "").trim(),
+    });
     return hydrateFeedPage(page, request.user.userId);
   });
 
@@ -423,6 +552,76 @@ export default async function feedService(app: any) {
       rankScore: Number(row.rank_score || 0),
       lastPostAt: toIso(row.last_post_at)
     }));
+  });
+
+  app.get("/topics", { preHandler: requireAuth }, async (request: any) => {
+    return listFeedTopics(request.user.userId, parseLimit(request.query?.limit, 40, 1, 100));
+  });
+
+  app.post("/topics/:topic/follow", { preHandler: requireAuth }, async (request: any) => {
+    return followTopic(request.user.userId, String(request.params.topic || ""));
+  });
+
+  app.delete("/topics/:topic/follow", { preHandler: requireAuth }, async (request: any) => {
+    return unfollowTopic(request.user.userId, String(request.params.topic || ""));
+  });
+
+  app.post("/topics/:topic/mute", { preHandler: requireAuth }, async (request: any) => {
+    return muteTopic(request.user.userId, String(request.params.topic || ""));
+  });
+
+  app.delete("/topics/:topic/mute", { preHandler: requireAuth }, async (request: any) => {
+    return unmuteTopic(request.user.userId, String(request.params.topic || ""));
+  });
+
+  app.post("/topics/:topic/snooze", { preHandler: requireAuth }, async (request: any) => {
+    const days = Number(request.body?.days || 7);
+    return muteTopic(request.user.userId, String(request.params.topic || ""), Number.isFinite(days) ? days : 7);
+  });
+
+  app.get("/preferences", { preHandler: requireAuth }, async (request: any) => {
+    return { preferences: await getFeedPreferences(request.user.userId) };
+  });
+
+  app.patch("/preferences", { preHandler: requireAuth }, async (request: any) => {
+    return { preferences: await updateFeedPreferences(request.user.userId, request.body || {}) };
+  });
+
+  app.post("/preferences/reset", { preHandler: requireAuth }, async (request: any) => {
+    await updateFeedPreferences(request.user.userId, {});
+    return resetFeedPersonalization(request.user.userId);
+  });
+
+  app.get("/preferences/export", { preHandler: requireAuth }, async (request: any) => {
+    return exportFeedSettings(request.user.userId);
+  });
+
+  app.get("/interests", { preHandler: requireAuth }, async (request: any) => {
+    return listInferredInterests(request.user.userId);
+  });
+
+  app.delete("/interests/:topic", { preHandler: requireAuth }, async (request: any) => {
+    return removeInferredInterest(request.user.userId, String(request.params.topic || ""));
+  });
+
+  app.post("/history/clear", { preHandler: requireAuth }, async (request: any) => {
+    return clearFeedServedHistory(request.user.userId);
+  });
+
+  app.get("/custom-feeds", { preHandler: requireAuth }, async (request: any) => {
+    return listCustomFeeds(request.user.userId);
+  });
+
+  app.post("/custom-feeds", { preHandler: requireAuth }, async (request: any) => {
+    return saveCustomFeed(request.user.userId, request.body || {});
+  });
+
+  app.patch("/custom-feeds/:feedId", { preHandler: requireAuth }, async (request: any) => {
+    return saveCustomFeed(request.user.userId, request.body || {}, String(request.params.feedId || ""));
+  });
+
+  app.delete("/custom-feeds/:feedId", { preHandler: requireAuth }, async (request: any) => {
+    return deleteCustomFeed(request.user.userId, String(request.params.feedId || ""));
   });
 
   app.post("/events", { preHandler: requireAuth }, async (request: any) => {
@@ -505,6 +704,24 @@ export default async function feedService(app: any) {
       throw new HttpError(404, "Post not found");
     }
     return markPostHidden(request.user.userId, postId, String(request.body?.reason || "hidden"));
+  });
+
+  app.post("/:postId/show-more", { preHandler: requireAuth }, async (request: any) => {
+    const postId = String(request.params.postId || "").trim();
+    ensure(postId.length >= 8, 400, "Invalid post");
+    return recordFeedFeedback(request.user.userId, postId, "show_more", 1, request.body || {});
+  });
+
+  app.post("/:postId/show-fewer", { preHandler: requireAuth }, async (request: any) => {
+    const postId = String(request.params.postId || "").trim();
+    ensure(postId.length >= 8, 400, "Invalid post");
+    return recordFeedFeedback(request.user.userId, postId, "show_fewer", -1, request.body || {});
+  });
+
+  app.get("/:postId/why", { preHandler: requireAuth }, async (request: any) => {
+    const postId = String(request.params.postId || "").trim();
+    ensure(postId.length >= 8, 400, "Invalid post");
+    return explainPostRecommendation(request.user.userId, postId);
   });
 
   app.get("/:postId", { preHandler: requireAuth }, async (request: any) => {

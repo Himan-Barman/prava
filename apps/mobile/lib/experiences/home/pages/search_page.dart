@@ -11,6 +11,7 @@ import '../../../services/chat_service.dart';
 import '../../../services/user_search_service.dart';
 import '../../../ui-system/background.dart';
 import '../../../ui-system/colors.dart';
+import '../../../ui-system/components/prava_input.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
 import '../../../ui-system/typography.dart';
@@ -291,7 +292,7 @@ class _SearchPageState extends State<SearchPage> {
                       children: [
                         Text(
                           'Search',
-                          style: PravaTypography.h2.copyWith(
+                          style: PravaTypography.titleLarge.copyWith(
                             color: primary,
                             fontWeight: FontWeight.w800,
                           ),
@@ -360,49 +361,9 @@ class _SearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    return Container(
+    return SizedBox(
       height: 44,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tokens.borderDefault),
-        color: tokens.backgroundSurfaceSubtle,
-      ),
-      child: ValueListenableBuilder<TextEditingValue>(
-        valueListenable: controller,
-        builder: (context, value, child) {
-          return TextField(
-            controller: controller,
-            textInputAction: TextInputAction.search,
-            cursorColor: tokens.brandPrimary,
-            style: PravaTypography.body.copyWith(
-              color: tokens.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
-            decoration: InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
-              hintText: 'Search Prava',
-              hintStyle: PravaTypography.body.copyWith(
-                color: tokens.textTertiary,
-              ),
-              contentPadding: const EdgeInsets.fromLTRB(16, 11, 8, 11),
-              suffixIcon: value.text.isEmpty
-                  ? null
-                  : IconButton(
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      icon: Icon(
-                        Icons.close_rounded,
-                        size: 20,
-                        color: tokens.iconSecondary,
-                      ),
-                      onPressed: controller.clear,
-                    ),
-            ),
-          );
-        },
-      ),
+      child: PravaSearchInput(controller: controller, hint: 'Search Prava'),
     );
   }
 }
@@ -446,7 +407,7 @@ class _HistoryView extends StatelessWidget {
           children: [
             Text(
               'Recent',
-              style: PravaTypography.h3.copyWith(
+              style: PravaTypography.titleSmall.copyWith(
                 color: primary,
                 fontWeight: FontWeight.w800,
               ),
@@ -482,7 +443,7 @@ class _HistoryView extends StatelessWidget {
               leading: Icon(CupertinoIcons.clock, color: secondary, size: 19),
               title: Text(
                 item,
-                style: PravaTypography.body.copyWith(
+                style: PravaTypography.bodyMedium.copyWith(
                   color: primary,
                   fontWeight: FontWeight.w600,
                 ),
@@ -542,7 +503,7 @@ class _SearchResultsView extends StatelessWidget {
       return Center(
         child: Text(
           'No results for "$query"',
-          style: PravaTypography.body.copyWith(color: secondary),
+          style: PravaTypography.bodyMedium.copyWith(color: secondary),
         ),
       );
     }
@@ -699,7 +660,7 @@ class _HorizontalSection extends StatelessWidget {
         children: [
           Text(
             title,
-            style: PravaTypography.h3.copyWith(
+            style: PravaTypography.titleSmall.copyWith(
               color: primary,
               fontWeight: FontWeight.w800,
             ),
@@ -740,7 +701,7 @@ class _AccountSection extends StatelessWidget {
         children: [
           Text(
             title,
-            style: PravaTypography.h3.copyWith(
+            style: PravaTypography.titleSmall.copyWith(
               color: primary,
               fontWeight: FontWeight.w800,
             ),
@@ -882,7 +843,7 @@ class _AccountAvatar extends StatelessWidget {
                 child: Center(
                   child: Text(
                     initial.isEmpty ? '?' : initial[0].toUpperCase(),
-                    style: PravaTypography.h3.copyWith(
+                    style: PravaTypography.titleSmall.copyWith(
                       color: tokens.brandContent,
                       fontWeight: FontWeight.w800,
                     ),
@@ -989,7 +950,7 @@ class _HashtagCard extends StatelessWidget {
                     '#${tag.tag}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: PravaTypography.body.copyWith(
+                    style: PravaTypography.bodyMedium.copyWith(
                       color: primary,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1079,7 +1040,7 @@ class _PostResultCard extends StatelessWidget {
             post.body,
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
-            style: PravaTypography.body.copyWith(
+            style: PravaTypography.bodyMedium.copyWith(
               color: primary,
               fontWeight: FontWeight.w600,
             ),

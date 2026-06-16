@@ -8,7 +8,7 @@ import '../../bridge/sodium_loader.dart';
 /// ============================================================
 /// Sender Key State
 /// ============================================================
-/// State for a single sender in a group chat: 
+/// State for a single sender in a group chat:
 ///
 /// Components:
 /// • Chain Key:  Symmetric key that ratchets forward
@@ -37,7 +37,7 @@ class SenderKeyState {
   Uint8List _chainKey;
 
   /// Signature private key (for signing messages)
-  final SecureKey?  signaturePrivateKey;
+  final SecureKey? signaturePrivateKey;
 
   /// Signature public key (for verifying messages)
   final Uint8List signaturePublicKey;
@@ -52,14 +52,14 @@ class SenderKeyState {
     required this.groupId,
     required this.senderId,
     required this.deviceId,
-    required this. keyId,
+    required this.keyId,
     required Uint8List chainKey,
     this.signaturePrivateKey,
     required this.signaturePublicKey,
     int messageIndex = 0,
     required this.createdAt,
-  })  : _chainKey = chainKey,
-        _messageIndex = messageIndex;
+  }) : _chainKey = chainKey,
+       _messageIndex = messageIndex;
 
   /// Current chain key
   Uint8List get chainKey => Uint8List.fromList(_chainKey);
@@ -79,23 +79,23 @@ class SenderKeyState {
     final sodium = await SodiumLoader.sodium;
 
     // Generate chain key
-    final chainKey = sodium.randombytes. buf(32);
+    final chainKey = sodium.randombytes.buf(32);
 
     // Generate signature key pair
-    final signatureKeyPair = sodium.crypto. sign. keyPair();
+    final signatureKeyPair = sodium.crypto.sign.keyPair();
 
     // Generate key ID
     final keyId = sodium.randombytes.random();
 
-    return SenderKeyState. _(
+    return SenderKeyState._(
       groupId: groupId,
       senderId: senderId,
       deviceId: deviceId,
-      keyId:  keyId,
+      keyId: keyId,
       chainKey: chainKey,
-      signaturePrivateKey: signatureKeyPair. secretKey,
+      signaturePrivateKey: signatureKeyPair.secretKey,
       signaturePublicKey: signatureKeyPair.publicKey,
-      createdAt: DateTime. now().millisecondsSinceEpoch,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
     );
   }
 
@@ -109,12 +109,12 @@ class SenderKeyState {
     required Uint8List signaturePublicKey,
     int messageIndex = 0,
   }) {
-    return SenderKeyState. _(
+    return SenderKeyState._(
       groupId: groupId,
       senderId: senderId,
       deviceId: deviceId,
-      keyId:  keyId,
-      chainKey:  Uint8List.fromList(chainKey),
+      keyId: keyId,
+      chainKey: Uint8List.fromList(chainKey),
       signaturePublicKey: Uint8List.fromList(signaturePublicKey),
       messageIndex: messageIndex,
       createdAt: DateTime.now().millisecondsSinceEpoch,
@@ -152,7 +152,7 @@ class SenderKeyState {
 
     // Derive message key:  HMAC(chainKey, 0x01)
     final messageKey = sodium.crypto.genericHash(
-      message:  Uint8List.fromList([0x01, ..._chainKey]),
+      message: Uint8List.fromList([0x01, ..._chainKey]),
       outLen: 32,
     );
 
@@ -168,14 +168,11 @@ class SenderKeyState {
     final currentIndex = _messageIndex;
     _messageIndex++;
 
-    return SenderKeyAdvance(
-      messageKey: messageKey,
-      messageIndex: currentIndex,
-    );
+    return SenderKeyAdvance(messageKey: messageKey, messageIndex: currentIndex);
   }
 
   /// Advance to specific index (for receiving out-of-order)
-  Future<Uint8List? > advanceToIndex(int targetIndex) async {
+  Future<Uint8List?> advanceToIndex(int targetIndex) async {
     if (targetIndex < _messageIndex) {
       return null; // Already processed
     }
@@ -190,7 +187,7 @@ class SenderKeyState {
     // Advance until we reach target
     while (_messageIndex < targetIndex) {
       final nextKey = sodium.crypto.genericHash(
-        message: Uint8List.fromList([0x02, ... currentKey]),
+        message: Uint8List.fromList([0x02, ...currentKey]),
         outLen: 32,
       );
       _zeroize(currentKey);
@@ -199,9 +196,9 @@ class SenderKeyState {
     }
 
     // Derive message key at target index
-    final messageKey = sodium. crypto.genericHash(
-      message:  Uint8List.fromList([0x01, ...currentKey]),
-      outLen:  32,
+    final messageKey = sodium.crypto.genericHash(
+      message: Uint8List.fromList([0x01, ...currentKey]),
+      outLen: 32,
     );
 
     // Advance chain key one more
@@ -221,23 +218,23 @@ class SenderKeyState {
 
   /// Serialize for storage
   Map<String, dynamic> toJson() => {
-        'groupId': groupId,
-        'senderId': senderId,
-        'deviceId': deviceId,
-        'keyId': keyId,
-        'chainKey':  _chainKey.toList(),
-        'signaturePublicKey': signaturePublicKey.toList(),
-        'messageIndex': _messageIndex,
-        'createdAt':  createdAt,
-      };
+    'groupId': groupId,
+    'senderId': senderId,
+    'deviceId': deviceId,
+    'keyId': keyId,
+    'chainKey': _chainKey.toList(),
+    'signaturePublicKey': signaturePublicKey.toList(),
+    'messageIndex': _messageIndex,
+    'createdAt': createdAt,
+  };
 
   /// Deserialize from storage
   factory SenderKeyState.fromJson(Map<String, dynamic> json) {
-    return SenderKeyState. _(
+    return SenderKeyState._(
       groupId: json['groupId'] as String,
       senderId: json['senderId'] as String,
       deviceId: json['deviceId'] as String,
-      keyId:  json['keyId'] as int,
+      keyId: json['keyId'] as int,
       chainKey: Uint8List.fromList((json['chainKey'] as List).cast<int>()),
       signaturePublicKey: Uint8List.fromList(
         (json['signaturePublicKey'] as List).cast<int>(),
@@ -250,7 +247,7 @@ class SenderKeyState {
   /// Dispose sensitive material
   void dispose() {
     _zeroize(_chainKey);
-    signaturePrivateKey?. dispose();
+    signaturePrivateKey?.dispose();
   }
 
   void _zeroize(Uint8List buffer) {

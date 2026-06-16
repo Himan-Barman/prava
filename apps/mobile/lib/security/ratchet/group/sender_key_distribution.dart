@@ -27,13 +27,13 @@ final class SenderKeyDistribution {
   static SenderKeyDistributionMessage createDistributionMessage({
     required SenderKeyState senderKey,
   }) {
-    if (!senderKey. isOwnKey) {
+    if (!senderKey.isOwnKey) {
       throw ArgumentError('Can only distribute own sender key');
     }
 
     return SenderKeyDistributionMessage(
       groupId: senderKey.groupId,
-      senderId:  senderKey.senderId,
+      senderId: senderKey.senderId,
       deviceId: senderKey.deviceId,
       keyId: senderKey.keyId,
       chainKey: senderKey.chainKey,
@@ -46,14 +46,14 @@ final class SenderKeyDistribution {
   static SenderKeyState processDistributionMessage({
     required SenderKeyDistributionMessage message,
   }) {
-    return SenderKeyState. fromDistribution(
+    return SenderKeyState.fromDistribution(
       groupId: message.groupId,
       senderId: message.senderId,
       deviceId: message.deviceId,
       keyId: message.keyId,
       chainKey: message.chainKey,
       signaturePublicKey: message.signaturePublicKey,
-      messageIndex:  message.messageIndex,
+      messageIndex: message.messageIndex,
     );
   }
 
@@ -68,7 +68,7 @@ final class SenderKeyDistribution {
   }
 
   /// Get sender key for a member
-  static SenderKeyState?  getSenderKey(
+  static SenderKeyState? getSenderKey(
     Map<String, SenderKeyState> senderKeys,
     String senderId,
     String deviceId,
@@ -82,7 +82,7 @@ final class SenderKeyDistribution {
     Map<String, SenderKeyState> senderKeys,
     SenderKeyState senderKey,
   ) {
-    final key = '${senderKey. senderId}:${senderKey.deviceId}';
+    final key = '${senderKey.senderId}:${senderKey.deviceId}';
     senderKeys[key] = senderKey;
   }
 
@@ -93,7 +93,7 @@ final class SenderKeyDistribution {
     String deviceId,
   ) {
     final key = '$senderId:$deviceId';
-    return senderKeys. remove(key);
+    return senderKeys.remove(key);
   }
 
   /// Get all sender keys for a group
@@ -101,9 +101,7 @@ final class SenderKeyDistribution {
     Map<String, SenderKeyState> senderKeys,
     String groupId,
   ) {
-    return senderKeys.values
-        .where((sk) => sk.groupId == groupId)
-        .toList();
+    return senderKeys.values.where((sk) => sk.groupId == groupId).toList();
   }
 
   /// Clear all sender keys for a group
@@ -153,7 +151,7 @@ class SenderKeyDistributionMessage {
     required this.groupId,
     required this.senderId,
     required this.deviceId,
-    required this. keyId,
+    required this.keyId,
     required this.chainKey,
     required this.signaturePublicKey,
     required this.messageIndex,
@@ -162,20 +160,20 @@ class SenderKeyDistributionMessage {
 
   /// Serialize for transmission
   Map<String, dynamic> toJson() => {
-        'groupId': groupId,
-        'senderId': senderId,
-        'deviceId': deviceId,
-        'keyId': keyId,
-        'chainKey':  chainKey.toList(),
-        'signaturePublicKey':  signaturePublicKey.toList(),
-        'messageIndex':  messageIndex,
-        'timestamp': timestamp,
-      };
+    'groupId': groupId,
+    'senderId': senderId,
+    'deviceId': deviceId,
+    'keyId': keyId,
+    'chainKey': chainKey.toList(),
+    'signaturePublicKey': signaturePublicKey.toList(),
+    'messageIndex': messageIndex,
+    'timestamp': timestamp,
+  };
 
   /// Deserialize from transmission
   factory SenderKeyDistributionMessage.fromJson(Map<String, dynamic> json) {
     return SenderKeyDistributionMessage(
-      groupId:  json['groupId'] as String,
+      groupId: json['groupId'] as String,
       senderId: json['senderId'] as String,
       deviceId: json['deviceId'] as String,
       keyId: json['keyId'] as int,

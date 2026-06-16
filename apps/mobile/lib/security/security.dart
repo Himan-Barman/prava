@@ -3,8 +3,8 @@
 /// PRAVA SECURITY MODULE v1.0.0
 /// ============================================================
 /// Production-grade End-to-End Encryption
-/// 
-/// Implements: 
+///
+/// Implements:
 /// • Signal Protocol (X3DH + Double Ratchet)
 /// • Sender Keys for group messaging
 /// • Multi-device support
@@ -12,7 +12,7 @@
 ///
 /// Security Level: 256-bit (AES-256 equivalent)
 /// Target:  10M+ users, 40K concurrent connections
-/// 
+///
 /// Compliance: GDPR, CCPA, SOC2 ready
 /// ============================================================
 

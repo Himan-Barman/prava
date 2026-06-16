@@ -10,7 +10,7 @@ import 'device_registry.dart';
 /// ============================================================
 /// Multi-Device Manager
 /// ============================================================
-/// Handles multi-device operations: 
+/// Handles multi-device operations:
 ///
 /// • Device linking via QR code
 /// • Session sync across devices
@@ -21,17 +21,15 @@ final class MultiDeviceManager {
   final DeviceRegistry registry;
   final String _currentDeviceId;
 
-  MultiDeviceManager({
-    required this.registry,
-    required String currentDeviceId,
-  }) : _currentDeviceId = currentDeviceId;
+  MultiDeviceManager({required this.registry, required String currentDeviceId})
+    : _currentDeviceId = currentDeviceId;
 
   /// Current device ID
   String get currentDeviceId => _currentDeviceId;
 
   /// Can device receive messages?
   bool canReceiveMessages(String deviceId) {
-    return registry. isTrusted(deviceId);
+    return registry.isTrusted(deviceId);
   }
 
   /// Get devices to encrypt for (excludes current and revoked)
@@ -46,7 +44,7 @@ final class MultiDeviceManager {
     final sodium = await SodiumLoader.sodium;
 
     // Generate ephemeral key pair
-    final ephemeralKey = sodium.crypto. box. keyPair();
+    final ephemeralKey = sodium.crypto.box.keyPair();
 
     // Generate challenge
     final challenge = await RandomGenerator.bytes(32);
@@ -68,7 +66,7 @@ final class MultiDeviceManager {
     final sodium = await SodiumLoader.sodium;
     final secretKey = sodium.secureCopy(identityPrivateKey);
 
-    final signatureValid = await Signatures. verify(
+    final signatureValid = await Signatures.verify(
       request.challenge,
       request.signature,
       request.devicePublicKey,
@@ -77,24 +75,24 @@ final class MultiDeviceManager {
     secretKey.dispose();
 
     if (!signatureValid) {
-      return DeviceLinkResult. failure('Invalid device signature');
+      return DeviceLinkResult.failure('Invalid device signature');
     }
 
     // Create device identity
     final device = DeviceIdentity(
       deviceId: request.deviceId,
       trust: DeviceTrust.secondary,
-      publicKey: request.devicePublicKey. toList(),
-      registrationId: request. registrationId,
-      name: request. deviceName,
+      publicKey: request.devicePublicKey.toList(),
+      registrationId: request.registrationId,
+      name: request.deviceName,
       platform: request.platform,
-      createdAt: DateTime. now().millisecondsSinceEpoch,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
     );
 
     // Register device
     registry.register(device);
 
-    return DeviceLinkResult. success(device);
+    return DeviceLinkResult.success(device);
   }
 
   /// Revoke a device
@@ -105,7 +103,7 @@ final class MultiDeviceManager {
 
     registry.revoke(deviceId);
 
-    // Note: Caller should also: 
+    // Note: Caller should also:
     // 1. Notify server
     // 2. Rotate sender keys in all groups
     // 3. Reset sessions with this device
@@ -121,7 +119,7 @@ final class MultiDeviceManager {
 
     final sodium = await SodiumLoader.sodium;
     final actualFingerprint = sodium.crypto.genericHash(
-      message:  Uint8List.fromList(device.publicKey),
+      message: Uint8List.fromList(device.publicKey),
       outLen: 32,
     );
 
@@ -146,9 +144,9 @@ final class MultiDeviceManager {
     }
 
     final sodium = await SodiumLoader.sodium;
-    final hash = sodium.crypto. genericHash(
+    final hash = sodium.crypto.genericHash(
       message: Uint8List.fromList(device.publicKey),
-      outLen:  32,
+      outLen: 32,
     );
 
     // Format as safety number (groups of 5 digits)
@@ -180,11 +178,11 @@ class DeviceLinkCode {
   bool get isExpired => DateTime.now().isAfter(expiresAt);
 
   Map<String, dynamic> toJson() => {
-        'deviceId': deviceId,
-        'ephemeralPublicKey': ephemeralPublicKey.toList(),
-        'challenge': challenge.toList(),
-        'expiresAt': expiresAt. millisecondsSinceEpoch,
-      };
+    'deviceId': deviceId,
+    'ephemeralPublicKey': ephemeralPublicKey.toList(),
+    'challenge': challenge.toList(),
+    'expiresAt': expiresAt.millisecondsSinceEpoch,
+  };
 }
 
 /// Device link request
@@ -194,7 +192,7 @@ class DeviceLinkRequest {
   final int registrationId;
   final Uint8List challenge;
   final Uint8List signature;
-  final String?  deviceName;
+  final String? deviceName;
   final String? platform;
 
   const DeviceLinkRequest({
@@ -207,10 +205,10 @@ class DeviceLinkRequest {
     this.platform,
   });
 
-  factory DeviceLinkRequest. fromJson(Map<String, dynamic> json) {
+  factory DeviceLinkRequest.fromJson(Map<String, dynamic> json) {
     return DeviceLinkRequest(
       deviceId: json['deviceId'] as String,
-      devicePublicKey:  Uint8List.fromList(
+      devicePublicKey: Uint8List.fromList(
         (json['devicePublicKey'] as List).cast<int>(),
       ),
       registrationId: json['registrationId'] as int,
@@ -225,17 +223,13 @@ class DeviceLinkRequest {
 /// Device link result
 class DeviceLinkResult {
   final bool success;
-  final DeviceIdentity?  device;
+  final DeviceIdentity? device;
   final String? error;
 
-  const DeviceLinkResult._({
-    required this. success,
-    this.device,
-    this.error,
-  });
+  const DeviceLinkResult._({required this.success, this.device, this.error});
 
   factory DeviceLinkResult.success(DeviceIdentity device) =>
-      DeviceLinkResult. _(success: true, device: device);
+      DeviceLinkResult._(success: true, device: device);
 
   factory DeviceLinkResult.failure(String error) =>
       DeviceLinkResult._(success: false, error: error);

@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart';
 /// ============================================================
 /// Merkle Tree
 /// ============================================================
-/// Key transparency implementation: 
+/// Key transparency implementation:
 ///
 /// • Audit log verification
 /// • Proof of inclusion
@@ -23,7 +23,7 @@ final class MerkleTree {
   /// Combine two hashes
   static Uint8List combineHashes(Uint8List left, Uint8List right) {
     final combined = _compare(left, right) <= 0
-        ?  [... left, ...right]
+        ? [...left, ...right]
         : [...right, ...left];
     return hashLeaf(Uint8List.fromList(combined));
   }
@@ -54,7 +54,7 @@ final class MerkleTree {
 
     return MerkleTreeResult(
       root: level.first,
-      levels:  levels,
+      levels: levels,
       leafCount: leaves.length,
     );
   }
@@ -74,20 +74,13 @@ final class MerkleTree {
       final siblingIndex = isLeft ? index + 1 : index - 1;
 
       if (siblingIndex < level.length) {
-        path. add(ProofNode(
-          hash:  level[siblingIndex],
-          isLeft: ! isLeft,
-        ));
+        path.add(ProofNode(hash: level[siblingIndex], isLeft: !isLeft));
       }
 
       index ~/= 2;
     }
 
-    return MerkleProof(
-      leafIndex: leafIndex,
-      path: path,
-      root:  tree.root,
-    );
+    return MerkleProof(leafIndex: leafIndex, path: path, root: tree.root);
   }
 
   /// Verify inclusion proof
@@ -107,7 +100,7 @@ final class MerkleTree {
 
   /// Compare two byte arrays
   static int _compare(Uint8List a, Uint8List b) {
-    final minLen = a.length < b.length ? a.length : b. length;
+    final minLen = a.length < b.length ? a.length : b.length;
     for (var i = 0; i < minLen; i++) {
       if (a[i] != b[i]) return a[i] - b[i];
     }
@@ -134,7 +127,7 @@ class MerkleTreeResult {
   const MerkleTreeResult({
     required this.root,
     required this.levels,
-    required this. leafCount,
+    required this.leafCount,
   });
 
   int get height => levels.length;
@@ -148,15 +141,9 @@ class ProofNode {
   final Uint8List hash;
   final bool isLeft;
 
-  const ProofNode({
-    required this.hash,
-    required this.isLeft,
-  });
+  const ProofNode({required this.hash, required this.isLeft});
 
-  Map<String, dynamic> toJson() => {
-        'hash': hash. toList(),
-        'isLeft': isLeft,
-      };
+  Map<String, dynamic> toJson() => {'hash': hash.toList(), 'isLeft': isLeft};
 
   factory ProofNode.fromJson(Map<String, dynamic> json) {
     return ProofNode(
@@ -173,20 +160,20 @@ class MerkleProof {
   final Uint8List root;
 
   const MerkleProof({
-    required this. leafIndex,
+    required this.leafIndex,
     required this.path,
-    required this. root,
+    required this.root,
   });
 
   bool verify(Uint8List leaf) => MerkleTree.verifyProof(this, leaf);
 
   Map<String, dynamic> toJson() => {
-        'leafIndex': leafIndex,
-        'path': path.map((n) => n.toJson()).toList(),
-        'root': root. toList(),
-      };
+    'leafIndex': leafIndex,
+    'path': path.map((n) => n.toJson()).toList(),
+    'root': root.toList(),
+  };
 
-  factory MerkleProof. fromJson(Map<String, dynamic> json) {
+  factory MerkleProof.fromJson(Map<String, dynamic> json) {
     return MerkleProof(
       leafIndex: json['leafIndex'] as int,
       path: (json['path'] as List)

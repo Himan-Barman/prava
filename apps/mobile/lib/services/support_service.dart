@@ -3,7 +3,7 @@ import '../core/storage/secure_store.dart';
 
 class SupportService {
   SupportService({SecureStore? store})
-      : _client = ApiClient(store ?? SecureStore());
+    : _client = ApiClient(store ?? SecureStore());
 
   final ApiClient _client;
 
@@ -41,16 +41,11 @@ class SupportService {
     );
   }
 
-  Future<void> sendHelp({
-    required String message,
-  }) async {
+  Future<void> sendHelp({required String message}) async {
     await _client.post(
       '/support',
       auth: true,
-      body: {
-        'type': 'help',
-        'message': message,
-      },
+      body: {'type': 'help', 'message': message},
     );
   }
 }

@@ -197,17 +197,17 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                                   children: [
                                     Text(
                                       'Secure your account',
-                                      style: PravaTypography.h1.copyWith(
-                                        letterSpacing: -0.6,
-                                        color: primaryText,
-                                      ),
+                                      style: PravaTypography.displayMedium
+                                          .copyWith(
+                                            letterSpacing: -0.6,
+                                            color: primaryText,
+                                          ),
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
                                       'Create a strong password to unlock your private workspace.',
-                                      style: PravaTypography.body.copyWith(
-                                        color: secondaryText,
-                                      ),
+                                      style: PravaTypography.bodyMedium
+                                          .copyWith(color: secondaryText),
                                     ),
                                   ],
                                 ),
@@ -280,7 +280,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
                   const SizedBox(width: 8),
                   Text(
                     'Password security',
-                    style: PravaTypography.body.copyWith(
+                    style: PravaTypography.bodyMedium.copyWith(
                       color: primaryText,
                       fontWeight: FontWeight.w600,
                     ),
@@ -291,12 +291,15 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
               PravaPasswordInput(
                 hint: 'Password',
                 controller: _passwordController,
+                helperText: 'Use at least 8 characters.',
+                requiredField: true,
                 autofillHints: const [AutofillHints.newPassword],
               ),
               const SizedBox(height: 14),
               PravaPasswordInput(
                 hint: 'Confirm password',
                 controller: _confirmController,
+                requiredField: true,
                 autofillHints: const [AutofillHints.newPassword],
               ),
               const SizedBox(height: 22),

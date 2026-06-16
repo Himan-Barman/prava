@@ -1,80 +1,182 @@
 # Feed Service
 
-The feed service implements two independent modes:
+The feed service is a PostgreSQL-first recommendation subsystem for Prava's text-first social graph. It keeps the existing mobile-compatible `/api/feed` routes while adding production feed modes, feed controls, saved custom feeds, stable sessions, and explainable recommendation metadata.
 
-- `following`: followed accounts plus the viewer's own posts, ordered by recency.
-- `for-you`: a ranked hybrid feed using in-network, interacted-author, interest, social-proof, trending, exploration, and cold-start candidates.
+## Request Flow
 
-## Data Model
-Startup migrations in `src/lib/pg.ts` add:
+1. Authenticate with the shared `requireAuth` middleware.
+2. Resolve feed mode, lens, cursor, page size, session ID, preferences, and user controls.
+3. Retrieve bounded candidates from multiple sources.
+4. Deduplicate candidates while retaining source reason codes.
+5. Hydrate relationship, topic, engagement, impression, and quality features.
+6. Apply hard filters for deletion, moderation, blocking, muting, hidden/not-interested posts, muted words, muted/snoozed topics, sensitive content, repost controls, and out-of-network quality gates.
+7. Score candidates with the configurable heuristic ranker.
+8. Re-rank for author/topic diversity and repetition control.
+9. Persist a short feed-session snapshot and served-history rows.
+10. Return hydrated posts with compact explanation metadata.
 
-- `feed_events` and `feed_impressions` for impressions, views, dwell, clicks, likes, comments, replies, shares, bookmarks, hides, reports, mutes, blocks, and follow-after-view signals.
-- `feed_served_history` to avoid repeated posts within an active session.
-- `post_hidden`, `post_not_interested`, and `user_mutes` for hard negative filters.
-- `post_topics`, `user_topic_affinities`, and `user_author_affinities` for interest and affinity signals.
-- `post_engagement_stats`, `post_trend_snapshots`, and `trending_topics` for quality-adjusted engagement and velocity.
-- `feed_algorithm_config` and `feed_experiments` for future tuning and A/B rollout.
+## Feed Modes
 
-## Pipeline
-`recommendation.ts` is the modular ranking pipeline:
+- `for-you`: mixed personalized ranking from followed accounts, friends, trusted network engagement, interests, trends, language affinity, conversations, fresh voices, editorial items, exploration, and cold start.
+- `following`: deterministic reverse chronological followed/self timeline with safety and privacy filters only.
+- `friends`: reverse chronological mutual-follow timeline.
+- `latest`: reverse chronological network or broad scope.
+- `topics`: topic/hashtag timeline.
+- `conversations`: active discussion and reply-heavy posts.
+- `explore`: discovery-heavy For You variant with stricter out-of-network quality checks.
+- `catch-up`: important followed/topic/conversation posts since the viewer's last active feed impression.
+- `custom`: saved server-validated feed presets.
 
-1. Load ranking config from env and optional DB config.
-2. Collect bounded candidates from followed authors, recently interacted authors, topics, social proof, trending posts, exploration, and cold-start popular posts.
-3. Deduplicate candidates while retaining all source reasons.
-4. Hard-filter blocked, muted, hidden, not-interested, private, deleted, moderated, muted-word, and recently served posts.
-5. Hydrate features in batches.
-6. Score with `HeuristicScoringProvider`.
-7. Apply diversity penalties for repeated authors and topics.
-8. Serve with opaque cursors and record served history/impression rows.
+## Candidate Sources
+
+Implemented sources include network recent, friend recent, interacted authors, topic affinity, trusted network/social proof, trending, exploration, emerging creators, conversation, language affinity, editorial, and cold start. Semantic and model-backed retrieval remain behind the `ScoringProvider` boundary for a later ML rollout.
 
 ## Ranking
-The heuristic ranker normalizes these components:
 
-- freshness;
-- viewer-author affinity;
-- topic/hashtag interest overlap;
-- Bayesian-smoothed quality engagement;
-- trend velocity;
-- social proof from followed users;
-- content quality;
-- exploration boost;
-- negative feedback and spam/report penalties.
+`HeuristicScoringProvider` scores:
 
-Weights are configured with `FEED_WEIGHT_*` env vars or `feed_algorithm_config`.
+- recency
+- viewer-author affinity
+- friend/follow proximity
+- topic and language affinity
+- quality-adjusted engagement
+- trend velocity
+- social proof
+- content quality
+- exploration/new-creator value
+- conversation value
+- editorial labeling
+- negative feedback, reports, spam, toxicity, clickbait, repeated serving, and repetition penalties
 
-## APIs
-- `GET /api/feed` keeps legacy array responses for current clients.
-- `GET /api/feed/for-you` returns `{ items, nextCursor, metrics }`.
-- `GET /api/feed/following` returns `{ items, nextCursor, metrics }`.
-- `POST /api/feed/events` ingests up to 50 idempotent client events per request.
-- `POST /api/feed/:postId/hide`
-- `POST /api/feed/:postId/not-interested`
+Weights are centralized in `DEFAULT_CONFIG`, environment overrides, and optional `feed_algorithm_config`.
 
-`metrics` should stay internal/admin-oriented. Do not expose score breakdowns publicly unless an authenticated admin tool is added.
+## User Controls
 
-## Background Aggregation
+APIs support:
+
+- why am I seeing this post
+- show more / show fewer
+- not interested
+- hide post
+- follow/unfollow topic
+- mute topic
+- snooze topic
+- reduce reposts
+- reduce sensitive content
+- preferred lens
+- discovery intensity
+- friend/latest priority
+- preferred languages
+- muted keywords
+- review/remove inferred interests
+- reset personalization
+- clear served history
+- export feed settings
+- save/update/delete custom feeds
+
+## Database
+
+Startup migrations add or repair:
+
+- post feature columns: type, parent/original/quote IDs, fingerprint, visibility, sensitivity, spam/toxicity/clickbait scores.
+- `topics`
+- `user_followed_topics`
+- `feed_muted_topics`
+- `feed_preferences`
+- `feed_custom_feeds`
+- `feed_sessions`
+- `feed_feedback`
+- `editorial_feed_items`
+- existing ranking tables: `feed_events`, `feed_impressions`, `feed_served_history`, `post_topics`, `user_topic_affinities`, `user_author_affinities`, `post_engagement_stats`, `post_trend_snapshots`, `trending_topics`, `feed_algorithm_config`, `feed_experiments`.
+
+Default admin-curated topic seeds include technology, startups, coding, careers, sports, entertainment, education, local news, art, literature, and Bengali literature.
+
+## API Routes
+
+Legacy feed routes:
+
+- `GET /api/feed`
+- `GET /api/feed/for-you`
+- `GET /api/feed/following`
+- `GET /api/feed/friends`
+- `GET /api/feed/latest`
+- `GET /api/feed/explore`
+- `GET /api/feed/conversations`
+- `GET /api/feed/catch-up`
+- `GET /api/feed/topic/:topic`
+- `GET /api/feed/custom/:feedId`
+- `GET /api/feed/topics`
+- `POST /api/feed/topics/:topic/follow`
+- `DELETE /api/feed/topics/:topic/follow`
+- `POST /api/feed/topics/:topic/mute`
+- `DELETE /api/feed/topics/:topic/mute`
+- `POST /api/feed/topics/:topic/snooze`
+- `GET /api/feed/preferences`
+- `PATCH /api/feed/preferences`
+- `POST /api/feed/preferences/reset`
+- `GET /api/feed/preferences/export`
+- `GET /api/feed/interests`
+- `DELETE /api/feed/interests/:topic`
+- `POST /api/feed/history/clear`
+- `GET /api/feed/custom-feeds`
+- `POST /api/feed/custom-feeds`
+- `PATCH /api/feed/custom-feeds/:feedId`
+- `DELETE /api/feed/custom-feeds/:feedId`
+- `POST /api/feed/events`
+- `POST /api/feed/:postId/show-more`
+- `POST /api/feed/:postId/show-fewer`
+- `GET /api/feed/:postId/why`
+- existing post/comment/like/share routes.
+
+V1 bridge routes mirror these under `/api/v1/feed/*` and `/api/v1/posts/:postId/*`.
+
+## Background Jobs
+
 `startFeedAggregationScheduler` runs in non-test environments. It:
 
-- syncs hashtags into `post_topics`;
-- updates `post_engagement_stats`;
-- recomputes user-author and user-topic affinities;
-- captures trend snapshots;
-- refreshes trending topics;
-- prunes old served-history and trend rows.
+- syncs hashtags into `post_topics`
+- updates `post_engagement_stats`
+- recomputes author/topic affinity
+- captures trend snapshots
+- refreshes trending topics
+- prunes served-history and trend snapshots
 
-The first implementation uses PostgreSQL only. Redis can be added later for candidate caches, served-history sets, and trending leaderboards.
+Developer-only route `POST /api/feed/aggregate` triggers aggregation outside production.
 
-## ML Upgrade Path
-No ML model is trained or claimed today. Before adding ML, collect enough `feed_impressions` and `feed_events` to build examples:
+## Redis
 
-- positives: long dwell, post open, profile click, like, meaningful comment/reply, share, bookmark, follow-after-view;
-- negatives: hide, not interested, report, mute/block after impression, repeated impressions without engagement, rapid skip when tracked.
+No new hard Redis dependency is introduced in this pass. Redis remains available for future candidate caches, session caches, sorted-set trend windows, and stream-style worker fanout. Current behavior degrades to PostgreSQL only.
 
-Future providers can implement the `ScoringProvider` interface:
+Suggested future keys:
 
-- embedding similarity retriever;
-- two-tower retrieval model;
-- learning-to-rank model;
-- contextual bandit exploration policy.
+- `feed:candidates:{userId}:{mode}:{lens}`
+- `feed:session:{sessionId}`
+- `feed:served:{userId}`
+- `feed:trending:{window}:{language}:{region}`
 
-Roll out a future ML provider behind an experiment flag and keep `HeuristicScoringProvider` as the fallback.
+## Scaling Path
+
+At 100k users, PostgreSQL plus bounded candidate queries, indexes, and background aggregation are practical.
+
+At 1M users, move hot candidate sets, served-history checks, and trend windows into Redis sorted sets or streams; increase worker partitioning; precompute followed/friends timelines for normal accounts.
+
+At 10M users, add partitioned feed event tables, fanout-on-write for normal accounts, fanout-on-read for large creators, vector/ANN retrieval behind the semantic adapter, and offline-trained ranking models behind `ScoringProvider`.
+
+## Current Tradeoffs
+
+- Ranking is heuristic, not ML-trained.
+- Semantic retrieval is interface-ready but not backed by pgvector or an external vector store.
+- Redis trend windows are documented but not required for runtime yet.
+- Editorial/sponsored labeling exists; sponsored delivery itself is not implemented.
+- Local discovery is gated by preferences but does not yet perform regional ranking without a location pipeline.
+
+## Validation
+
+Run:
+
+```bash
+npm run typecheck
+npm test
+```
+
+The feed tests cover candidate mixing, Following chronology, Friends/Topic/Custom modes, explanations, invalid cursor rejection, not-interested filtering, and event idempotency.

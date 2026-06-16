@@ -25,7 +25,8 @@ class AuthState extends ChangeNotifier {
       final refreshToken = await _store.getRefreshToken();
       final userId = await _store.getUserId();
 
-      _authenticated = accessToken != null &&
+      _authenticated =
+          accessToken != null &&
           accessToken.isNotEmpty &&
           refreshToken != null &&
           refreshToken.isNotEmpty &&

@@ -24,9 +24,9 @@ class E2eeService {
   static const String envelopePrefix = 'e2ee.v1:';
 
   E2eeService({SecureStore? store})
-      : _store = store ?? SecureStore(),
-        _deviceIdStore = DeviceIdStore(store ?? SecureStore()),
-        _client = ApiClient(store ?? SecureStore());
+    : _store = store ?? SecureStore(),
+      _deviceIdStore = DeviceIdStore(store ?? SecureStore()),
+      _client = ApiClient(store ?? SecureStore());
 
   final SecureStore _store;
   final DeviceIdStore _deviceIdStore;
@@ -46,8 +46,7 @@ class E2eeService {
     final localIdentity = await _ensureLocalIdentity(userId, deviceId);
     final xIdentity = await _ensureLocalXIdentity();
     try {
-      final signedPreKey =
-          await _ensureSignedPreKey(localIdentity.privateKey);
+      final signedPreKey = await _ensureSignedPreKey(localIdentity.privateKey);
       final pendingPreKeys = await _ensurePreKeys();
       await _registerDevice(
         deviceId: deviceId,
@@ -77,8 +76,7 @@ class E2eeService {
           pendingPreKeys.isNotEmpty || await PreKeyStore.needsReplenishment();
       if (!needsRotation && !needsPreKeys) return false;
 
-      final signedPreKey =
-          await _ensureSignedPreKey(localIdentity.privateKey);
+      final signedPreKey = await _ensureSignedPreKey(localIdentity.privateKey);
       final refreshedPreKeys = await _ensurePreKeys();
       await _registerDevice(
         deviceId: deviceId,
@@ -197,11 +195,15 @@ class E2eeService {
 
     final ratchetEncoded = entry['ratchet']?.toString();
     if (ratchetEncoded == null || ratchetEncoded.isEmpty) return null;
-    final ratchetMessage =
-        RatchetMessage.fromBytes(base64Decode(ratchetEncoded));
+    final ratchetMessage = RatchetMessage.fromBytes(
+      base64Decode(ratchetEncoded),
+    );
 
-    final sessionId =
-        SessionStore.makeSessionId(userId, senderUserId, senderDeviceId);
+    final sessionId = SessionStore.makeSessionId(
+      userId,
+      senderUserId,
+      senderDeviceId,
+    );
     final preKey = entry['preKey'];
     if (preKey is Map<String, dynamic>) {
       return _decryptPreKeyMessage(
@@ -213,10 +215,7 @@ class E2eeService {
       );
     }
 
-    return _decryptWithSession(
-      sessionId: sessionId,
-      message: ratchetMessage,
-    );
+    return _decryptWithSession(sessionId: sessionId, message: ratchetMessage);
   }
 
   Future<void> _ensureSecurityInitialized() async {
@@ -279,9 +278,7 @@ class E2eeService {
 
     final sodium = await SodiumLoader.sodium;
     final keyPair = sodium.crypto.box.keyPair();
-    await _store.setE2eeIdentityXPublicKey(
-      base64Encode(keyPair.publicKey),
-    );
+    await _store.setE2eeIdentityXPublicKey(base64Encode(keyPair.publicKey));
     await _store.setE2eeIdentityXPrivateKey(
       base64Encode(keyPair.secretKey.extractBytes()),
     );
@@ -377,19 +374,13 @@ class E2eeService {
             .map(
               (key) => {
                 'keyId': key.keyId,
-                'publicKey': base64Encode(
-                  Uint8List.fromList(key.publicKey),
-                ),
+                'publicKey': base64Encode(Uint8List.fromList(key.publicKey)),
               },
             )
             .toList(),
     };
 
-    await _client.post(
-      '/crypto/devices/register',
-      auth: true,
-      body: body,
-    );
+    await _client.post('/crypto/devices/register', auth: true, body: body);
 
     if (registerKeys.isNotEmpty) {
       await PreKeyStore.markUploaded(
@@ -417,24 +408,17 @@ class E2eeService {
             .map(
               (key) => {
                 'keyId': key.keyId,
-                'publicKey': base64Encode(
-                  Uint8List.fromList(key.publicKey),
-                ),
+                'publicKey': base64Encode(Uint8List.fromList(key.publicKey)),
               },
             )
             .toList(),
       },
     );
-    await PreKeyStore.markUploaded(
-      preKeys.map((key) => key.keyId).toList(),
-    );
+    await PreKeyStore.markUploaded(preKeys.map((key) => key.keyId).toList());
   }
 
   Future<List<_RemoteDevice>> _listDevices(String userId) async {
-    final data = await _client.get(
-      '/crypto/devices/$userId',
-      auth: true,
-    );
+    final data = await _client.get('/crypto/devices/$userId', auth: true);
     if (data is! List) return [];
     return data
         .whereType<Map<String, dynamic>>()
@@ -563,8 +547,7 @@ class E2eeService {
         'senderEphemeralKey': base64Encode(ephemeralKey),
         'senderRegistrationId': myRegistrationId,
         'signedPreKeyId': bundle.signedPreKeyId,
-        if (usedOneTimePreKeyId != null)
-          'oneTimePreKeyId': usedOneTimePreKeyId,
+        if (usedOneTimePreKeyId != null) 'oneTimePreKeyId': usedOneTimePreKeyId,
       };
     }
 
@@ -625,7 +608,9 @@ class E2eeService {
     final signedPublic = _decodeKey(signed['publicKey']);
     final signedSignature = _decodeKey(signed['signature']);
     final signedKeyId = _parseInt(signed['keyId']);
-    if (signedPublic == null || signedSignature == null || signedKeyId == null) {
+    if (signedPublic == null ||
+        signedSignature == null ||
+        signedKeyId == null) {
       return null;
     }
 
@@ -674,8 +659,7 @@ class E2eeService {
     }
 
     if (identityEd != null) {
-      final registrationId =
-          _parseInt(preKey['senderRegistrationId']) ?? 0;
+      final registrationId = _parseInt(preKey['senderRegistrationId']) ?? 0;
       await IdentityStore.saveRemoteIdentity(
         odid: senderUserId,
         deviceId: senderDeviceId,
@@ -684,8 +668,9 @@ class E2eeService {
       );
     }
 
-    final signedPreKey =
-        await SignedPreKeyStore.getSignedPreKey(signedPreKeyId);
+    final signedPreKey = await SignedPreKeyStore.getSignedPreKey(
+      signedPreKeyId,
+    );
     if (signedPreKey == null) {
       return null;
     }
@@ -805,14 +790,16 @@ class E2eeService {
 
       RatchetMessage? ratchetMessage;
       try {
-        ratchetMessage =
-            RatchetMessage.fromBytes(base64Decode(ratchetEncoded));
+        ratchetMessage = RatchetMessage.fromBytes(base64Decode(ratchetEncoded));
       } catch (_) {
         continue;
       }
 
-      final sessionId =
-          SessionStore.makeSessionId(myUserId, targetUserId, targetDeviceId);
+      final sessionId = SessionStore.makeSessionId(
+        myUserId,
+        targetUserId,
+        targetDeviceId,
+      );
       final existing = await SessionStore.getSession(sessionId);
       if (existing == null) continue;
 
@@ -930,10 +917,7 @@ class _LocalIdentity {
 }
 
 class _XIdentityKeyPair {
-  _XIdentityKeyPair({
-    required this.publicKey,
-    required this.privateKey,
-  });
+  _XIdentityKeyPair({required this.publicKey, required this.privateKey});
 
   final Uint8List publicKey;
   final SecureKey privateKey;
@@ -956,20 +940,14 @@ class _SignedPreKeyBundle {
 }
 
 class _RemoteDevice {
-  _RemoteDevice({
-    required this.userId,
-    required this.deviceId,
-  });
+  _RemoteDevice({required this.userId, required this.deviceId});
 
   final String userId;
   final String deviceId;
 }
 
 class _IdentityKeyBundle {
-  _IdentityKeyBundle({
-    required this.edPublicKey,
-    required this.xPublicKey,
-  });
+  _IdentityKeyBundle({required this.edPublicKey, required this.xPublicKey});
 
   final Uint8List edPublicKey;
   final Uint8List xPublicKey;

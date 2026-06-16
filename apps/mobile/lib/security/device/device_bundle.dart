@@ -33,36 +33,36 @@ final class DeviceBundle {
     required this.deviceId,
     required this.registrationId,
     required this.identityKey,
-    required this. signedPreKey,
-    required this. signedPreKeyId,
+    required this.signedPreKey,
+    required this.signedPreKeyId,
     required this.signedPreKeySignature,
     required this.oneTimePreKeys,
   });
 
   /// Get first available one-time pre-key
   PreKeyInfo? get firstOneTimePreKey =>
-      oneTimePreKeys.isNotEmpty ? oneTimePreKeys.first :  null;
+      oneTimePreKeys.isNotEmpty ? oneTimePreKeys.first : null;
 
   /// Has one-time pre-keys available
-  bool get hasOneTimePreKeys => oneTimePreKeys. isNotEmpty;
+  bool get hasOneTimePreKeys => oneTimePreKeys.isNotEmpty;
 
   /// Serialize to JSON
   Map<String, dynamic> toJson() => {
-        'deviceId': deviceId,
-        'registrationId': registrationId,
-        'identityKey': identityKey. toList(),
-        'signedPreKey':  signedPreKey. toList(),
-        'signedPreKeyId': signedPreKeyId,
-        'signedPreKeySignature': signedPreKeySignature. toList(),
-        'oneTimePreKeys': oneTimePreKeys.map((pk) => pk.toJson()).toList(),
-      };
+    'deviceId': deviceId,
+    'registrationId': registrationId,
+    'identityKey': identityKey.toList(),
+    'signedPreKey': signedPreKey.toList(),
+    'signedPreKeyId': signedPreKeyId,
+    'signedPreKeySignature': signedPreKeySignature.toList(),
+    'oneTimePreKeys': oneTimePreKeys.map((pk) => pk.toJson()).toList(),
+  };
 
   /// Deserialize from JSON
-  factory DeviceBundle. fromJson(Map<String, dynamic> json) {
+  factory DeviceBundle.fromJson(Map<String, dynamic> json) {
     return DeviceBundle(
       deviceId: json['deviceId'] as String,
       registrationId: json['registrationId'] as int,
-      identityKey:  Uint8List.fromList(
+      identityKey: Uint8List.fromList(
         (json['identityKey'] as List).cast<int>(),
       ),
       signedPreKey: Uint8List.fromList(
@@ -72,7 +72,8 @@ final class DeviceBundle {
       signedPreKeySignature: Uint8List.fromList(
         (json['signedPreKeySignature'] as List).cast<int>(),
       ),
-      oneTimePreKeys: (json['oneTimePreKeys'] as List?)
+      oneTimePreKeys:
+          (json['oneTimePreKeys'] as List?)
               ?.map((e) => PreKeyInfo.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
@@ -85,15 +86,12 @@ class PreKeyInfo {
   final int keyId;
   final Uint8List publicKey;
 
-  const PreKeyInfo({
-    required this.keyId,
-    required this.publicKey,
-  });
+  const PreKeyInfo({required this.keyId, required this.publicKey});
 
   Map<String, dynamic> toJson() => {
-        'keyId': keyId,
-        'publicKey': publicKey.toList(),
-      };
+    'keyId': keyId,
+    'publicKey': publicKey.toList(),
+  };
 
   factory PreKeyInfo.fromJson(Map<String, dynamic> json) {
     return PreKeyInfo(

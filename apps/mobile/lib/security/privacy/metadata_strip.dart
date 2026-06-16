@@ -40,7 +40,7 @@ final class MetadataStrip {
     result.addAll([0xFF, 0xD8]);
     i += 2;
 
-    while (i < data. length - 1) {
+    while (i < data.length - 1) {
       if (data[i] != 0xFF) {
         i++;
         continue;
@@ -89,7 +89,7 @@ final class MetadataStrip {
       }
     }
 
-    return Uint8List. fromList(result);
+    return Uint8List.fromList(result);
   }
 
   /// Strip PNG metadata chunks
@@ -106,7 +106,8 @@ final class MetadataStrip {
 
     var i = 8;
     while (i < data.length - 12) {
-      final length = (data[i] << 24) |
+      final length =
+          (data[i] << 24) |
           (data[i + 1] << 16) |
           (data[i + 2] << 8) |
           data[i + 3];
@@ -115,7 +116,7 @@ final class MetadataStrip {
 
       // Keep only critical chunks
       const critical = ['IHDR', 'PLTE', 'IDAT', 'IEND'];
-      if (critical. contains(type)) {
+      if (critical.contains(type)) {
         result.addAll(data.sublist(i, i + 12 + length));
       }
 
@@ -129,7 +130,7 @@ final class MetadataStrip {
   static bool hasGpsData(Uint8List data) {
     // Simple check for GPS marker
     const gpsMarker = [0x47, 0x50, 0x53]; // "GPS"
-    
+
     for (var i = 0; i < data.length - 3; i++) {
       if (data[i] == gpsMarker[0] &&
           data[i + 1] == gpsMarker[1] &&
@@ -141,7 +142,7 @@ final class MetadataStrip {
   }
 
   /// Get image type
-  static String?  getImageType(Uint8List data) {
+  static String? getImageType(Uint8List data) {
     if (data.length < 2) return null;
 
     if (data[0] == 0xFF && data[1] == 0xD8) return 'jpeg';

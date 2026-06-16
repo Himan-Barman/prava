@@ -609,6 +609,129 @@ test("chat routes: dm create, send message, read + delivery + sync", async () =>
   assert.equal(unblockA.data.blocked, false);
 });
 
+test("profile routes enforce private visibility and support profile actions", async () => {
+  const settings = await httpJson<any>(baseUrl, "/api/users/me/settings", {
+    method: "PUT",
+    token: userBToken,
+    body: {
+      privateAccount: true,
+      profileVisibility: {
+        posts: "followers",
+        media: "followers",
+        highlights: "followers",
+        followers: "public",
+        following: "public",
+      },
+    },
+  });
+  assert.equal(settings.status, 200);
+  assert.equal(settings.data.settings.privateAccount, true);
+
+  const ownerPreview = await httpJson<any>(
+    baseUrl,
+    "/api/users/me/profile/preview?as=public",
+    { token: userBToken }
+  );
+  assert.equal(ownerPreview.status, 200, JSON.stringify(ownerPreview.data));
+  assert.equal(ownerPreview.data.profileState, "private");
+  assert.equal(ownerPreview.data.viewerRelation, "nonFollower");
+  assert.equal(Array.isArray(ownerPreview.data.tabs), true);
+  assert.equal(ownerPreview.data.tabs.length, 0);
+
+  const privateProfile = await httpJson<any>(
+    baseUrl,
+    `/api/users/${userBId}/profile`,
+    { token: userAToken }
+  );
+  assert.equal(privateProfile.status, 200, JSON.stringify(privateProfile.data));
+  assert.equal(privateProfile.data.profileState, "private");
+  assert.equal(privateProfile.data.stats.posts, 0);
+
+  const requestFollow = await httpJson<any>(
+    baseUrl,
+    `/api/users/${userBId}/follow`,
+    {
+      method: "PUT",
+      token: userAToken,
+      body: { follow: true },
+    }
+  );
+  assert.equal(requestFollow.status, 200);
+  assert.equal(requestFollow.data.following, false);
+  assert.equal(requestFollow.data.requested, true);
+
+  const requestedProfile = await httpJson<any>(
+    baseUrl,
+    `/api/users/${userBId}/profile`,
+    { token: userAToken }
+  );
+  assert.equal(requestedProfile.status, 200);
+  assert.equal(requestedProfile.data.viewerRelation, "requestPending");
+  assert.equal(requestedProfile.data.relationship.requestPending, true);
+
+  const acceptFollow = await httpJson<any>(
+    baseUrl,
+    `/api/users/${userAId}/follow-request/accept`,
+    { method: "POST", token: userBToken, body: {} }
+  );
+  assert.equal(acceptFollow.status, 200, JSON.stringify(acceptFollow.data));
+  assert.equal(acceptFollow.data.accepted, true);
+
+  const followerProfile = await httpJson<any>(
+    baseUrl,
+    `/api/users/${userBId}/profile`,
+    { token: userAToken }
+  );
+  assert.equal(followerProfile.status, 200);
+  assert.equal(followerProfile.data.profileState, "public");
+  assert.equal(followerProfile.data.viewerRelation, "follower");
+  assert.ok(followerProfile.data.tabs.some((tab: any) => tab.key === "posts"));
+
+  const link = await httpJson<any>(baseUrl, "/api/users/me/profile-links", {
+    method: "POST",
+    token: userBToken,
+    body: { title: "Portfolio", url: "pravachat.me", visibility: "followers" },
+  });
+  assert.equal(link.status, 200);
+  assert.equal(link.data.item.url, "https://pravachat.me/");
+
+  const report = await httpJson<any>(
+    baseUrl,
+    `/api/users/${userBId}/report`,
+    {
+      method: "POST",
+      token: userAToken,
+      body: { reason: "other", details: "profile action test" },
+    }
+  );
+  assert.equal(report.status, 200);
+  assert.equal(report.data.reported, true);
+
+  const block = await httpJson<any>(baseUrl, `/api/users/${userBId}/block`, {
+    method: "POST",
+    token: userAToken,
+    body: {},
+  });
+  assert.equal(block.status, 200);
+  assert.equal(block.data.blocked, true);
+
+  const blockedProfile = await httpJson<any>(
+    baseUrl,
+    `/api/users/${userBId}/profile`,
+    { token: userAToken }
+  );
+  assert.equal(blockedProfile.status, 200);
+  assert.equal(blockedProfile.data.profileState, "blockedByViewer");
+
+  const unblock = await httpJson<any>(baseUrl, `/api/users/${userBId}/block`, {
+    method: "DELETE",
+    token: userAToken,
+    body: {},
+  });
+  assert.equal(unblock.status, 200);
+  assert.equal(unblock.data.blocked, false);
+});
+
 test("username availability: taken and available", async () => {
   const taken = await httpJson<{ available: boolean }>(
     baseUrl,

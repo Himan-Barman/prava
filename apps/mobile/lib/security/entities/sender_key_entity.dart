@@ -46,7 +46,7 @@ class SenderKeyEntity {
   late int createdAt;
 
   /// Last used timestamp
-  int?  lastUsedAt;
+  int? lastUsedAt;
 
   /// Composite index
   @Index(composite: [CompositeIndex('senderId'), CompositeIndex('deviceId')])

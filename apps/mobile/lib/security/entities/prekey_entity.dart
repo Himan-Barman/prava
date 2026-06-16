@@ -6,7 +6,7 @@ part 'prekey_entity.g.dart';
 /// ============================================================
 /// PreKey Entity - Database Model
 /// ============================================================
-/// Stores one-time pre-keys for X3DH. 
+/// Stores one-time pre-keys for X3DH.
 /// ============================================================
 @Collection()
 class PreKeyEntity {
@@ -34,5 +34,5 @@ class PreKeyEntity {
   late int createdAt;
 
   /// Consumption timestamp
-  int?  consumedAt;
+  int? consumedAt;
 }

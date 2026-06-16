@@ -26,7 +26,7 @@ class LocationSuggestion {
 
 class LocationSuggestionService {
   LocationSuggestionService({SecureStore? store})
-      : _client = ApiClient(store ?? SecureStore());
+    : _client = ApiClient(store ?? SecureStore());
 
   final ApiClient _client;
 
@@ -34,10 +34,7 @@ class LocationSuggestionService {
     final data = await _client.get(
       '/users/location-suggestions',
       auth: true,
-      query: {
-        'query': query,
-        'limit': '8',
-      },
+      query: {'query': query, 'limit': '8'},
     );
     final results = data is Map<String, dynamic>
         ? data['results'] as List<dynamic>? ?? []

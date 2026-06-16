@@ -142,7 +142,7 @@ class _DevicesPageState extends State<DevicesPage> {
                   children: [
                     Text(
                       'Sessions',
-                      style: PravaTypography.h3.copyWith(
+                      style: PravaTypography.titleSmall.copyWith(
                         color: primary,
                         fontWeight: FontWeight.w700,
                       ),
@@ -168,7 +168,9 @@ class _DevicesPageState extends State<DevicesPage> {
                 if (_sessions.isEmpty)
                   Text(
                     'No active sessions found.',
-                    style: PravaTypography.body.copyWith(color: secondary),
+                    style: PravaTypography.bodyMedium.copyWith(
+                      color: secondary,
+                    ),
                   )
                 else
                   ..._sessions.map((session) {
@@ -189,7 +191,7 @@ class _DevicesPageState extends State<DevicesPage> {
                                 _deviceLabel(
                                   session,
                                 ).substring(0, 1).toUpperCase(),
-                                style: PravaTypography.body.copyWith(
+                                style: PravaTypography.bodyMedium.copyWith(
                                   color: PravaColors.accentPrimary,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -202,7 +204,7 @@ class _DevicesPageState extends State<DevicesPage> {
                                 children: [
                                   Text(
                                     _deviceLabel(session),
-                                    style: PravaTypography.body.copyWith(
+                                    style: PravaTypography.bodyMedium.copyWith(
                                       color: primary,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -230,7 +232,7 @@ class _DevicesPageState extends State<DevicesPage> {
                                 onPressed: () => _revokeSession(session),
                                 child: Text(
                                   'Sign out',
-                                  style: PravaTypography.button.copyWith(
+                                  style: PravaTypography.buttonMedium.copyWith(
                                     color: PravaColors.accentPrimary,
                                   ),
                                 ),

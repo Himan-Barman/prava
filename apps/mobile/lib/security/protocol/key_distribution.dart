@@ -9,7 +9,7 @@ import '../storage/signed_prekey_store.dart';
 /// ============================================================
 /// Key Distribution
 /// ============================================================
-/// Manages key distribution for X3DH: 
+/// Manages key distribution for X3DH:
 ///
 /// • Generate and upload key bundles
 /// • Replenish pre-keys
@@ -49,30 +49,33 @@ final class KeyDistribution {
     await SignedPreKeyStore.saveSignedPreKey(
       keyId: signedPreKey.keyId,
       publicKey: signedPreKey.publicKey,
-      privateKey:  signedPreKey. secretKey. extractBytes(),
+      privateKey: signedPreKey.secretKey.extractBytes(),
       signature: signedPreKey.signature,
     );
 
     // Save pre-keys
     await PreKeyStore.savePreKeyBatch(
-      preKeys. map((pk) => PreKeyData(
-        keyId: pk.keyId,
-        publicKey: pk.publicKey,
-        privateKey: pk.secretKey.extractBytes(),
-      )).toList(),
+      preKeys
+          .map(
+            (pk) => PreKeyData(
+              keyId: pk.keyId,
+              publicKey: pk.publicKey,
+              privateKey: pk.secretKey.extractBytes(),
+            ),
+          )
+          .toList(),
     );
 
     return InitialKeyBundle(
-      deviceId:  deviceId,
+      deviceId: deviceId,
       registrationId: registrationId,
       identityKey: identityPublicKey,
-      signedPreKey: signedPreKey. publicKey,
-      signedPreKeyId:  signedPreKey.keyId,
+      signedPreKey: signedPreKey.publicKey,
+      signedPreKeyId: signedPreKey.keyId,
       signedPreKeySignature: signedPreKey.signature,
-      oneTimePreKeys: preKeys.map((pk) => PreKeyInfo(
-        keyId: pk.keyId,
-        publicKey: pk.publicKey,
-      )).toList(),
+      oneTimePreKeys: preKeys
+          .map((pk) => PreKeyInfo(keyId: pk.keyId, publicKey: pk.publicKey))
+          .toList(),
     );
   }
 
@@ -93,17 +96,20 @@ final class KeyDistribution {
 
     // Save to store
     await PreKeyStore.savePreKeyBatch(
-      preKeys.map((pk) => PreKeyData(
-        keyId: pk.keyId,
-        publicKey: pk.publicKey,
-        privateKey: pk.secretKey.extractBytes(),
-      )).toList(),
+      preKeys
+          .map(
+            (pk) => PreKeyData(
+              keyId: pk.keyId,
+              publicKey: pk.publicKey,
+              privateKey: pk.secretKey.extractBytes(),
+            ),
+          )
+          .toList(),
     );
 
-    return preKeys.map((pk) => PreKeyInfo(
-      keyId:  pk.keyId,
-      publicKey:  pk.publicKey,
-    )).toList();
+    return preKeys
+        .map((pk) => PreKeyInfo(keyId: pk.keyId, publicKey: pk.publicKey))
+        .toList();
   }
 
   /// Check if signed pre-key needs rotation
@@ -123,24 +129,24 @@ final class KeyDistribution {
 
     // Save new key (automatically deactivates old)
     await SignedPreKeyStore.saveSignedPreKey(
-      keyId:  signedPreKey.keyId,
+      keyId: signedPreKey.keyId,
       publicKey: signedPreKey.publicKey,
-      privateKey:  signedPreKey. secretKey.extractBytes(),
-      signature: signedPreKey. signature,
+      privateKey: signedPreKey.secretKey.extractBytes(),
+      signature: signedPreKey.signature,
     );
 
     // Delete old keys
     await SignedPreKeyStore.deleteOld();
 
     return SignedPreKeyInfo(
-      keyId:  signedPreKey.keyId,
+      keyId: signedPreKey.keyId,
       publicKey: signedPreKey.publicKey,
       signature: signedPreKey.signature,
     );
   }
 
   /// Get current device bundle for upload
-  static Future<DeviceBundle? > getCurrentBundle({
+  static Future<DeviceBundle?> getCurrentBundle({
     required String deviceId,
     required int registrationId,
     required Uint8List identityKey,
@@ -152,15 +158,19 @@ final class KeyDistribution {
 
     return DeviceBundle(
       deviceId: deviceId,
-      registrationId:  registrationId,
-      identityKey:  identityKey,
-      signedPreKey:  Uint8List.fromList(signedPreKey.publicKey),
-      signedPreKeyId:  signedPreKey. keyId,
-      signedPreKeySignature:  Uint8List.fromList(signedPreKey.signature),
-      oneTimePreKeys: preKeys.map((pk) => PreKeyInfo(
-        keyId: pk. keyId,
-        publicKey:  Uint8List.fromList(pk.publicKey),
-      )).toList(),
+      registrationId: registrationId,
+      identityKey: identityKey,
+      signedPreKey: Uint8List.fromList(signedPreKey.publicKey),
+      signedPreKeyId: signedPreKey.keyId,
+      signedPreKeySignature: Uint8List.fromList(signedPreKey.signature),
+      oneTimePreKeys: preKeys
+          .map(
+            (pk) => PreKeyInfo(
+              keyId: pk.keyId,
+              publicKey: Uint8List.fromList(pk.publicKey),
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -181,7 +191,7 @@ class InitialKeyBundle {
   final List<PreKeyInfo> oneTimePreKeys;
 
   const InitialKeyBundle({
-    required this. deviceId,
+    required this.deviceId,
     required this.registrationId,
     required this.identityKey,
     required this.signedPreKey,
@@ -191,14 +201,14 @@ class InitialKeyBundle {
   });
 
   Map<String, dynamic> toJson() => {
-        'deviceId': deviceId,
-        'registrationId': registrationId,
-        'identityKey': identityKey. toList(),
-        'signedPreKey': signedPreKey.toList(),
-        'signedPreKeyId': signedPreKeyId,
-        'signedPreKeySignature': signedPreKeySignature.toList(),
-        'oneTimePreKeys': oneTimePreKeys.map((pk) => pk.toJson()).toList(),
-      };
+    'deviceId': deviceId,
+    'registrationId': registrationId,
+    'identityKey': identityKey.toList(),
+    'signedPreKey': signedPreKey.toList(),
+    'signedPreKeyId': signedPreKeyId,
+    'signedPreKeySignature': signedPreKeySignature.toList(),
+    'oneTimePreKeys': oneTimePreKeys.map((pk) => pk.toJson()).toList(),
+  };
 }
 
 /// Signed pre-key info for upload
@@ -214,8 +224,8 @@ class SignedPreKeyInfo {
   });
 
   Map<String, dynamic> toJson() => {
-        'keyId': keyId,
-        'publicKey': publicKey.toList(),
-        'signature': signature.toList(),
-      };
+    'keyId': keyId,
+    'publicKey': publicKey.toList(),
+    'signature': signature.toList(),
+  };
 }

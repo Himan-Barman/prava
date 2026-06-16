@@ -6,7 +6,7 @@ part 'signed_prekey_entity.g.dart';
 /// ============================================================
 /// Signed PreKey Entity - Database Model
 /// ============================================================
-/// Stores signed pre-keys for X3DH. 
+/// Stores signed pre-keys for X3DH.
 /// ============================================================
 @Collection()
 class SignedPreKeyEntity {

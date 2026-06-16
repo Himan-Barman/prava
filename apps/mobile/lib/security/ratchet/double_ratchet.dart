@@ -12,8 +12,8 @@ import 'skipped_keys.dart';
 /// Double Ratchet Algorithm
 final class DoubleRatchet {
   Uint8List _rootKey;
-  ChainKey?  _sendingChainKey;
-  ChainKey?  _receivingChainKey;
+  ChainKey? _sendingChainKey;
+  ChainKey? _receivingChainKey;
   RatchetKeyPair? _myRatchetKeyPair;
   Uint8List? _theirRatchetPublicKey;
   int _sendingChainLength = 0;
@@ -25,25 +25,25 @@ final class DoubleRatchet {
   DoubleRatchet._({
     required Uint8List rootKey,
     ChainKey? sendingChainKey,
-    ChainKey?  receivingChainKey,
+    ChainKey? receivingChainKey,
     RatchetKeyPair? myRatchetKeyPair,
     Uint8List? theirRatchetPublicKey,
     int sendingChainLength = 0,
     int receivingChainLength = 0,
     int previousSendingChainLength = 0,
-    SkippedMessageKeys?  skippedKeys,
+    SkippedMessageKeys? skippedKeys,
     required this.sessionId,
-  })  : _rootKey = rootKey,
-        _sendingChainKey = sendingChainKey,
-        _receivingChainKey = receivingChainKey,
-        _myRatchetKeyPair = myRatchetKeyPair,
-        _theirRatchetPublicKey = theirRatchetPublicKey,
-        _sendingChainLength = sendingChainLength,
-        _receivingChainLength = receivingChainLength,
-        _previousSendingChainLength = previousSendingChainLength,
-        _skippedKeys = skippedKeys ?? SkippedMessageKeys.empty();
+  }) : _rootKey = rootKey,
+       _sendingChainKey = sendingChainKey,
+       _receivingChainKey = receivingChainKey,
+       _myRatchetKeyPair = myRatchetKeyPair,
+       _theirRatchetPublicKey = theirRatchetPublicKey,
+       _sendingChainLength = sendingChainLength,
+       _receivingChainLength = receivingChainLength,
+       _previousSendingChainLength = previousSendingChainLength,
+       _skippedKeys = skippedKeys ?? SkippedMessageKeys.empty();
 
-  Uint8List?  get myRatchetPublicKey => _myRatchetKeyPair?.publicKey;
+  Uint8List? get myRatchetPublicKey => _myRatchetKeyPair?.publicKey;
   Uint8List? get theirRatchetPublicKey => _theirRatchetPublicKey;
   int get sendingChainLength => _sendingChainLength;
   int get receivingChainLength => _receivingChainLength;
@@ -65,21 +65,21 @@ final class DoubleRatchet {
   ) async {
     // Use genericHash to derive a shared secret from the keys
     // This is a workaround since PrecalculatedBox doesn't expose raw bytes
-    final combined = Uint8List. fromList([
+    final combined = Uint8List.fromList([
       ...privateKey.extractBytes(),
       ...publicKey,
     ]);
-    
-    final sharedSecret = sodium.crypto. genericHash(
+
+    final sharedSecret = sodium.crypto.genericHash(
       message: combined,
       outLen: 32,
     );
-    
+
     // Zero the combined buffer
     for (var i = 0; i < combined.length; i++) {
       combined[i] = 0;
     }
-    
+
     return sharedSecret;
   }
 
@@ -109,10 +109,10 @@ final class DoubleRatchet {
     _zeroize(rootKeyBytes);
 
     return DoubleRatchet._(
-      rootKey: derived. rootKey,
-      sendingChainKey:  ChainKey. fromBytes(derived. chainKey),
+      rootKey: derived.rootKey,
+      sendingChainKey: ChainKey.fromBytes(derived.chainKey),
       myRatchetKeyPair: myRatchetKeyPair,
-      theirRatchetPublicKey:  Uint8List.fromList(theirRatchetPublicKey),
+      theirRatchetPublicKey: Uint8List.fromList(theirRatchetPublicKey),
       sessionId: sessionId,
     );
   }
@@ -126,7 +126,7 @@ final class DoubleRatchet {
     final rootKeyBytes = sharedSecret.extractBytes();
 
     return DoubleRatchet._(
-      rootKey:  Uint8List.fromList(rootKeyBytes),
+      rootKey: Uint8List.fromList(rootKeyBytes),
       myRatchetKeyPair: myRatchetKeyPair,
       sessionId: sessionId,
     );
@@ -139,10 +139,10 @@ final class DoubleRatchet {
     }
 
     final advance = await _sendingChainKey!.advance();
-    _sendingChainKey = advance. nextChainKey;
+    _sendingChainKey = advance.nextChainKey;
 
     final encrypted = await MessageKeys.encrypt(
-      plaintext:  plaintext,
+      plaintext: plaintext,
       messageKey: advance.messageKey,
     );
 
@@ -155,7 +155,7 @@ final class DoubleRatchet {
     advance.disposeMessageKey();
 
     final message = RatchetMessage(
-      ciphertext: encrypted. ciphertext,
+      ciphertext: encrypted.ciphertext,
       nonce: encrypted.nonce,
       ratchetPublicKey: _myRatchetKeyPair!.publicKey,
       messageNumber: _sendingChainLength,
@@ -167,9 +167,7 @@ final class DoubleRatchet {
     return message;
   }
 
-  Future<RatchetEncryptResult> encryptAndExportKey(
-    Uint8List plaintext,
-  ) async {
+  Future<RatchetEncryptResult> encryptAndExportKey(Uint8List plaintext) async {
     if (_sendingChainKey == null) {
       throw RatchetException('No sending chain key available');
     }
@@ -200,10 +198,7 @@ final class DoubleRatchet {
 
     _sendingChainLength++;
 
-    return RatchetEncryptResult(
-      message: message,
-      messageKey: messageKey,
-    );
+    return RatchetEncryptResult(message: message, messageKey: messageKey);
   }
 
   /// Encrypt with associated data (AEAD)
@@ -215,13 +210,13 @@ final class DoubleRatchet {
       throw RatchetException('No sending chain key available');
     }
 
-    final advance = await _sendingChainKey! .advance();
+    final advance = await _sendingChainKey!.advance();
     _sendingChainKey = advance.nextChainKey;
 
     final encrypted = await MessageKeys.encrypt(
       plaintext: plaintext,
       messageKey: advance.messageKey,
-      associatedData:  associatedData,
+      associatedData: associatedData,
     );
 
     _skippedKeys.storePersistentKey(
@@ -234,9 +229,9 @@ final class DoubleRatchet {
 
     final message = RatchetMessage(
       ciphertext: encrypted.ciphertext,
-      nonce: encrypted. nonce,
+      nonce: encrypted.nonce,
       ratchetPublicKey: _myRatchetKeyPair!.publicKey,
-      messageNumber:  _sendingChainLength,
+      messageNumber: _sendingChainLength,
       previousChainLength: _previousSendingChainLength,
     );
 
@@ -269,7 +264,7 @@ final class DoubleRatchet {
 
     if (skippedKey != null) {
       final plaintext = await MessageKeys.decrypt(
-        ciphertext:  message.ciphertext,
+        ciphertext: message.ciphertext,
         nonce: message.nonce,
         messageKey: skippedKey,
       );
@@ -282,8 +277,9 @@ final class DoubleRatchet {
       return plaintext;
     }
 
-    final needsDhRatchet = _theirRatchetPublicKey == null ||
-        ! _bytesEqual(message.ratchetPublicKey, _theirRatchetPublicKey! );
+    final needsDhRatchet =
+        _theirRatchetPublicKey == null ||
+        !_bytesEqual(message.ratchetPublicKey, _theirRatchetPublicKey!);
 
     if (needsDhRatchet) {
       await _performDhRatchet(message.ratchetPublicKey);
@@ -295,12 +291,12 @@ final class DoubleRatchet {
       throw RatchetException('No receiving chain key available');
     }
 
-    final advance = await _receivingChainKey!. advance();
+    final advance = await _receivingChainKey!.advance();
     _receivingChainKey = advance.nextChainKey;
     _receivingChainLength++;
 
     final plaintext = await MessageKeys.decrypt(
-      ciphertext:  message.ciphertext,
+      ciphertext: message.ciphertext,
       nonce: message.nonce,
       messageKey: advance.messageKey,
     );
@@ -353,13 +349,11 @@ final class DoubleRatchet {
         skippedKey,
       );
       _zeroize(skippedKey);
-      return RatchetDecryptResult(
-        plaintext: plaintext,
-        messageKey: messageKey,
-      );
+      return RatchetDecryptResult(plaintext: plaintext, messageKey: messageKey);
     }
 
-    final needsDhRatchet = _theirRatchetPublicKey == null ||
+    final needsDhRatchet =
+        _theirRatchetPublicKey == null ||
         !_bytesEqual(message.ratchetPublicKey, _theirRatchetPublicKey!);
 
     if (needsDhRatchet) {
@@ -390,10 +384,7 @@ final class DoubleRatchet {
     );
     advance.disposeMessageKey();
 
-    return RatchetDecryptResult(
-      plaintext: plaintext,
-      messageKey: messageKey,
-    );
+    return RatchetDecryptResult(plaintext: plaintext, messageKey: messageKey);
   }
 
   /// Decrypt with associated data (AEAD)
@@ -419,7 +410,7 @@ final class DoubleRatchet {
 
     final skippedKey = _skippedKeys.consumeKey(
       message.ratchetPublicKey,
-      message. messageNumber,
+      message.messageNumber,
     );
 
     if (skippedKey != null) {
@@ -438,27 +429,28 @@ final class DoubleRatchet {
       return plaintext;
     }
 
-    final needsDhRatchet = _theirRatchetPublicKey == null ||
-        !_bytesEqual(message.ratchetPublicKey, _theirRatchetPublicKey! );
+    final needsDhRatchet =
+        _theirRatchetPublicKey == null ||
+        !_bytesEqual(message.ratchetPublicKey, _theirRatchetPublicKey!);
 
     if (needsDhRatchet) {
       await _performDhRatchet(message.ratchetPublicKey);
     }
 
-    await _skipMessages(message. messageNumber);
+    await _skipMessages(message.messageNumber);
 
     if (_receivingChainKey == null) {
       throw RatchetException('No receiving chain key available');
     }
 
     final advance = await _receivingChainKey!.advance();
-    _receivingChainKey = advance. nextChainKey;
+    _receivingChainKey = advance.nextChainKey;
     _receivingChainLength++;
 
     final plaintext = await MessageKeys.decrypt(
       ciphertext: message.ciphertext,
-      nonce: message. nonce,
-      messageKey: advance. messageKey,
+      nonce: message.nonce,
+      messageKey: advance.messageKey,
       associatedData: associatedData,
     );
 
@@ -484,7 +476,7 @@ final class DoubleRatchet {
 
     final dhOutput1 = await _performDH(
       sodium,
-      _myRatchetKeyPair! .secretKey,
+      _myRatchetKeyPair!.secretKey,
       theirNewRatchetPublicKey,
     );
 
@@ -493,9 +485,9 @@ final class DoubleRatchet {
       dhOutput: dhOutput1,
     );
     _rootKey = derived1.rootKey;
-    _receivingChainKey = ChainKey. fromBytes(derived1.chainKey);
+    _receivingChainKey = ChainKey.fromBytes(derived1.chainKey);
 
-    _myRatchetKeyPair?. dispose();
+    _myRatchetKeyPair?.dispose();
     _myRatchetKeyPair = await KeyGeneration.generateRatchetKeyPair();
 
     final dhOutput2 = await _performDH(
@@ -527,17 +519,17 @@ final class DoubleRatchet {
 
     if (toSkip > SkippedMessageKeys.maxSkipPerChain) {
       throw RatchetException(
-        'Too many skipped messages:  $toSkip (max: ${SkippedMessageKeys. maxSkipPerChain})',
+        'Too many skipped messages:  $toSkip (max: ${SkippedMessageKeys.maxSkipPerChain})',
       );
     }
 
     while (_receivingChainLength < untilIndex) {
-      final advance = await _receivingChainKey!. advance();
+      final advance = await _receivingChainKey!.advance();
 
       _skippedKeys.storeKey(
         _theirRatchetPublicKey!,
         _receivingChainLength,
-        advance. messageKey,
+        advance.messageKey,
       );
 
       _receivingChainKey = advance.nextChainKey;
@@ -548,8 +540,8 @@ final class DoubleRatchet {
   RatchetSessionState exportState() {
     return RatchetSessionState(
       sessionId: sessionId,
-      rootKey:  Uint8List.fromList(_rootKey),
-      sendingChainKey: _sendingChainKey?. toJson(),
+      rootKey: Uint8List.fromList(_rootKey),
+      sendingChainKey: _sendingChainKey?.toJson(),
       receivingChainKey: _receivingChainKey?.toJson(),
       myRatchetPublicKey: _myRatchetKeyPair?.publicKey,
       theirRatchetPublicKey: _theirRatchetPublicKey,
@@ -567,26 +559,26 @@ final class DoubleRatchet {
     RatchetKeyPair? myRatchetKeyPair;
     if (state.myRatchetPublicKey != null) {
       myRatchetKeyPair = RatchetKeyPair(
-        publicKey:  state.myRatchetPublicKey! ,
+        publicKey: state.myRatchetPublicKey!,
         secretKey: myRatchetPrivateKey,
       );
     }
 
     return DoubleRatchet._(
-      rootKey:  state.rootKey,
+      rootKey: state.rootKey,
       sendingChainKey: state.sendingChainKey != null
           ? ChainKey.fromJson(state.sendingChainKey!)
           : null,
-      receivingChainKey:  state.receivingChainKey != null
+      receivingChainKey: state.receivingChainKey != null
           ? ChainKey.fromJson(state.receivingChainKey!)
           : null,
       myRatchetKeyPair: myRatchetKeyPair,
       theirRatchetPublicKey: state.theirRatchetPublicKey,
-      sendingChainLength:  state.sendingChainLength,
+      sendingChainLength: state.sendingChainLength,
       receivingChainLength: state.receivingChainLength,
       previousSendingChainLength: state.previousSendingChainLength,
       skippedKeys: SkippedMessageKeys.fromJson(state.skippedKeys),
-      sessionId: state. sessionId,
+      sessionId: state.sessionId,
     );
   }
 
@@ -596,7 +588,7 @@ final class DoubleRatchet {
 
   void dispose() {
     _zeroize(_rootKey);
-    _sendingChainKey?. dispose();
+    _sendingChainKey?.dispose();
     _receivingChainKey?.dispose();
     _myRatchetKeyPair?.dispose();
     _skippedKeys.clear();
@@ -622,10 +614,7 @@ class RatchetEncryptResult {
   final RatchetMessage message;
   final Uint8List messageKey;
 
-  const RatchetEncryptResult({
-    required this.message,
-    required this.messageKey,
-  });
+  const RatchetEncryptResult({required this.message, required this.messageKey});
 }
 
 class RatchetDecryptResult {
@@ -649,20 +638,20 @@ class RatchetMessage {
   RatchetMessage({
     required this.ciphertext,
     required this.nonce,
-    required this. ratchetPublicKey,
+    required this.ratchetPublicKey,
     required this.messageNumber,
-    required this. previousChainLength,
-    int?  timestamp,
-  }) : timestamp = timestamp ??  DateTime.now().millisecondsSinceEpoch;
+    required this.previousChainLength,
+    int? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
 
   Map<String, dynamic> toJson() => {
-        'ciphertext':  ciphertext.toList(),
-        'nonce': nonce. toList(),
-        'ratchetPublicKey': ratchetPublicKey. toList(),
-        'messageNumber': messageNumber,
-        'previousChainLength':  previousChainLength,
-        'timestamp': timestamp,
-      };
+    'ciphertext': ciphertext.toList(),
+    'nonce': nonce.toList(),
+    'ratchetPublicKey': ratchetPublicKey.toList(),
+    'messageNumber': messageNumber,
+    'previousChainLength': previousChainLength,
+    'timestamp': timestamp,
+  };
 
   factory RatchetMessage.fromJson(Map<String, dynamic> json) {
     return RatchetMessage(
@@ -687,7 +676,7 @@ class RatchetMessage {
     return Uint8List.fromList(buffer);
   }
 
-  factory RatchetMessage. fromBytes(Uint8List bytes) {
+  factory RatchetMessage.fromBytes(Uint8List bytes) {
     if (bytes.length < 64) {
       throw ArgumentError('Message too short');
     }
@@ -710,7 +699,7 @@ class RatchetMessage {
 
     return RatchetMessage(
       ciphertext: ciphertext,
-      nonce:  nonce,
+      nonce: nonce,
       ratchetPublicKey: ratchetPublicKey,
       messageNumber: messageNumber,
       previousChainLength: previousChainLength,
@@ -735,7 +724,7 @@ class RatchetSessionState {
   final Uint8List rootKey;
   final Map<String, dynamic>? sendingChainKey;
   final Map<String, dynamic>? receivingChainKey;
-  final Uint8List?  myRatchetPublicKey;
+  final Uint8List? myRatchetPublicKey;
   final Uint8List? theirRatchetPublicKey;
   final int sendingChainLength;
   final int receivingChainLength;
@@ -756,30 +745,31 @@ class RatchetSessionState {
   });
 
   Map<String, dynamic> toJson() => {
-        'sessionId': sessionId,
-        'rootKey': rootKey.toList(),
-        'sendingChainKey': sendingChainKey,
-        'receivingChainKey': receivingChainKey,
-        'myRatchetPublicKey':  myRatchetPublicKey?. toList(),
-        'theirRatchetPublicKey':  theirRatchetPublicKey?. toList(),
-        'sendingChainLength': sendingChainLength,
-        'receivingChainLength': receivingChainLength,
-        'previousSendingChainLength': previousSendingChainLength,
-        'skippedKeys':  skippedKeys,
-      };
+    'sessionId': sessionId,
+    'rootKey': rootKey.toList(),
+    'sendingChainKey': sendingChainKey,
+    'receivingChainKey': receivingChainKey,
+    'myRatchetPublicKey': myRatchetPublicKey?.toList(),
+    'theirRatchetPublicKey': theirRatchetPublicKey?.toList(),
+    'sendingChainLength': sendingChainLength,
+    'receivingChainLength': receivingChainLength,
+    'previousSendingChainLength': previousSendingChainLength,
+    'skippedKeys': skippedKeys,
+  };
 
   factory RatchetSessionState.fromJson(Map<String, dynamic> json) {
     return RatchetSessionState(
       sessionId: json['sessionId'] as String,
       rootKey: Uint8List.fromList((json['rootKey'] as List).cast<int>()),
       sendingChainKey: json['sendingChainKey'] as Map<String, dynamic>?,
-      receivingChainKey:  json['receivingChainKey'] as Map<String, dynamic>?,
+      receivingChainKey: json['receivingChainKey'] as Map<String, dynamic>?,
       myRatchetPublicKey: json['myRatchetPublicKey'] != null
-          ?  Uint8List.fromList((json['myRatchetPublicKey'] as List).cast<int>())
+          ? Uint8List.fromList((json['myRatchetPublicKey'] as List).cast<int>())
           : null,
       theirRatchetPublicKey: json['theirRatchetPublicKey'] != null
           ? Uint8List.fromList(
-              (json['theirRatchetPublicKey'] as List).cast<int>())
+              (json['theirRatchetPublicKey'] as List).cast<int>(),
+            )
           : null,
       sendingChainLength: json['sendingChainLength'] as int,
       receivingChainLength: json['receivingChainLength'] as int,

@@ -106,6 +106,11 @@ before(async () => {
     [viewerId, followedId, ts]
   );
   await pgLib.query(
+    `INSERT INTO follows (follower_id, following_id, created_at)
+     VALUES ($1, $2, $3)`,
+    [followedId, viewerId, ts]
+  );
+  await pgLib.query(
     `INSERT INTO user_blocks (blocker_id, blocked_id, created_at)
      VALUES ($1, $2, $3)`,
     [viewerId, blockedId, ts]
@@ -200,6 +205,85 @@ test("following feed is restricted to followed authors and self", async () => {
   const ids = response.data.items.map((post) => post.id);
   assert.ok(ids.includes(followedPostId), `expected followed post in ${JSON.stringify(ids)}`);
   assert.equal(ids.includes(outsidePostId), false, `outside post leaked in ${JSON.stringify(ids)}`);
+});
+
+test("friends, topic, custom, and explanation feeds use the expanded feed surface", async () => {
+  const friends = await httpJson<{ items: Array<{ id: string; recommendationMetadata?: Record<string, unknown> }> }>(
+    baseUrl,
+    "/api/feed/friends?limit=10",
+    { token }
+  );
+  assert.equal(friends.status, 200, JSON.stringify(friends.data));
+  assert.ok(friends.data.items.some((post) => post.id === followedPostId), JSON.stringify(friends.data));
+
+  const topic = await httpJson<{ items: Array<{ id: string; recommendationExplanation?: string | null }> }>(
+    baseUrl,
+    "/api/feed/topic/tech?limit=10",
+    { token }
+  );
+  assert.equal(topic.status, 200, JSON.stringify(topic.data));
+  assert.ok(topic.data.items.some((post) => post.id === outsidePostId), JSON.stringify(topic.data));
+  assert.ok(topic.data.items.some((post) => post.recommendationExplanation), JSON.stringify(topic.data));
+
+  const preference = await httpJson<{ preferences: { lens: string; preferredLanguages: string[] } }>(
+    baseUrl,
+    "/api/feed/preferences",
+    {
+      method: "PATCH",
+      token,
+      body: { lens: "discover", preferredLanguages: ["en"], discoveryIntensity: 0.5 },
+    }
+  );
+  assert.equal(preference.status, 200, JSON.stringify(preference.data));
+  assert.equal(preference.data.preferences.lens, "discover");
+  assert.deepEqual(preference.data.preferences.preferredLanguages, ["en"]);
+
+  const followTopic = await httpJson<{ followed: boolean; topic: string }>(
+    baseUrl,
+    "/api/feed/topics/tech/follow",
+    { method: "POST", token, body: {} }
+  );
+  assert.equal(followTopic.status, 200, JSON.stringify(followTopic.data));
+  assert.equal(followTopic.data.followed, true);
+  assert.equal(followTopic.data.topic, "tech");
+
+  const custom = await httpJson<{ id: string }>(
+    baseUrl,
+    "/api/feed/custom-feeds",
+    {
+      method: "POST",
+      token,
+      body: { name: "Tech feed", includeTopics: ["tech"] },
+    }
+  );
+  assert.equal(custom.status, 200, JSON.stringify(custom.data));
+  assert.ok(custom.data.id);
+
+  const customFeed = await httpJson<{ items: Array<{ id: string }> }>(
+    baseUrl,
+    `/api/feed/custom/${custom.data.id}?limit=10`,
+    { token }
+  );
+  assert.equal(customFeed.status, 200, JSON.stringify(customFeed.data));
+  assert.ok(customFeed.data.items.some((post) => post.id === outsidePostId), JSON.stringify(customFeed.data));
+
+  const why = await httpJson<{ postId: string; explanation: string }>(
+    baseUrl,
+    `/api/feed/${outsidePostId}/why`,
+    { token }
+  );
+  assert.equal(why.status, 200, JSON.stringify(why.data));
+  assert.equal(why.data.postId, outsidePostId);
+  assert.ok(why.data.explanation.length > 0);
+});
+
+test("feed rejects tampered cursors", async () => {
+  const response = await httpJson<{ error?: string }>(
+    baseUrl,
+    "/api/feed/for-you?cursor=not-a-valid-cursor",
+    { token }
+  );
+  assert.equal(response.status, 400, JSON.stringify(response.data));
 });
 
 test("not interested removes a post from personalized feed", async () => {

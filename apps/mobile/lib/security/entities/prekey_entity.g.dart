@@ -17,11 +17,7 @@ const PreKeyEntitySchema = CollectionSchema(
   name: r'PreKeyEntity',
   id: -1589910534322156642,
   properties: {
-    r'consumed': PropertySchema(
-      id: 0,
-      name: r'consumed',
-      type: IsarType.bool,
-    ),
+    r'consumed': PropertySchema(id: 0, name: r'consumed', type: IsarType.bool),
     r'consumedAt': PropertySchema(
       id: 1,
       name: r'consumedAt',
@@ -32,11 +28,7 @@ const PreKeyEntitySchema = CollectionSchema(
       name: r'createdAt',
       type: IsarType.long,
     ),
-    r'keyId': PropertySchema(
-      id: 3,
-      name: r'keyId',
-      type: IsarType.long,
-    ),
+    r'keyId': PropertySchema(id: 3, name: r'keyId', type: IsarType.long),
     r'privateKey': PropertySchema(
       id: 4,
       name: r'privateKey',
@@ -47,11 +39,7 @@ const PreKeyEntitySchema = CollectionSchema(
       name: r'publicKey',
       type: IsarType.longList,
     ),
-    r'uploaded': PropertySchema(
-      id: 6,
-      name: r'uploaded',
-      type: IsarType.bool,
-    )
+    r'uploaded': PropertySchema(id: 6, name: r'uploaded', type: IsarType.bool),
   },
   estimateSize: _preKeyEntityEstimateSize,
   serialize: _preKeyEntitySerialize,
@@ -69,7 +57,7 @@ const PreKeyEntitySchema = CollectionSchema(
           name: r'keyId',
           type: IndexType.value,
           caseSensitive: false,
-        )
+        ),
       ],
     ),
     r'uploaded': IndexSchema(
@@ -82,7 +70,7 @@ const PreKeyEntitySchema = CollectionSchema(
           name: r'uploaded',
           type: IndexType.value,
           caseSensitive: false,
-        )
+        ),
       ],
     ),
     r'consumed': IndexSchema(
@@ -95,9 +83,9 @@ const PreKeyEntitySchema = CollectionSchema(
           name: r'consumed',
           type: IndexType.value,
           caseSensitive: false,
-        )
+        ),
       ],
-    )
+    ),
   },
   links: {},
   embeddedSchemas: {},
@@ -186,7 +174,10 @@ List<IsarLinkBase<dynamic>> _preKeyEntityGetLinks(PreKeyEntity object) {
 }
 
 void _preKeyEntityAttach(
-    IsarCollection<dynamic> col, Id id, PreKeyEntity object) {
+  IsarCollection<dynamic> col,
+  Id id,
+  PreKeyEntity object,
+) {
   object.id = id;
 }
 
@@ -239,8 +230,10 @@ extension PreKeyEntityByIndex on IsarCollection<PreKeyEntity> {
     return putAllByIndex(r'keyId', objects);
   }
 
-  List<Id> putAllByKeyIdSync(List<PreKeyEntity> objects,
-      {bool saveLinks = true}) {
+  List<Id> putAllByKeyIdSync(
+    List<PreKeyEntity> objects, {
+    bool saveLinks = true,
+  }) {
     return putAllByIndexSync(r'keyId', objects, saveLinks: saveLinks);
   }
 }
@@ -282,15 +275,13 @@ extension PreKeyEntityQueryWhere
     on QueryBuilder<PreKeyEntity, PreKeyEntity, QWhereClause> {
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterWhereClause> idEqualTo(Id id) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IdWhereClause.between(
-        lower: id,
-        upper: id,
-      ));
+      return query.addWhereClause(IdWhereClause.between(lower: id, upper: id));
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterWhereClause> idNotEqualTo(
-      Id id) {
+    Id id,
+  ) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
@@ -313,8 +304,9 @@ extension PreKeyEntityQueryWhere
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterWhereClause> idGreaterThan(
-      Id id,
-      {bool include = false}) {
+    Id id, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.greaterThan(lower: id, includeLower: include),
@@ -322,8 +314,10 @@ extension PreKeyEntityQueryWhere
     });
   }
 
-  QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterWhereClause> idLessThan(Id id,
-      {bool include = false}) {
+  QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterWhereClause> idLessThan(
+    Id id, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.lessThan(upper: id, includeUpper: include),
@@ -338,56 +332,67 @@ extension PreKeyEntityQueryWhere
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IdWhereClause.between(
-        lower: lowerId,
-        includeLower: includeLower,
-        upper: upperId,
-        includeUpper: includeUpper,
-      ));
+      return query.addWhereClause(
+        IdWhereClause.between(
+          lower: lowerId,
+          includeLower: includeLower,
+          upper: upperId,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterWhereClause> keyIdEqualTo(
-      int keyId) {
+    int keyId,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'keyId',
-        value: [keyId],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(indexName: r'keyId', value: [keyId]),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterWhereClause> keyIdNotEqualTo(
-      int keyId) {
+    int keyId,
+  ) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'keyId',
-              lower: [],
-              upper: [keyId],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'keyId',
-              lower: [keyId],
-              includeLower: false,
-              upper: [],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'keyId',
+                lower: [],
+                upper: [keyId],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'keyId',
+                lower: [keyId],
+                includeLower: false,
+                upper: [],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'keyId',
-              lower: [keyId],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'keyId',
-              lower: [],
-              upper: [keyId],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'keyId',
+                lower: [keyId],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'keyId',
+                lower: [],
+                upper: [keyId],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
@@ -397,12 +402,14 @@ extension PreKeyEntityQueryWhere
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'keyId',
-        lower: [keyId],
-        includeLower: include,
-        upper: [],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.between(
+          indexName: r'keyId',
+          lower: [keyId],
+          includeLower: include,
+          upper: [],
+        ),
+      );
     });
   }
 
@@ -411,12 +418,14 @@ extension PreKeyEntityQueryWhere
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'keyId',
-        lower: [],
-        upper: [keyId],
-        includeUpper: include,
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.between(
+          indexName: r'keyId',
+          lower: [],
+          upper: [keyId],
+          includeUpper: include,
+        ),
+      );
     });
   }
 
@@ -427,102 +436,120 @@ extension PreKeyEntityQueryWhere
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'keyId',
-        lower: [lowerKeyId],
-        includeLower: includeLower,
-        upper: [upperKeyId],
-        includeUpper: includeUpper,
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.between(
+          indexName: r'keyId',
+          lower: [lowerKeyId],
+          includeLower: includeLower,
+          upper: [upperKeyId],
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterWhereClause> uploadedEqualTo(
-      bool uploaded) {
+    bool uploaded,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'uploaded',
-        value: [uploaded],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(indexName: r'uploaded', value: [uploaded]),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterWhereClause>
-      uploadedNotEqualTo(bool uploaded) {
+  uploadedNotEqualTo(bool uploaded) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'uploaded',
-              lower: [],
-              upper: [uploaded],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'uploaded',
-              lower: [uploaded],
-              includeLower: false,
-              upper: [],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'uploaded',
+                lower: [],
+                upper: [uploaded],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'uploaded',
+                lower: [uploaded],
+                includeLower: false,
+                upper: [],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'uploaded',
-              lower: [uploaded],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'uploaded',
-              lower: [],
-              upper: [uploaded],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'uploaded',
+                lower: [uploaded],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'uploaded',
+                lower: [],
+                upper: [uploaded],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterWhereClause> consumedEqualTo(
-      bool consumed) {
+    bool consumed,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'consumed',
-        value: [consumed],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(indexName: r'consumed', value: [consumed]),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterWhereClause>
-      consumedNotEqualTo(bool consumed) {
+  consumedNotEqualTo(bool consumed) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'consumed',
-              lower: [],
-              upper: [consumed],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'consumed',
-              lower: [consumed],
-              includeLower: false,
-              upper: [],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'consumed',
+                lower: [],
+                upper: [consumed],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'consumed',
+                lower: [consumed],
+                includeLower: false,
+                upper: [],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'consumed',
-              lower: [consumed],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'consumed',
-              lower: [],
-              upper: [consumed],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'consumed',
+                lower: [consumed],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'consumed',
+                lower: [],
+                upper: [consumed],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
@@ -531,152 +558,149 @@ extension PreKeyEntityQueryWhere
 extension PreKeyEntityQueryFilter
     on QueryBuilder<PreKeyEntity, PreKeyEntity, QFilterCondition> {
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      consumedEqualTo(bool value) {
+  consumedEqualTo(bool value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'consumed',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'consumed', value: value),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      consumedAtIsNull() {
+  consumedAtIsNull() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNull(
-        property: r'consumedAt',
-      ));
+      return query.addFilterCondition(
+        const FilterCondition.isNull(property: r'consumedAt'),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      consumedAtIsNotNull() {
+  consumedAtIsNotNull() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNotNull(
-        property: r'consumedAt',
-      ));
+      return query.addFilterCondition(
+        const FilterCondition.isNotNull(property: r'consumedAt'),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      consumedAtEqualTo(int? value) {
+  consumedAtEqualTo(int? value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'consumedAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'consumedAt', value: value),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      consumedAtGreaterThan(
-    int? value, {
-    bool include = false,
-  }) {
+  consumedAtGreaterThan(int? value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'consumedAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'consumedAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      consumedAtLessThan(
-    int? value, {
-    bool include = false,
-  }) {
+  consumedAtLessThan(int? value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'consumedAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'consumedAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      consumedAtBetween(
+  consumedAtBetween(
     int? lower,
     int? upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'consumedAt',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'consumedAt',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      createdAtEqualTo(int value) {
+  createdAtEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'createdAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'createdAt', value: value),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      createdAtGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  createdAtGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'createdAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'createdAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      createdAtLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  createdAtLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'createdAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'createdAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      createdAtBetween(
+  createdAtBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'createdAt',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'createdAt',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition> idEqualTo(
-      Id value) {
+    Id value,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'id', value: value),
+      );
     });
   }
 
@@ -685,11 +709,13 @@ extension PreKeyEntityQueryFilter
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'id',
+          value: value,
+        ),
+      );
     });
   }
 
@@ -698,11 +724,13 @@ extension PreKeyEntityQueryFilter
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'id',
+          value: value,
+        ),
+      );
     });
   }
 
@@ -713,37 +741,38 @@ extension PreKeyEntityQueryFilter
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'id',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition> keyIdEqualTo(
-      int value) {
+    int value,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'keyId',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'keyId', value: value),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      keyIdGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  keyIdGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'keyId',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'keyId',
+          value: value,
+        ),
+      );
     });
   }
 
@@ -752,11 +781,13 @@ extension PreKeyEntityQueryFilter
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'keyId',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'keyId',
+          value: value,
+        ),
+      );
     });
   }
 
@@ -767,145 +798,110 @@ extension PreKeyEntityQueryFilter
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'keyId',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'keyId',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      privateKeyElementEqualTo(int value) {
+  privateKeyElementEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'privateKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'privateKey', value: value),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      privateKeyElementGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  privateKeyElementGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'privateKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'privateKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      privateKeyElementLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  privateKeyElementLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'privateKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'privateKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      privateKeyElementBetween(
+  privateKeyElementBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'privateKey',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
-    });
-  }
-
-  QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      privateKeyLengthEqualTo(int length) {
-    return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        length,
-        true,
-        length,
-        true,
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'privateKey',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      privateKeyIsEmpty() {
+  privateKeyLengthEqualTo(int length) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        0,
-        true,
-        0,
-        true,
-      );
+      return query.listLength(r'privateKey', length, true, length, true);
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      privateKeyIsNotEmpty() {
+  privateKeyIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        0,
-        false,
-        999999,
-        true,
-      );
+      return query.listLength(r'privateKey', 0, true, 0, true);
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      privateKeyLengthLessThan(
-    int length, {
-    bool include = false,
-  }) {
+  privateKeyIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        0,
-        true,
-        length,
-        include,
-      );
+      return query.listLength(r'privateKey', 0, false, 999999, true);
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      privateKeyLengthGreaterThan(
-    int length, {
-    bool include = false,
-  }) {
+  privateKeyLengthLessThan(int length, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        length,
-        include,
-        999999,
-        true,
-      );
+      return query.listLength(r'privateKey', 0, true, length, include);
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      privateKeyLengthBetween(
+  privateKeyLengthGreaterThan(int length, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(r'privateKey', length, include, 999999, true);
+    });
+  }
+
+  QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
+  privateKeyLengthBetween(
     int lower,
     int upper, {
     bool includeLower = true,
@@ -923,134 +919,97 @@ extension PreKeyEntityQueryFilter
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      publicKeyElementEqualTo(int value) {
+  publicKeyElementEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'publicKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'publicKey', value: value),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      publicKeyElementGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  publicKeyElementGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'publicKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'publicKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      publicKeyElementLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  publicKeyElementLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'publicKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'publicKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      publicKeyElementBetween(
+  publicKeyElementBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'publicKey',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
-    });
-  }
-
-  QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      publicKeyLengthEqualTo(int length) {
-    return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        length,
-        true,
-        length,
-        true,
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'publicKey',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      publicKeyIsEmpty() {
+  publicKeyLengthEqualTo(int length) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        0,
-        true,
-        0,
-        true,
-      );
+      return query.listLength(r'publicKey', length, true, length, true);
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      publicKeyIsNotEmpty() {
+  publicKeyIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        0,
-        false,
-        999999,
-        true,
-      );
+      return query.listLength(r'publicKey', 0, true, 0, true);
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      publicKeyLengthLessThan(
-    int length, {
-    bool include = false,
-  }) {
+  publicKeyIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        0,
-        true,
-        length,
-        include,
-      );
+      return query.listLength(r'publicKey', 0, false, 999999, true);
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      publicKeyLengthGreaterThan(
-    int length, {
-    bool include = false,
-  }) {
+  publicKeyLengthLessThan(int length, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        length,
-        include,
-        999999,
-        true,
-      );
+      return query.listLength(r'publicKey', 0, true, length, include);
     });
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      publicKeyLengthBetween(
+  publicKeyLengthGreaterThan(int length, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(r'publicKey', length, include, 999999, true);
+    });
+  }
+
+  QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
+  publicKeyLengthBetween(
     int lower,
     int upper, {
     bool includeLower = true,
@@ -1068,12 +1027,11 @@ extension PreKeyEntityQueryFilter
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterFilterCondition>
-      uploadedEqualTo(bool value) {
+  uploadedEqualTo(bool value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'uploaded',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'uploaded', value: value),
+      );
     });
   }
 }
@@ -1105,7 +1063,7 @@ extension PreKeyEntityQuerySortBy
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterSortBy>
-      sortByConsumedAtDesc() {
+  sortByConsumedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'consumedAt', Sort.desc);
     });
@@ -1169,7 +1127,7 @@ extension PreKeyEntityQuerySortThenBy
   }
 
   QueryBuilder<PreKeyEntity, PreKeyEntity, QAfterSortBy>
-      thenByConsumedAtDesc() {
+  thenByConsumedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'consumedAt', Sort.desc);
     });

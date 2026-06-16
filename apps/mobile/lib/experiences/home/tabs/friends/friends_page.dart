@@ -8,6 +8,7 @@ import '../../../../navigation/prava_navigator.dart';
 import '../../../../services/chat_service.dart';
 import '../../../../services/friend_connections_service.dart';
 import '../../../../ui-system/colors.dart';
+import '../../../../ui-system/components/prava_input.dart';
 import '../../../../ui-system/feedback/prava_toast.dart';
 import '../../../../ui-system/feedback/toast_type.dart';
 import '../../../../ui-system/skeleton/chat_list_skeleton.dart';
@@ -375,17 +376,9 @@ class _FriendsPageState extends State<FriendsPage> {
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: border),
                     ),
-                    child: CupertinoSearchTextField(
+                    child: PravaSearchInput(
                       controller: _searchController,
-                      placeholder: _searchPlaceholder(),
-                      backgroundColor: Colors.transparent,
-                      itemColor: tokens.iconSecondary,
-                      style: PravaTypography.body.copyWith(
-                        color: tokens.textPrimary,
-                      ),
-                      placeholderStyle: PravaTypography.body.copyWith(
-                        color: tokens.textTertiary,
-                      ),
+                      hint: _searchPlaceholder(),
                     ),
                   ),
                 ),
@@ -552,7 +545,7 @@ class _FriendCapsule extends StatelessWidget {
         child: Center(
           child: Text(
             '$label $count',
-            style: PravaTypography.button.copyWith(
+            style: PravaTypography.buttonMedium.copyWith(
               color: selected ? tokens.brandContent : secondary,
               letterSpacing: 0,
               fontWeight: FontWeight.w800,
@@ -709,7 +702,7 @@ class _FriendAvatar extends StatelessWidget {
                 child: Center(
                   child: Text(
                     initial.isEmpty ? '?' : initial[0].toUpperCase(),
-                    style: PravaTypography.h3.copyWith(
+                    style: PravaTypography.titleSmall.copyWith(
                       color: tokens.brandContent,
                       fontWeight: FontWeight.w800,
                     ),
@@ -759,7 +752,7 @@ class _FriendActionButton extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: PravaTypography.button.copyWith(
+                  style: PravaTypography.buttonMedium.copyWith(
                     color: pending ? tokens.brandContent : tokens.textInverse,
                     letterSpacing: 0,
                     fontWeight: FontWeight.w800,
@@ -804,7 +797,7 @@ class _EmptyFriendsState extends StatelessWidget {
         Text(
           subtitle,
           textAlign: TextAlign.center,
-          style: PravaTypography.body.copyWith(color: secondary),
+          style: PravaTypography.bodyMedium.copyWith(color: secondary),
         ),
       ],
     );

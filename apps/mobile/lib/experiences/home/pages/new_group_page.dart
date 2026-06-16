@@ -8,6 +8,7 @@ import '../../../services/chat_service.dart';
 import '../../../services/user_search_service.dart';
 import '../../../ui-system/background.dart';
 import '../../../ui-system/colors.dart';
+import '../../../ui-system/components/prava_input.dart';
 import '../../../ui-system/typography.dart';
 import '../../../ui-system/feedback/prava_toast.dart';
 import '../../../ui-system/feedback/toast_type.dart';
@@ -170,7 +171,7 @@ class _NewGroupPageState extends State<NewGroupPage> {
                       Expanded(
                         child: Text(
                           'New group',
-                          style: PravaTypography.h2.copyWith(
+                          style: PravaTypography.titleLarge.copyWith(
                             color: primary,
                             fontWeight: FontWeight.w700,
                           ),
@@ -181,47 +182,20 @@ class _NewGroupPageState extends State<NewGroupPage> {
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: border),
-                    ),
-                    child: TextField(
-                      controller: _nameController,
-                      style: PravaTypography.body.copyWith(color: primary),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        hintText: 'Group name',
-                        hintStyle: PravaTypography.body.copyWith(
-                          color: secondary,
-                        ),
-                      ),
-                    ),
+                  child: PravaInput(
+                    controller: _nameController,
+                    hint: 'Group name',
+                    fieldType: PravaInputFieldType.name,
+                    variant: PravaInputVariant.settings,
+                    prefixIcon: const Icon(CupertinoIcons.person_2_fill),
+                    showClearButton: true,
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: border),
-                    ),
-                    child: TextField(
-                      controller: _searchController,
-                      style: PravaTypography.body.copyWith(color: primary),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        hintText: 'Search members',
-                        hintStyle: PravaTypography.body.copyWith(
-                          color: secondary,
-                        ),
-                        prefixIcon: const Icon(CupertinoIcons.search),
-                      ),
-                    ),
+                  child: PravaSearchInput(
+                    controller: _searchController,
+                    hint: 'Search members',
                   ),
                 ),
                 if (_selectedById.isNotEmpty)
@@ -271,7 +245,7 @@ class _NewGroupPageState extends State<NewGroupPage> {
                                   user.displayName.isNotEmpty
                                       ? user.displayName[0].toUpperCase()
                                       : '?',
-                                  style: PravaTypography.body.copyWith(
+                                  style: PravaTypography.bodyMedium.copyWith(
                                     color: PravaColors.accentPrimary,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -279,7 +253,7 @@ class _NewGroupPageState extends State<NewGroupPage> {
                               ),
                               title: Text(
                                 user.displayName,
-                                style: PravaTypography.body.copyWith(
+                                style: PravaTypography.bodyMedium.copyWith(
                                   color: primary,
                                   fontWeight: FontWeight.w600,
                                 ),

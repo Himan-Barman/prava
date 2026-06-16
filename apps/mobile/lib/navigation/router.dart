@@ -10,9 +10,7 @@ class PravaRouter {
         return PravaNavigator.route(const FeedScreen());
       default:
         return PravaNavigator.route(
-          const Scaffold(
-            body: Center(child: Text('404')),
-          ),
+          const Scaffold(body: Center(child: Text('404'))),
         );
     }
   }

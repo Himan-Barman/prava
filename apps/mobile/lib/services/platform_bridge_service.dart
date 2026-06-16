@@ -16,10 +16,9 @@ class PlatformBridgeService {
     if (value.isEmpty) return false;
 
     try {
-      final shared = await _channel.invokeMethod<bool>(
-        'shareText',
-        {'text': value},
-      );
+      final shared = await _channel.invokeMethod<bool>('shareText', {
+        'text': value,
+      });
       return shared == true;
     } catch (_) {
       await Clipboard.setData(ClipboardData(text: value));
@@ -37,7 +36,7 @@ class PlatformBridgeService {
         'timeZoneName': result['timeZoneName']?.toString() ?? '',
         'timeZoneOffsetMinutes':
             int.tryParse(result['timeZoneOffsetMinutes']?.toString() ?? '') ??
-                DateTime.now().timeZoneOffset.inMinutes,
+            DateTime.now().timeZoneOffset.inMinutes,
         'permissionGranted': result['permissionGranted'] == true,
         'updatedAt': DateTime.now().toUtc().toIso8601String(),
       };

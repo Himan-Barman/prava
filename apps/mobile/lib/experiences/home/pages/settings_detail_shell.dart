@@ -57,7 +57,7 @@ class _TopBar extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: PravaTypography.h2.copyWith(
+              style: PravaTypography.titleLarge.copyWith(
                 color: primary,
                 fontWeight: FontWeight.w800,
               ),

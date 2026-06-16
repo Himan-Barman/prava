@@ -34,12 +34,9 @@ final class SessionStore {
   // ─────────────────────────────────────────────────────────
 
   /// Get session by ID
-  static Future<SessionEntity? > getSession(String sessionId) async {
+  static Future<SessionEntity?> getSession(String sessionId) async {
     return Vault.read((db) async {
-      return db.sessionEntitys
-          .filter()
-          .sessionIdEqualTo(sessionId)
-          .findFirst();
+      return db.sessionEntitys.filter().sessionIdEqualTo(sessionId).findFirst();
     });
   }
 
@@ -58,10 +55,7 @@ final class SessionStore {
     String theirOdid,
   ) async {
     return Vault.read((db) async {
-      return db.sessionEntitys
-          .filter()
-          .remoteOdidEqualTo(theirOdid)
-          .findAll();
+      return db.sessionEntitys.filter().remoteOdidEqualTo(theirOdid).findAll();
     });
   }
 
@@ -76,29 +70,29 @@ final class SessionStore {
   }) async {
     final entity = SessionEntity()
       ..sessionId = sessionId
-      .. myOdid = myOdid
+      ..myOdid = myOdid
       ..remoteOdid = remoteOdid
       ..remoteDeviceId = remoteDeviceId
-      .. rootKey = state.rootKey. toList()
-      ..sendingChainKey = state. sendingChainKey != null
-          ? jsonEncode(state. sendingChainKey)
+      ..rootKey = state.rootKey.toList()
+      ..sendingChainKey = state.sendingChainKey != null
+          ? jsonEncode(state.sendingChainKey)
           : null
-      ..receivingChainKey = state. receivingChainKey != null
-          ?  jsonEncode(state.receivingChainKey)
+      ..receivingChainKey = state.receivingChainKey != null
+          ? jsonEncode(state.receivingChainKey)
           : null
-      ..myRatchetPrivateKey = myRatchetPrivateKey. toList()
-      ..myRatchetPublicKey = state.myRatchetPublicKey?. toList()
-      ..theirRatchetPublicKey = state. theirRatchetPublicKey?.toList()
+      ..myRatchetPrivateKey = myRatchetPrivateKey.toList()
+      ..myRatchetPublicKey = state.myRatchetPublicKey?.toList()
+      ..theirRatchetPublicKey = state.theirRatchetPublicKey?.toList()
       ..sendingChainLength = state.sendingChainLength
       ..receivingChainLength = state.receivingChainLength
       ..previousSendingChainLength = state.previousSendingChainLength
-      ..skippedKeys = jsonEncode(state. skippedKeys)
-      ..createdAt = DateTime. now().millisecondsSinceEpoch
+      ..skippedKeys = jsonEncode(state.skippedKeys)
+      ..createdAt = DateTime.now().millisecondsSinceEpoch
       ..lastMessageAt = DateTime.now().millisecondsSinceEpoch
       ..status = SessionStatus.active;
 
-    await Vault. write((db) async {
-      await db.sessionEntitys. put(entity);
+    await Vault.write((db) async {
+      await db.sessionEntitys.put(entity);
     });
   }
 
@@ -117,19 +111,19 @@ final class SessionStore {
       if (entity != null) {
         entity.rootKey = state.rootKey.toList();
         entity.sendingChainKey = state.sendingChainKey != null
-            ? jsonEncode(state. sendingChainKey)
+            ? jsonEncode(state.sendingChainKey)
             : null;
-        entity. receivingChainKey = state.receivingChainKey != null
+        entity.receivingChainKey = state.receivingChainKey != null
             ? jsonEncode(state.receivingChainKey)
             : null;
-        entity.myRatchetPrivateKey = myRatchetPrivateKey. toList();
-        entity.myRatchetPublicKey = state.myRatchetPublicKey?. toList();
+        entity.myRatchetPrivateKey = myRatchetPrivateKey.toList();
+        entity.myRatchetPublicKey = state.myRatchetPublicKey?.toList();
         entity.theirRatchetPublicKey = state.theirRatchetPublicKey?.toList();
         entity.sendingChainLength = state.sendingChainLength;
-        entity.receivingChainLength = state. receivingChainLength;
-        entity. previousSendingChainLength = state. previousSendingChainLength;
+        entity.receivingChainLength = state.receivingChainLength;
+        entity.previousSendingChainLength = state.previousSendingChainLength;
         entity.skippedKeys = jsonEncode(state.skippedKeys);
-        entity.lastMessageAt = DateTime. now().millisecondsSinceEpoch;
+        entity.lastMessageAt = DateTime.now().millisecondsSinceEpoch;
 
         await db.sessionEntitys.put(entity);
       }
@@ -144,11 +138,8 @@ final class SessionStore {
 
   /// Delete session
   static Future<void> deleteSession(String sessionId) async {
-    await Vault. write((db) async {
-      await db.sessionEntitys
-          .filter()
-          .sessionIdEqualTo(sessionId)
-          .deleteAll();
+    await Vault.write((db) async {
+      await db.sessionEntitys.filter().sessionIdEqualTo(sessionId).deleteAll();
     });
   }
 
@@ -156,7 +147,7 @@ final class SessionStore {
   static Future<void> deleteSessionsForContact(String remoteOdid) async {
     await Vault.write((db) async {
       await db.sessionEntitys
-          . filter()
+          .filter()
           .remoteOdidEqualTo(remoteOdid)
           .deleteAll();
     });
@@ -177,10 +168,10 @@ final class SessionStore {
     int staleDays = 30,
   }) async {
     final staleTime = DateTime.now()
-        .subtract(Duration(days:  staleDays))
+        .subtract(Duration(days: staleDays))
         .millisecondsSinceEpoch;
 
-    return Vault. read((db) async {
+    return Vault.read((db) async {
       return db.sessionEntitys
           .filter()
           .lastMessageAtLessThan(staleTime)
@@ -190,9 +181,9 @@ final class SessionStore {
 
   /// Mark session as stale
   static Future<void> markSessionStale(String sessionId) async {
-    await Vault. write((db) async {
+    await Vault.write((db) async {
       final entity = await db.sessionEntitys
-          . filter()
+          .filter()
           .sessionIdEqualTo(sessionId)
           .findFirst();
 
@@ -214,23 +205,23 @@ final class SessionStore {
   static RatchetSessionState entityToState(SessionEntity entity) {
     return RatchetSessionState(
       sessionId: entity.sessionId,
-      rootKey:  Uint8List.fromList(entity.rootKey),
-      sendingChainKey:  entity.sendingChainKey != null
+      rootKey: Uint8List.fromList(entity.rootKey),
+      sendingChainKey: entity.sendingChainKey != null
           ? jsonDecode(entity.sendingChainKey!) as Map<String, dynamic>
           : null,
-      receivingChainKey: entity. receivingChainKey != null
-          ?  jsonDecode(entity.receivingChainKey!) as Map<String, dynamic>
+      receivingChainKey: entity.receivingChainKey != null
+          ? jsonDecode(entity.receivingChainKey!) as Map<String, dynamic>
           : null,
       myRatchetPublicKey: entity.myRatchetPublicKey != null
-          ?  Uint8List.fromList(entity.myRatchetPublicKey!)
+          ? Uint8List.fromList(entity.myRatchetPublicKey!)
           : null,
-      theirRatchetPublicKey: entity. theirRatchetPublicKey != null
+      theirRatchetPublicKey: entity.theirRatchetPublicKey != null
           ? Uint8List.fromList(entity.theirRatchetPublicKey!)
           : null,
-      sendingChainLength:  entity.sendingChainLength,
+      sendingChainLength: entity.sendingChainLength,
       receivingChainLength: entity.receivingChainLength,
       previousSendingChainLength: entity.previousSendingChainLength,
-      skippedKeys: jsonDecode(entity. skippedKeys) as Map<String, dynamic>,
+      skippedKeys: jsonDecode(entity.skippedKeys) as Map<String, dynamic>,
     );
   }
 }

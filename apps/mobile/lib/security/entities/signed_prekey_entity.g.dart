@@ -23,16 +23,8 @@ const SignedPreKeyEntitySchema = CollectionSchema(
       name: r'createdAt',
       type: IsarType.long,
     ),
-    r'isActive': PropertySchema(
-      id: 1,
-      name: r'isActive',
-      type: IsarType.bool,
-    ),
-    r'keyId': PropertySchema(
-      id: 2,
-      name: r'keyId',
-      type: IsarType.long,
-    ),
+    r'isActive': PropertySchema(id: 1, name: r'isActive', type: IsarType.bool),
+    r'keyId': PropertySchema(id: 2, name: r'keyId', type: IsarType.long),
     r'privateKey': PropertySchema(
       id: 3,
       name: r'privateKey',
@@ -47,7 +39,7 @@ const SignedPreKeyEntitySchema = CollectionSchema(
       id: 5,
       name: r'signature',
       type: IsarType.longList,
-    )
+    ),
   },
   estimateSize: _signedPreKeyEntityEstimateSize,
   serialize: _signedPreKeyEntitySerialize,
@@ -65,7 +57,7 @@ const SignedPreKeyEntitySchema = CollectionSchema(
           name: r'keyId',
           type: IndexType.value,
           caseSensitive: false,
-        )
+        ),
       ],
     ),
     r'isActive': IndexSchema(
@@ -78,9 +70,9 @@ const SignedPreKeyEntitySchema = CollectionSchema(
           name: r'isActive',
           type: IndexType.value,
           caseSensitive: false,
-        )
+        ),
       ],
-    )
+    ),
   },
   links: {},
   embeddedSchemas: {},
@@ -162,12 +154,16 @@ Id _signedPreKeyEntityGetId(SignedPreKeyEntity object) {
 }
 
 List<IsarLinkBase<dynamic>> _signedPreKeyEntityGetLinks(
-    SignedPreKeyEntity object) {
+  SignedPreKeyEntity object,
+) {
   return [];
 }
 
 void _signedPreKeyEntityAttach(
-    IsarCollection<dynamic> col, Id id, SignedPreKeyEntity object) {
+  IsarCollection<dynamic> col,
+  Id id,
+  SignedPreKeyEntity object,
+) {
   object.id = id;
 }
 
@@ -220,8 +216,10 @@ extension SignedPreKeyEntityByIndex on IsarCollection<SignedPreKeyEntity> {
     return putAllByIndex(r'keyId', objects);
   }
 
-  List<Id> putAllByKeyIdSync(List<SignedPreKeyEntity> objects,
-      {bool saveLinks = true}) {
+  List<Id> putAllByKeyIdSync(
+    List<SignedPreKeyEntity> objects, {
+    bool saveLinks = true,
+  }) {
     return putAllByIndexSync(r'keyId', objects, saveLinks: saveLinks);
   }
 }
@@ -243,7 +241,7 @@ extension SignedPreKeyEntityQueryWhereSort
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhere>
-      anyIsActive() {
+  anyIsActive() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         const IndexWhereClause.any(indexName: r'isActive'),
@@ -255,17 +253,14 @@ extension SignedPreKeyEntityQueryWhereSort
 extension SignedPreKeyEntityQueryWhere
     on QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QWhereClause> {
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      idEqualTo(Id id) {
+  idEqualTo(Id id) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IdWhereClause.between(
-        lower: id,
-        upper: id,
-      ));
+      return query.addWhereClause(IdWhereClause.between(lower: id, upper: id));
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      idNotEqualTo(Id id) {
+  idNotEqualTo(Id id) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
@@ -288,7 +283,7 @@ extension SignedPreKeyEntityQueryWhere
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      idGreaterThan(Id id, {bool include = false}) {
+  idGreaterThan(Id id, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.greaterThan(lower: id, includeLower: include),
@@ -297,7 +292,7 @@ extension SignedPreKeyEntityQueryWhere
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      idLessThan(Id id, {bool include = false}) {
+  idLessThan(Id id, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.lessThan(upper: id, includeUpper: include),
@@ -306,156 +301,172 @@ extension SignedPreKeyEntityQueryWhere
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      idBetween(
+  idBetween(
     Id lowerId,
     Id upperId, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IdWhereClause.between(
-        lower: lowerId,
-        includeLower: includeLower,
-        upper: upperId,
-        includeUpper: includeUpper,
-      ));
+      return query.addWhereClause(
+        IdWhereClause.between(
+          lower: lowerId,
+          includeLower: includeLower,
+          upper: upperId,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      keyIdEqualTo(int keyId) {
+  keyIdEqualTo(int keyId) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'keyId',
-        value: [keyId],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(indexName: r'keyId', value: [keyId]),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      keyIdNotEqualTo(int keyId) {
+  keyIdNotEqualTo(int keyId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'keyId',
-              lower: [],
-              upper: [keyId],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'keyId',
-              lower: [keyId],
-              includeLower: false,
-              upper: [],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'keyId',
+                lower: [],
+                upper: [keyId],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'keyId',
+                lower: [keyId],
+                includeLower: false,
+                upper: [],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'keyId',
-              lower: [keyId],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'keyId',
-              lower: [],
-              upper: [keyId],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'keyId',
+                lower: [keyId],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'keyId',
+                lower: [],
+                upper: [keyId],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      keyIdGreaterThan(
-    int keyId, {
-    bool include = false,
-  }) {
+  keyIdGreaterThan(int keyId, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'keyId',
-        lower: [keyId],
-        includeLower: include,
-        upper: [],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.between(
+          indexName: r'keyId',
+          lower: [keyId],
+          includeLower: include,
+          upper: [],
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      keyIdLessThan(
-    int keyId, {
-    bool include = false,
-  }) {
+  keyIdLessThan(int keyId, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'keyId',
-        lower: [],
-        upper: [keyId],
-        includeUpper: include,
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.between(
+          indexName: r'keyId',
+          lower: [],
+          upper: [keyId],
+          includeUpper: include,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      keyIdBetween(
+  keyIdBetween(
     int lowerKeyId,
     int upperKeyId, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'keyId',
-        lower: [lowerKeyId],
-        includeLower: includeLower,
-        upper: [upperKeyId],
-        includeUpper: includeUpper,
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.between(
+          indexName: r'keyId',
+          lower: [lowerKeyId],
+          includeLower: includeLower,
+          upper: [upperKeyId],
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      isActiveEqualTo(bool isActive) {
+  isActiveEqualTo(bool isActive) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'isActive',
-        value: [isActive],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(indexName: r'isActive', value: [isActive]),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterWhereClause>
-      isActiveNotEqualTo(bool isActive) {
+  isActiveNotEqualTo(bool isActive) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'isActive',
-              lower: [],
-              upper: [isActive],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'isActive',
-              lower: [isActive],
-              includeLower: false,
-              upper: [],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isActive',
+                lower: [],
+                upper: [isActive],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isActive',
+                lower: [isActive],
+                includeLower: false,
+                upper: [],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'isActive',
-              lower: [isActive],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'isActive',
-              lower: [],
-              upper: [isActive],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isActive',
+                lower: [isActive],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isActive',
+                lower: [],
+                upper: [isActive],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
@@ -464,312 +475,271 @@ extension SignedPreKeyEntityQueryWhere
 extension SignedPreKeyEntityQueryFilter
     on QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QFilterCondition> {
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      createdAtEqualTo(int value) {
+  createdAtEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'createdAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'createdAt', value: value),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      createdAtGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  createdAtGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'createdAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'createdAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      createdAtLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  createdAtLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'createdAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'createdAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      createdAtBetween(
+  createdAtBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'createdAt',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'createdAt',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      idEqualTo(Id value) {
+  idEqualTo(Id value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'id', value: value),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      idGreaterThan(
-    Id value, {
-    bool include = false,
-  }) {
+  idGreaterThan(Id value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'id',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      idLessThan(
-    Id value, {
-    bool include = false,
-  }) {
+  idLessThan(Id value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'id',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      idBetween(
+  idBetween(
     Id lower,
     Id upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'id',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      isActiveEqualTo(bool value) {
+  isActiveEqualTo(bool value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'isActive',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'isActive', value: value),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      keyIdEqualTo(int value) {
+  keyIdEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'keyId',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'keyId', value: value),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      keyIdGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  keyIdGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'keyId',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'keyId',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      keyIdLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  keyIdLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'keyId',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'keyId',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      keyIdBetween(
+  keyIdBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'keyId',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'keyId',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      privateKeyElementEqualTo(int value) {
+  privateKeyElementEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'privateKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'privateKey', value: value),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      privateKeyElementGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  privateKeyElementGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'privateKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'privateKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      privateKeyElementLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  privateKeyElementLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'privateKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'privateKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      privateKeyElementBetween(
+  privateKeyElementBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'privateKey',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
-    });
-  }
-
-  QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      privateKeyLengthEqualTo(int length) {
-    return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        length,
-        true,
-        length,
-        true,
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'privateKey',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      privateKeyIsEmpty() {
+  privateKeyLengthEqualTo(int length) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        0,
-        true,
-        0,
-        true,
-      );
+      return query.listLength(r'privateKey', length, true, length, true);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      privateKeyIsNotEmpty() {
+  privateKeyIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        0,
-        false,
-        999999,
-        true,
-      );
+      return query.listLength(r'privateKey', 0, true, 0, true);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      privateKeyLengthLessThan(
-    int length, {
-    bool include = false,
-  }) {
+  privateKeyIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        0,
-        true,
-        length,
-        include,
-      );
+      return query.listLength(r'privateKey', 0, false, 999999, true);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      privateKeyLengthGreaterThan(
-    int length, {
-    bool include = false,
-  }) {
+  privateKeyLengthLessThan(int length, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        length,
-        include,
-        999999,
-        true,
-      );
+      return query.listLength(r'privateKey', 0, true, length, include);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      privateKeyLengthBetween(
+  privateKeyLengthGreaterThan(int length, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(r'privateKey', length, include, 999999, true);
+    });
+  }
+
+  QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
+  privateKeyLengthBetween(
     int lower,
     int upper, {
     bool includeLower = true,
@@ -787,134 +757,97 @@ extension SignedPreKeyEntityQueryFilter
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      publicKeyElementEqualTo(int value) {
+  publicKeyElementEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'publicKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'publicKey', value: value),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      publicKeyElementGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  publicKeyElementGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'publicKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'publicKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      publicKeyElementLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  publicKeyElementLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'publicKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'publicKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      publicKeyElementBetween(
+  publicKeyElementBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'publicKey',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
-    });
-  }
-
-  QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      publicKeyLengthEqualTo(int length) {
-    return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        length,
-        true,
-        length,
-        true,
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'publicKey',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      publicKeyIsEmpty() {
+  publicKeyLengthEqualTo(int length) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        0,
-        true,
-        0,
-        true,
-      );
+      return query.listLength(r'publicKey', length, true, length, true);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      publicKeyIsNotEmpty() {
+  publicKeyIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        0,
-        false,
-        999999,
-        true,
-      );
+      return query.listLength(r'publicKey', 0, true, 0, true);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      publicKeyLengthLessThan(
-    int length, {
-    bool include = false,
-  }) {
+  publicKeyIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        0,
-        true,
-        length,
-        include,
-      );
+      return query.listLength(r'publicKey', 0, false, 999999, true);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      publicKeyLengthGreaterThan(
-    int length, {
-    bool include = false,
-  }) {
+  publicKeyLengthLessThan(int length, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        length,
-        include,
-        999999,
-        true,
-      );
+      return query.listLength(r'publicKey', 0, true, length, include);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      publicKeyLengthBetween(
+  publicKeyLengthGreaterThan(int length, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(r'publicKey', length, include, 999999, true);
+    });
+  }
+
+  QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
+  publicKeyLengthBetween(
     int lower,
     int upper, {
     bool includeLower = true,
@@ -932,134 +865,97 @@ extension SignedPreKeyEntityQueryFilter
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      signatureElementEqualTo(int value) {
+  signatureElementEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'signature',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'signature', value: value),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      signatureElementGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  signatureElementGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'signature',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'signature',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      signatureElementLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  signatureElementLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'signature',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'signature',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      signatureElementBetween(
+  signatureElementBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'signature',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
-    });
-  }
-
-  QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      signatureLengthEqualTo(int length) {
-    return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'signature',
-        length,
-        true,
-        length,
-        true,
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'signature',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      signatureIsEmpty() {
+  signatureLengthEqualTo(int length) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'signature',
-        0,
-        true,
-        0,
-        true,
-      );
+      return query.listLength(r'signature', length, true, length, true);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      signatureIsNotEmpty() {
+  signatureIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'signature',
-        0,
-        false,
-        999999,
-        true,
-      );
+      return query.listLength(r'signature', 0, true, 0, true);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      signatureLengthLessThan(
-    int length, {
-    bool include = false,
-  }) {
+  signatureIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'signature',
-        0,
-        true,
-        length,
-        include,
-      );
+      return query.listLength(r'signature', 0, false, 999999, true);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      signatureLengthGreaterThan(
-    int length, {
-    bool include = false,
-  }) {
+  signatureLengthLessThan(int length, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'signature',
-        length,
-        include,
-        999999,
-        true,
-      );
+      return query.listLength(r'signature', 0, true, length, include);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
-      signatureLengthBetween(
+  signatureLengthGreaterThan(int length, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(r'signature', length, include, 999999, true);
+    });
+  }
+
+  QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterFilterCondition>
+  signatureLengthBetween(
     int lower,
     int upper, {
     bool includeLower = true,
@@ -1086,42 +982,42 @@ extension SignedPreKeyEntityQueryLinks
 extension SignedPreKeyEntityQuerySortBy
     on QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QSortBy> {
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      sortByCreatedAt() {
+  sortByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.asc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      sortByCreatedAtDesc() {
+  sortByCreatedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.desc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      sortByIsActive() {
+  sortByIsActive() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isActive', Sort.asc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      sortByIsActiveDesc() {
+  sortByIsActiveDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isActive', Sort.desc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      sortByKeyId() {
+  sortByKeyId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'keyId', Sort.asc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      sortByKeyIdDesc() {
+  sortByKeyIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'keyId', Sort.desc);
     });
@@ -1131,56 +1027,56 @@ extension SignedPreKeyEntityQuerySortBy
 extension SignedPreKeyEntityQuerySortThenBy
     on QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QSortThenBy> {
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      thenByCreatedAt() {
+  thenByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.asc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      thenByCreatedAtDesc() {
+  thenByCreatedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.desc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      thenById() {
+  thenById() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'id', Sort.asc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      thenByIdDesc() {
+  thenByIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'id', Sort.desc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      thenByIsActive() {
+  thenByIsActive() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isActive', Sort.asc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      thenByIsActiveDesc() {
+  thenByIsActiveDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isActive', Sort.desc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      thenByKeyId() {
+  thenByKeyId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'keyId', Sort.asc);
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QAfterSortBy>
-      thenByKeyIdDesc() {
+  thenByKeyIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'keyId', Sort.desc);
     });
@@ -1190,42 +1086,42 @@ extension SignedPreKeyEntityQuerySortThenBy
 extension SignedPreKeyEntityQueryWhereDistinct
     on QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QDistinct> {
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QDistinct>
-      distinctByCreatedAt() {
+  distinctByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'createdAt');
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QDistinct>
-      distinctByIsActive() {
+  distinctByIsActive() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'isActive');
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QDistinct>
-      distinctByKeyId() {
+  distinctByKeyId() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'keyId');
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QDistinct>
-      distinctByPrivateKey() {
+  distinctByPrivateKey() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'privateKey');
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QDistinct>
-      distinctByPublicKey() {
+  distinctByPublicKey() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'publicKey');
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, SignedPreKeyEntity, QDistinct>
-      distinctBySignature() {
+  distinctBySignature() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'signature');
     });
@@ -1259,21 +1155,21 @@ extension SignedPreKeyEntityQueryProperty
   }
 
   QueryBuilder<SignedPreKeyEntity, List<int>, QQueryOperations>
-      privateKeyProperty() {
+  privateKeyProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'privateKey');
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, List<int>, QQueryOperations>
-      publicKeyProperty() {
+  publicKeyProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'publicKey');
     });
   }
 
   QueryBuilder<SignedPreKeyEntity, List<int>, QQueryOperations>
-      signatureProperty() {
+  signatureProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'signature');
     });

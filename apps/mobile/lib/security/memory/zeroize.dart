@@ -5,14 +5,14 @@ import 'dart:typed_data';
 /// ============================================================
 /// Zeroize - Secure Memory Wiping
 /// ============================================================
-/// Provides reliable memory wiping that: 
+/// Provides reliable memory wiping that:
 ///
 /// • Resists compiler optimization (dead store elimination)
 /// • Works for Dart-managed and native memory
 /// • Supports multiple overwrite patterns
 /// • Includes memory barrier
 ///
-/// Use for: 
+/// Use for:
 /// • Temporary key material
 /// • Decrypted plaintext
 /// • Intermediate cryptographic values
@@ -103,7 +103,7 @@ final class Zeroize {
 
   /// Wipe string characters in a list
   static void stringBuffer(List<int> codeUnits) {
-    for (var i = 0; i < codeUnits. length; i++) {
+    for (var i = 0; i < codeUnits.length; i++) {
       codeUnits[i] = 0;
     }
   }

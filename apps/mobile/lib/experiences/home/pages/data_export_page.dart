@@ -112,7 +112,7 @@ class _DataExportPageState extends State<DataExportPage> {
                   children: [
                     Text(
                       'Export your data',
-                      style: PravaTypography.h3.copyWith(
+                      style: PravaTypography.titleSmall.copyWith(
                         color: primary,
                         fontWeight: FontWeight.w700,
                       ),
@@ -136,7 +136,9 @@ class _DataExportPageState extends State<DataExportPage> {
                 if (_latest == null)
                   Text(
                     'No exports generated yet.',
-                    style: PravaTypography.body.copyWith(color: secondary),
+                    style: PravaTypography.bodyMedium.copyWith(
+                      color: secondary,
+                    ),
                   )
                 else
                   Column(
@@ -144,7 +146,7 @@ class _DataExportPageState extends State<DataExportPage> {
                     children: [
                       Text(
                         'Latest export',
-                        style: PravaTypography.body.copyWith(
+                        style: PravaTypography.bodyMedium.copyWith(
                           color: primary,
                           fontWeight: FontWeight.w600,
                         ),

@@ -13,7 +13,7 @@ import 'backup_payload.dart';
 /// ============================================================
 /// Backup Manager
 /// ============================================================
-/// Handles complete backup lifecycle: 
+/// Handles complete backup lifecycle:
 /// • Create encrypted backups
 /// • Restore from backups
 /// • Validate backup integrity
@@ -22,7 +22,7 @@ final class BackupManager {
   BackupManager._();
 
   /// Backup file magic bytes ("PRAV")
-  /// NOTE: Using `final` instead of `const` because Uint8List.fromList() 
+  /// NOTE: Using `final` instead of `const` because Uint8List.fromList()
   /// is not a const constructor
   static final Uint8List _magic = Uint8List.fromList([0x50, 0x52, 0x41, 0x56]);
 
@@ -38,9 +38,7 @@ final class BackupManager {
   static const int _saltOffset = 5;
 
   /// Create encrypted backup
-  static Future<Uint8List> createBackup({
-    required String passphrase,
-  }) async {
+  static Future<Uint8List> createBackup({required String passphrase}) async {
     final normalizedPassphrase = passphrase.trim();
     if (normalizedPassphrase.length < BackupCrypto.minPassphraseLength) {
       throw ArgumentError(
@@ -55,7 +53,7 @@ final class BackupManager {
     final signedPreKey = await _exportSignedPreKey();
 
     // 2. Create payload
-    final payload = BackupPayload. create(
+    final payload = BackupPayload.create(
       identity: identity,
       sessions: sessions,
       preKeys: preKeys,
@@ -67,7 +65,7 @@ final class BackupManager {
     final plaintext = payload.encode();
 
     // 4. Generate salt
-    final salt = await RandomGenerator.salt(length: BackupCrypto. saltSize);
+    final salt = await RandomGenerator.salt(length: BackupCrypto.saltSize);
 
     // 5. Derive key
     final key = await BackupCrypto.deriveKey(
@@ -86,8 +84,8 @@ final class BackupManager {
       return Uint8List.fromList([
         ..._magic,
         _formatVersion,
-        ... salt,
-        ... encrypted,
+        ...salt,
+        ...encrypted,
       ]);
     } finally {
       // 8. Dispose key
@@ -100,8 +98,8 @@ final class BackupManager {
     required Uint8List backupData,
     required String passphrase,
   }) async {
-    final normalizedPassphrase = passphrase. trim();
-    if (normalizedPassphrase.length < BackupCrypto. minPassphraseLength) {
+    final normalizedPassphrase = passphrase.trim();
+    if (normalizedPassphrase.length < BackupCrypto.minPassphraseLength) {
       throw ArgumentError(
         'Passphrase must be at least ${BackupCrypto.minPassphraseLength} characters',
       );
@@ -111,8 +109,11 @@ final class BackupManager {
     _validateFormat(backupData);
 
     // 2. Extract components
-    final salt = backupData. sublist(_saltOffset, _saltOffset + BackupCrypto. saltSize);
-    final encrypted = backupData. sublist(_headerSize);
+    final salt = backupData.sublist(
+      _saltOffset,
+      _saltOffset + BackupCrypto.saltSize,
+    );
+    final encrypted = backupData.sublist(_headerSize);
 
     // 3. Derive key
     final key = await BackupCrypto.deriveKey(
@@ -123,10 +124,7 @@ final class BackupManager {
     Uint8List plaintext;
     try {
       // 4. Decrypt
-      plaintext = await BackupCrypto.decrypt(
-        key: key,
-        encrypted: encrypted,
-      );
+      plaintext = await BackupCrypto.decrypt(key: key, encrypted: encrypted);
     } finally {
       // 5. Dispose key
       key.dispose();
@@ -140,7 +138,7 @@ final class BackupManager {
 
     // 8. Restore data
     await _restoreIdentity(payload.identity);
-    await _restoreSessions(payload. sessions);
+    await _restoreSessions(payload.sessions);
     await _restorePreKeys(payload.preKeys);
     await _restoreSignedPreKey(payload.signedPreKey);
 
@@ -160,14 +158,19 @@ final class BackupManager {
     if (normalizedPassphrase.length < BackupCrypto.minPassphraseLength) {
       return BackupInfo(
         isValid: false,
-        version:  backupData. length > _versionOffset ? backupData[_versionOffset] : 0,
-        size: backupData. length,
+        version: backupData.length > _versionOffset
+            ? backupData[_versionOffset]
+            : 0,
+        size: backupData.length,
       );
     }
 
     _validateFormat(backupData);
 
-    final salt = backupData.sublist(_saltOffset, _saltOffset + BackupCrypto.saltSize);
+    final salt = backupData.sublist(
+      _saltOffset,
+      _saltOffset + BackupCrypto.saltSize,
+    );
     final encrypted = backupData.sublist(_headerSize);
 
     final key = await BackupCrypto.deriveKey(
@@ -177,7 +180,7 @@ final class BackupManager {
 
     try {
       final plaintext = await BackupCrypto.decrypt(
-        key:  key,
+        key: key,
         encrypted: encrypted,
       );
 
@@ -188,7 +191,7 @@ final class BackupManager {
         version: backupData[_versionOffset],
         size: backupData.length,
         createdAt: payload.createdAtDate,
-        sessionCount: payload. sessionCount,
+        sessionCount: payload.sessionCount,
       );
     } on Exception {
       return BackupInfo(
@@ -203,7 +206,7 @@ final class BackupManager {
 
   /// Estimate backup size
   static Future<int> estimateSize() async {
-    final stats = await Vault. getStats();
+    final stats = await Vault.getStats();
     return 1024 + (stats.sessionCount * 512) + (stats.preKeyCount * 64);
   }
 
@@ -229,22 +232,24 @@ final class BackupManager {
   static Future<List<Map<String, dynamic>>> _exportSessions() async {
     final sessions = await SessionStore.getActiveSessions();
     return sessions
-        .map((s) => {
-              'sessionId': s.sessionId,
-              'myOdid': s.myOdid,
-              'remoteOdid': s.remoteOdid,
-              'remoteDeviceId':  s.remoteDeviceId,
-              'rootKey': s.rootKey,
-              'sendingChainKey': s.sendingChainKey,
-              'receivingChainKey':  s.receivingChainKey,
-              'myRatchetPrivateKey': s.myRatchetPrivateKey,
-              'myRatchetPublicKey': s.myRatchetPublicKey,
-              'theirRatchetPublicKey': s.theirRatchetPublicKey,
-              'sendingChainLength': s.sendingChainLength,
-              'receivingChainLength': s.receivingChainLength,
-              'previousSendingChainLength': s.previousSendingChainLength,
-              'skippedKeys': s.skippedKeys,
-            })
+        .map(
+          (s) => {
+            'sessionId': s.sessionId,
+            'myOdid': s.myOdid,
+            'remoteOdid': s.remoteOdid,
+            'remoteDeviceId': s.remoteDeviceId,
+            'rootKey': s.rootKey,
+            'sendingChainKey': s.sendingChainKey,
+            'receivingChainKey': s.receivingChainKey,
+            'myRatchetPrivateKey': s.myRatchetPrivateKey,
+            'myRatchetPublicKey': s.myRatchetPublicKey,
+            'theirRatchetPublicKey': s.theirRatchetPublicKey,
+            'sendingChainLength': s.sendingChainLength,
+            'receivingChainLength': s.receivingChainLength,
+            'previousSendingChainLength': s.previousSendingChainLength,
+            'skippedKeys': s.skippedKeys,
+          },
+        )
         .toList();
   }
 
@@ -252,11 +257,13 @@ final class BackupManager {
     final preKeys = await PreKeyStore.getAvailablePreKeys();
     return {
       'keys': preKeys
-          .map((pk) => {
-                'keyId': pk.keyId,
-                'publicKey': pk.publicKey,
-                'privateKey': pk.privateKey,
-              })
+          .map(
+            (pk) => {
+              'keyId': pk.keyId,
+              'publicKey': pk.publicKey,
+              'privateKey': pk.privateKey,
+            },
+          )
           .toList(),
     };
   }
@@ -284,12 +291,14 @@ final class BackupManager {
       odid: data['odid'] as String,
       deviceId: data['deviceId'] as String,
       registrationId: data['registrationId'] as int,
-      publicKey:  Uint8List.fromList((data['publicKey'] as List).cast<int>()),
+      publicKey: Uint8List.fromList((data['publicKey'] as List).cast<int>()),
       privateKey: Uint8List.fromList((data['privateKey'] as List).cast<int>()),
     );
   }
 
-  static Future<void> _restoreSessions(List<Map<String, dynamic>> sessions) async {
+  static Future<void> _restoreSessions(
+    List<Map<String, dynamic>> sessions,
+  ) async {
     // TODO:  Implement restoring sessions with the concrete SessionStore API
     for (final session in sessions) {
       // Implement according to SessionStore contract
@@ -297,13 +306,17 @@ final class BackupManager {
   }
 
   static Future<void> _restorePreKeys(Map<String, dynamic> data) async {
-    final keys = data['keys'] as List? ??  [];
+    final keys = data['keys'] as List? ?? [];
     for (final key in keys) {
       final keyData = key as Map<String, dynamic>;
       await PreKeyStore.savePreKey(
         keyId: keyData['keyId'] as int,
-        publicKey: Uint8List.fromList((keyData['publicKey'] as List).cast<int>()),
-        privateKey: Uint8List.fromList((keyData['privateKey'] as List).cast<int>()),
+        publicKey: Uint8List.fromList(
+          (keyData['publicKey'] as List).cast<int>(),
+        ),
+        privateKey: Uint8List.fromList(
+          (keyData['privateKey'] as List).cast<int>(),
+        ),
       );
     }
   }

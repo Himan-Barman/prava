@@ -7,7 +7,7 @@ import 'secure_buffer.dart';
 /// ============================================================
 /// ProtectedString - Secure String Container
 /// ============================================================
-/// Stores sensitive strings in native memory: 
+/// Stores sensitive strings in native memory:
 ///
 /// Use for:
 /// • Passwords
@@ -27,16 +27,16 @@ final class ProtectedString {
 
   /// Create protected string
   ProtectedString(String value)
-      : _actualLength = utf8.encode(value).length,
-        _buffer = SecureBuffer(
-          Uint8List.fromList(utf8.encode(value)),
-          label: 'ProtectedString',
-        );
+    : _actualLength = utf8.encode(value).length,
+      _buffer = SecureBuffer(
+        Uint8List.fromList(utf8.encode(value)),
+        label: 'ProtectedString',
+      );
 
   /// Create with length padding (hides actual length)
   ProtectedString.padded(String value, {int paddedLength = 256})
-      : _actualLength = utf8.encode(value).length,
-        _buffer = _createPadded(value, paddedLength);
+    : _actualLength = utf8.encode(value).length,
+      _buffer = _createPadded(value, paddedLength);
 
   static SecureBuffer _createPadded(String value, int paddedLength) {
     final encoded = utf8.encode(value);
@@ -49,7 +49,7 @@ final class ProtectedString {
       padded[i] = encoded[i];
     }
 
-    return SecureBuffer(padded, label:  'ProtectedString. padded');
+    return SecureBuffer(padded, label: 'ProtectedString. padded');
   }
 
   /// Check if disposed
@@ -61,7 +61,7 @@ final class ProtectedString {
   /// Reveal the string (use sparingly)
   String reveal() {
     _checkDisposed();
-    return utf8.decode(_buffer.bytes. sublist(0, _actualLength));
+    return utf8.decode(_buffer.bytes.sublist(0, _actualLength));
   }
 
   /// Execute operation with revealed string

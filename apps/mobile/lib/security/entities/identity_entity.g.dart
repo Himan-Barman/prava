@@ -27,21 +27,13 @@ const IdentityEntitySchema = CollectionSchema(
       name: r'deviceId',
       type: IsarType.string,
     ),
-    r'isLocal': PropertySchema(
-      id: 2,
-      name: r'isLocal',
-      type: IsarType.bool,
-    ),
+    r'isLocal': PropertySchema(id: 2, name: r'isLocal', type: IsarType.bool),
     r'keyChangedAt': PropertySchema(
       id: 3,
       name: r'keyChangedAt',
       type: IsarType.long,
     ),
-    r'odid': PropertySchema(
-      id: 4,
-      name: r'odid',
-      type: IsarType.string,
-    ),
+    r'odid': PropertySchema(id: 4, name: r'odid', type: IsarType.string),
     r'odidDevice': PropertySchema(
       id: 5,
       name: r'odidDevice',
@@ -72,7 +64,7 @@ const IdentityEntitySchema = CollectionSchema(
       id: 10,
       name: r'verifiedAt',
       type: IsarType.long,
-    )
+    ),
   },
   estimateSize: _identityEntityEstimateSize,
   serialize: _identityEntitySerialize,
@@ -90,7 +82,7 @@ const IdentityEntitySchema = CollectionSchema(
           name: r'odid',
           type: IndexType.hash,
           caseSensitive: false,
-        )
+        ),
       ],
     ),
     r'deviceId': IndexSchema(
@@ -103,7 +95,7 @@ const IdentityEntitySchema = CollectionSchema(
           name: r'deviceId',
           type: IndexType.hash,
           caseSensitive: false,
-        )
+        ),
       ],
     ),
     r'isLocal': IndexSchema(
@@ -116,7 +108,7 @@ const IdentityEntitySchema = CollectionSchema(
           name: r'isLocal',
           type: IndexType.value,
           caseSensitive: false,
-        )
+        ),
       ],
     ),
     r'odidDevice_deviceId': IndexSchema(
@@ -134,9 +126,9 @@ const IdentityEntitySchema = CollectionSchema(
           name: r'deviceId',
           type: IndexType.hash,
           caseSensitive: true,
-        )
+        ),
       ],
-    )
+    ),
   },
   links: {},
   embeddedSchemas: {},
@@ -200,8 +192,10 @@ IdentityEntity _identityEntityDeserialize(
   object.privateKey = reader.readLongList(offsets[6]);
   object.publicKey = reader.readLongList(offsets[7]) ?? [];
   object.registrationId = reader.readLong(offsets[8]);
-  object.trustLevel = _IdentityEntitytrustLevelValueEnumMap[
-          reader.readByteOrNull(offsets[9])] ??
+  object.trustLevel =
+      _IdentityEntitytrustLevelValueEnumMap[reader.readByteOrNull(
+        offsets[9],
+      )] ??
       TrustLevel.untrusted;
   object.verifiedAt = reader.readLongOrNull(offsets[10]);
   return object;
@@ -233,9 +227,11 @@ P _identityEntityDeserializeProp<P>(
     case 8:
       return (reader.readLong(offset)) as P;
     case 9:
-      return (_IdentityEntitytrustLevelValueEnumMap[
-              reader.readByteOrNull(offset)] ??
-          TrustLevel.untrusted) as P;
+      return (_IdentityEntitytrustLevelValueEnumMap[reader.readByteOrNull(
+                offset,
+              )] ??
+              TrustLevel.untrusted)
+          as P;
     case 10:
       return (reader.readLongOrNull(offset)) as P;
     default:
@@ -265,18 +261,25 @@ List<IsarLinkBase<dynamic>> _identityEntityGetLinks(IdentityEntity object) {
 }
 
 void _identityEntityAttach(
-    IsarCollection<dynamic> col, Id id, IdentityEntity object) {
+  IsarCollection<dynamic> col,
+  Id id,
+  IdentityEntity object,
+) {
   object.id = id;
 }
 
 extension IdentityEntityByIndex on IsarCollection<IdentityEntity> {
   Future<IdentityEntity?> getByOdidDeviceDeviceId(
-      String odidDevice, String deviceId) {
+    String odidDevice,
+    String deviceId,
+  ) {
     return getByIndex(r'odidDevice_deviceId', [odidDevice, deviceId]);
   }
 
   IdentityEntity? getByOdidDeviceDeviceIdSync(
-      String odidDevice, String deviceId) {
+    String odidDevice,
+    String deviceId,
+  ) {
     return getByIndexSync(r'odidDevice_deviceId', [odidDevice, deviceId]);
   }
 
@@ -289,10 +292,14 @@ extension IdentityEntityByIndex on IsarCollection<IdentityEntity> {
   }
 
   Future<List<IdentityEntity?>> getAllByOdidDeviceDeviceId(
-      List<String> odidDeviceValues, List<String> deviceIdValues) {
+    List<String> odidDeviceValues,
+    List<String> deviceIdValues,
+  ) {
     final len = odidDeviceValues.length;
-    assert(deviceIdValues.length == len,
-        'All index values must have the same length');
+    assert(
+      deviceIdValues.length == len,
+      'All index values must have the same length',
+    );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
       values.add([odidDeviceValues[i], deviceIdValues[i]]);
@@ -302,10 +309,14 @@ extension IdentityEntityByIndex on IsarCollection<IdentityEntity> {
   }
 
   List<IdentityEntity?> getAllByOdidDeviceDeviceIdSync(
-      List<String> odidDeviceValues, List<String> deviceIdValues) {
+    List<String> odidDeviceValues,
+    List<String> deviceIdValues,
+  ) {
     final len = odidDeviceValues.length;
-    assert(deviceIdValues.length == len,
-        'All index values must have the same length');
+    assert(
+      deviceIdValues.length == len,
+      'All index values must have the same length',
+    );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
       values.add([odidDeviceValues[i], deviceIdValues[i]]);
@@ -315,10 +326,14 @@ extension IdentityEntityByIndex on IsarCollection<IdentityEntity> {
   }
 
   Future<int> deleteAllByOdidDeviceDeviceId(
-      List<String> odidDeviceValues, List<String> deviceIdValues) {
+    List<String> odidDeviceValues,
+    List<String> deviceIdValues,
+  ) {
     final len = odidDeviceValues.length;
-    assert(deviceIdValues.length == len,
-        'All index values must have the same length');
+    assert(
+      deviceIdValues.length == len,
+      'All index values must have the same length',
+    );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
       values.add([odidDeviceValues[i], deviceIdValues[i]]);
@@ -328,10 +343,14 @@ extension IdentityEntityByIndex on IsarCollection<IdentityEntity> {
   }
 
   int deleteAllByOdidDeviceDeviceIdSync(
-      List<String> odidDeviceValues, List<String> deviceIdValues) {
+    List<String> odidDeviceValues,
+    List<String> deviceIdValues,
+  ) {
     final len = odidDeviceValues.length;
-    assert(deviceIdValues.length == len,
-        'All index values must have the same length');
+    assert(
+      deviceIdValues.length == len,
+      'All index values must have the same length',
+    );
     final values = <List<dynamic>>[];
     for (var i = 0; i < len; i++) {
       values.add([odidDeviceValues[i], deviceIdValues[i]]);
@@ -344,8 +363,10 @@ extension IdentityEntityByIndex on IsarCollection<IdentityEntity> {
     return putByIndex(r'odidDevice_deviceId', object);
   }
 
-  Id putByOdidDeviceDeviceIdSync(IdentityEntity object,
-      {bool saveLinks = true}) {
+  Id putByOdidDeviceDeviceIdSync(
+    IdentityEntity object, {
+    bool saveLinks = true,
+  }) {
     return putByIndexSync(r'odidDevice_deviceId', object, saveLinks: saveLinks);
   }
 
@@ -353,10 +374,15 @@ extension IdentityEntityByIndex on IsarCollection<IdentityEntity> {
     return putAllByIndex(r'odidDevice_deviceId', objects);
   }
 
-  List<Id> putAllByOdidDeviceDeviceIdSync(List<IdentityEntity> objects,
-      {bool saveLinks = true}) {
-    return putAllByIndexSync(r'odidDevice_deviceId', objects,
-        saveLinks: saveLinks);
+  List<Id> putAllByOdidDeviceDeviceIdSync(
+    List<IdentityEntity> objects, {
+    bool saveLinks = true,
+  }) {
+    return putAllByIndexSync(
+      r'odidDevice_deviceId',
+      objects,
+      saveLinks: saveLinks,
+    );
   }
 }
 
@@ -380,17 +406,16 @@ extension IdentityEntityQueryWhereSort
 extension IdentityEntityQueryWhere
     on QueryBuilder<IdentityEntity, IdentityEntity, QWhereClause> {
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause> idEqualTo(
-      Id id) {
+    Id id,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IdWhereClause.between(
-        lower: id,
-        upper: id,
-      ));
+      return query.addWhereClause(IdWhereClause.between(lower: id, upper: id));
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause> idNotEqualTo(
-      Id id) {
+    Id id,
+  ) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
@@ -413,8 +438,9 @@ extension IdentityEntityQueryWhere
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause> idGreaterThan(
-      Id id,
-      {bool include = false}) {
+    Id id, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.greaterThan(lower: id, includeLower: include),
@@ -423,8 +449,9 @@ extension IdentityEntityQueryWhere
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause> idLessThan(
-      Id id,
-      {bool include = false}) {
+    Id id, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.lessThan(upper: id, includeUpper: include),
@@ -439,236 +466,280 @@ extension IdentityEntityQueryWhere
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IdWhereClause.between(
-        lower: lowerId,
-        includeLower: includeLower,
-        upper: upperId,
-        includeUpper: includeUpper,
-      ));
+      return query.addWhereClause(
+        IdWhereClause.between(
+          lower: lowerId,
+          includeLower: includeLower,
+          upper: upperId,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause> odidEqualTo(
-      String odid) {
+    String odid,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'odid',
-        value: [odid],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(indexName: r'odid', value: [odid]),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause>
-      odidNotEqualTo(String odid) {
+  odidNotEqualTo(String odid) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odid',
-              lower: [],
-              upper: [odid],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odid',
-              lower: [odid],
-              includeLower: false,
-              upper: [],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odid',
+                lower: [],
+                upper: [odid],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odid',
+                lower: [odid],
+                includeLower: false,
+                upper: [],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odid',
-              lower: [odid],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odid',
-              lower: [],
-              upper: [odid],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odid',
+                lower: [odid],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odid',
+                lower: [],
+                upper: [odid],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause>
-      deviceIdEqualTo(String deviceId) {
+  deviceIdEqualTo(String deviceId) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'deviceId',
-        value: [deviceId],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(indexName: r'deviceId', value: [deviceId]),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause>
-      deviceIdNotEqualTo(String deviceId) {
+  deviceIdNotEqualTo(String deviceId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'deviceId',
-              lower: [],
-              upper: [deviceId],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'deviceId',
-              lower: [deviceId],
-              includeLower: false,
-              upper: [],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'deviceId',
+                lower: [],
+                upper: [deviceId],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'deviceId',
+                lower: [deviceId],
+                includeLower: false,
+                upper: [],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'deviceId',
-              lower: [deviceId],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'deviceId',
-              lower: [],
-              upper: [deviceId],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'deviceId',
+                lower: [deviceId],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'deviceId',
+                lower: [],
+                upper: [deviceId],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause>
-      isLocalEqualTo(bool isLocal) {
+  isLocalEqualTo(bool isLocal) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'isLocal',
-        value: [isLocal],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(indexName: r'isLocal', value: [isLocal]),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause>
-      isLocalNotEqualTo(bool isLocal) {
+  isLocalNotEqualTo(bool isLocal) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'isLocal',
-              lower: [],
-              upper: [isLocal],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'isLocal',
-              lower: [isLocal],
-              includeLower: false,
-              upper: [],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isLocal',
+                lower: [],
+                upper: [isLocal],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isLocal',
+                lower: [isLocal],
+                includeLower: false,
+                upper: [],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'isLocal',
-              lower: [isLocal],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'isLocal',
-              lower: [],
-              upper: [isLocal],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isLocal',
+                lower: [isLocal],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'isLocal',
+                lower: [],
+                upper: [isLocal],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause>
-      odidDeviceEqualToAnyDeviceId(String odidDevice) {
+  odidDeviceEqualToAnyDeviceId(String odidDevice) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'odidDevice_deviceId',
-        value: [odidDevice],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(
+          indexName: r'odidDevice_deviceId',
+          value: [odidDevice],
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause>
-      odidDeviceNotEqualToAnyDeviceId(String odidDevice) {
+  odidDeviceNotEqualToAnyDeviceId(String odidDevice) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odidDevice_deviceId',
-              lower: [],
-              upper: [odidDevice],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odidDevice_deviceId',
-              lower: [odidDevice],
-              includeLower: false,
-              upper: [],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odidDevice_deviceId',
+                lower: [],
+                upper: [odidDevice],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odidDevice_deviceId',
+                lower: [odidDevice],
+                includeLower: false,
+                upper: [],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odidDevice_deviceId',
-              lower: [odidDevice],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odidDevice_deviceId',
-              lower: [],
-              upper: [odidDevice],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odidDevice_deviceId',
+                lower: [odidDevice],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odidDevice_deviceId',
+                lower: [],
+                upper: [odidDevice],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause>
-      odidDeviceDeviceIdEqualTo(String odidDevice, String deviceId) {
+  odidDeviceDeviceIdEqualTo(String odidDevice, String deviceId) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'odidDevice_deviceId',
-        value: [odidDevice, deviceId],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(
+          indexName: r'odidDevice_deviceId',
+          value: [odidDevice, deviceId],
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterWhereClause>
-      odidDeviceEqualToDeviceIdNotEqualTo(String odidDevice, String deviceId) {
+  odidDeviceEqualToDeviceIdNotEqualTo(String odidDevice, String deviceId) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odidDevice_deviceId',
-              lower: [odidDevice],
-              upper: [odidDevice, deviceId],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odidDevice_deviceId',
-              lower: [odidDevice, deviceId],
-              includeLower: false,
-              upper: [odidDevice],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odidDevice_deviceId',
+                lower: [odidDevice],
+                upper: [odidDevice, deviceId],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odidDevice_deviceId',
+                lower: [odidDevice, deviceId],
+                includeLower: false,
+                upper: [odidDevice],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odidDevice_deviceId',
-              lower: [odidDevice, deviceId],
-              includeLower: false,
-              upper: [odidDevice],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'odidDevice_deviceId',
-              lower: [odidDevice],
-              upper: [odidDevice, deviceId],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odidDevice_deviceId',
+                lower: [odidDevice, deviceId],
+                includeLower: false,
+                upper: [odidDevice],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'odidDevice_deviceId',
+                lower: [odidDevice],
+                upper: [odidDevice, deviceId],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
@@ -677,109 +748,111 @@ extension IdentityEntityQueryWhere
 extension IdentityEntityQueryFilter
     on QueryBuilder<IdentityEntity, IdentityEntity, QFilterCondition> {
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      createdAtEqualTo(int value) {
+  createdAtEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'createdAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'createdAt', value: value),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      createdAtGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  createdAtGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'createdAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'createdAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      createdAtLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  createdAtLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'createdAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'createdAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      createdAtBetween(
+  createdAtBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'createdAt',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'createdAt',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      deviceIdEqualTo(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+  deviceIdEqualTo(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'deviceId',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'deviceId',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      deviceIdGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'deviceId',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      deviceIdLessThan(
+  deviceIdGreaterThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'deviceId',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'deviceId',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      deviceIdBetween(
+  deviceIdLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'deviceId',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
+  deviceIdBetween(
     String lower,
     String upper, {
     bool includeLower = true,
@@ -787,122 +860,122 @@ extension IdentityEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'deviceId',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'deviceId',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      deviceIdStartsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+  deviceIdStartsWith(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.startsWith(
-        property: r'deviceId',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'deviceId',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      deviceIdEndsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+  deviceIdEndsWith(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.endsWith(
-        property: r'deviceId',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'deviceId',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      deviceIdContains(String value, {bool caseSensitive = true}) {
+  deviceIdContains(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.contains(
-        property: r'deviceId',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'deviceId',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      deviceIdMatches(String pattern, {bool caseSensitive = true}) {
+  deviceIdMatches(String pattern, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.matches(
-        property: r'deviceId',
-        wildcard: pattern,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'deviceId',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      deviceIdIsEmpty() {
+  deviceIdIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'deviceId',
-        value: '',
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'deviceId', value: ''),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      deviceIdIsNotEmpty() {
+  deviceIdIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        property: r'deviceId',
-        value: '',
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'deviceId', value: ''),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition> idEqualTo(
-      Id value) {
+    Id value,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'id', value: value),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      idGreaterThan(
-    Id value, {
-    bool include = false,
-  }) {
+  idGreaterThan(Id value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'id',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      idLessThan(
-    Id value, {
-    bool include = false,
-  }) {
+  idLessThan(Id value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'id',
+          value: value,
+        ),
+      );
     });
   }
 
@@ -913,148 +986,151 @@ extension IdentityEntityQueryFilter
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'id',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      isLocalEqualTo(bool value) {
+  isLocalEqualTo(bool value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'isLocal',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'isLocal', value: value),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      keyChangedAtIsNull() {
+  keyChangedAtIsNull() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNull(
-        property: r'keyChangedAt',
-      ));
+      return query.addFilterCondition(
+        const FilterCondition.isNull(property: r'keyChangedAt'),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      keyChangedAtIsNotNull() {
+  keyChangedAtIsNotNull() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNotNull(
-        property: r'keyChangedAt',
-      ));
+      return query.addFilterCondition(
+        const FilterCondition.isNotNull(property: r'keyChangedAt'),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      keyChangedAtEqualTo(int? value) {
+  keyChangedAtEqualTo(int? value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'keyChangedAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'keyChangedAt', value: value),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      keyChangedAtGreaterThan(
-    int? value, {
-    bool include = false,
-  }) {
+  keyChangedAtGreaterThan(int? value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'keyChangedAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'keyChangedAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      keyChangedAtLessThan(
-    int? value, {
-    bool include = false,
-  }) {
+  keyChangedAtLessThan(int? value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'keyChangedAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'keyChangedAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      keyChangedAtBetween(
+  keyChangedAtBetween(
     int? lower,
     int? upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'keyChangedAt',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'keyChangedAt',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidEqualTo(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+  odidEqualTo(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'odid',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'odid',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'odid',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidLessThan(
+  odidGreaterThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'odid',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'odid',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidBetween(
+  odidLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'odid',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
+  odidBetween(
     String lower,
     String upper, {
     bool includeLower = true,
@@ -1062,135 +1138,140 @@ extension IdentityEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'odid',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'odid',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidStartsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+  odidStartsWith(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.startsWith(
-        property: r'odid',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'odid',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidEndsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+  odidEndsWith(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.endsWith(
-        property: r'odid',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'odid',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidContains(String value, {bool caseSensitive = true}) {
+  odidContains(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.contains(
-        property: r'odid',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'odid',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidMatches(String pattern, {bool caseSensitive = true}) {
+  odidMatches(String pattern, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.matches(
-        property: r'odid',
-        wildcard: pattern,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'odid',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidIsEmpty() {
+  odidIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'odid',
-        value: '',
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'odid', value: ''),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidIsNotEmpty() {
+  odidIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        property: r'odid',
-        value: '',
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'odid', value: ''),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidDeviceEqualTo(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+  odidDeviceEqualTo(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'odidDevice',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'odidDevice',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidDeviceGreaterThan(
-    String value, {
-    bool include = false,
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'odidDevice',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidDeviceLessThan(
+  odidDeviceGreaterThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'odidDevice',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'odidDevice',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidDeviceBetween(
+  odidDeviceLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'odidDevice',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
+  odidDeviceBetween(
     String lower,
     String upper, {
     bool includeLower = true,
@@ -1198,234 +1279,199 @@ extension IdentityEntityQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'odidDevice',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'odidDevice',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidDeviceStartsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+  odidDeviceStartsWith(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.startsWith(
-        property: r'odidDevice',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'odidDevice',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidDeviceEndsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+  odidDeviceEndsWith(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.endsWith(
-        property: r'odidDevice',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'odidDevice',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidDeviceContains(String value, {bool caseSensitive = true}) {
+  odidDeviceContains(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.contains(
-        property: r'odidDevice',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'odidDevice',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidDeviceMatches(String pattern, {bool caseSensitive = true}) {
+  odidDeviceMatches(String pattern, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.matches(
-        property: r'odidDevice',
-        wildcard: pattern,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'odidDevice',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidDeviceIsEmpty() {
+  odidDeviceIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'odidDevice',
-        value: '',
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'odidDevice', value: ''),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      odidDeviceIsNotEmpty() {
+  odidDeviceIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        property: r'odidDevice',
-        value: '',
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'odidDevice', value: ''),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyIsNull() {
+  privateKeyIsNull() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNull(
-        property: r'privateKey',
-      ));
+      return query.addFilterCondition(
+        const FilterCondition.isNull(property: r'privateKey'),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyIsNotNull() {
+  privateKeyIsNotNull() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNotNull(
-        property: r'privateKey',
-      ));
+      return query.addFilterCondition(
+        const FilterCondition.isNotNull(property: r'privateKey'),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyElementEqualTo(int value) {
+  privateKeyElementEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'privateKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'privateKey', value: value),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyElementGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  privateKeyElementGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'privateKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'privateKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyElementLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  privateKeyElementLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'privateKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'privateKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyElementBetween(
+  privateKeyElementBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'privateKey',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
-    });
-  }
-
-  QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyLengthEqualTo(int length) {
-    return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        length,
-        true,
-        length,
-        true,
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'privateKey',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyIsEmpty() {
+  privateKeyLengthEqualTo(int length) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        0,
-        true,
-        0,
-        true,
-      );
+      return query.listLength(r'privateKey', length, true, length, true);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyIsNotEmpty() {
+  privateKeyIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        0,
-        false,
-        999999,
-        true,
-      );
+      return query.listLength(r'privateKey', 0, true, 0, true);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyLengthLessThan(
-    int length, {
-    bool include = false,
-  }) {
+  privateKeyIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        0,
-        true,
-        length,
-        include,
-      );
+      return query.listLength(r'privateKey', 0, false, 999999, true);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyLengthGreaterThan(
-    int length, {
-    bool include = false,
-  }) {
+  privateKeyLengthLessThan(int length, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'privateKey',
-        length,
-        include,
-        999999,
-        true,
-      );
+      return query.listLength(r'privateKey', 0, true, length, include);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      privateKeyLengthBetween(
+  privateKeyLengthGreaterThan(int length, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(r'privateKey', length, include, 999999, true);
+    });
+  }
+
+  QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
+  privateKeyLengthBetween(
     int lower,
     int upper, {
     bool includeLower = true,
@@ -1443,134 +1489,97 @@ extension IdentityEntityQueryFilter
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      publicKeyElementEqualTo(int value) {
+  publicKeyElementEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'publicKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'publicKey', value: value),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      publicKeyElementGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  publicKeyElementGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'publicKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'publicKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      publicKeyElementLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  publicKeyElementLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'publicKey',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'publicKey',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      publicKeyElementBetween(
+  publicKeyElementBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'publicKey',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
-    });
-  }
-
-  QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      publicKeyLengthEqualTo(int length) {
-    return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        length,
-        true,
-        length,
-        true,
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'publicKey',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
       );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      publicKeyIsEmpty() {
+  publicKeyLengthEqualTo(int length) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        0,
-        true,
-        0,
-        true,
-      );
+      return query.listLength(r'publicKey', length, true, length, true);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      publicKeyIsNotEmpty() {
+  publicKeyIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        0,
-        false,
-        999999,
-        true,
-      );
+      return query.listLength(r'publicKey', 0, true, 0, true);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      publicKeyLengthLessThan(
-    int length, {
-    bool include = false,
-  }) {
+  publicKeyIsNotEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        0,
-        true,
-        length,
-        include,
-      );
+      return query.listLength(r'publicKey', 0, false, 999999, true);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      publicKeyLengthGreaterThan(
-    int length, {
-    bool include = false,
-  }) {
+  publicKeyLengthLessThan(int length, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.listLength(
-        r'publicKey',
-        length,
-        include,
-        999999,
-        true,
-      );
+      return query.listLength(r'publicKey', 0, true, length, include);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      publicKeyLengthBetween(
+  publicKeyLengthGreaterThan(int length, {bool include = false}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(r'publicKey', length, include, 999999, true);
+    });
+  }
+
+  QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
+  publicKeyLengthBetween(
     int lower,
     int upper, {
     bool includeLower = true,
@@ -1588,188 +1597,185 @@ extension IdentityEntityQueryFilter
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      registrationIdEqualTo(int value) {
+  registrationIdEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'registrationId',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'registrationId', value: value),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      registrationIdGreaterThan(
-    int value, {
-    bool include = false,
-  }) {
+  registrationIdGreaterThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'registrationId',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'registrationId',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      registrationIdLessThan(
-    int value, {
-    bool include = false,
-  }) {
+  registrationIdLessThan(int value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'registrationId',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'registrationId',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      registrationIdBetween(
+  registrationIdBetween(
     int lower,
     int upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'registrationId',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'registrationId',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      trustLevelEqualTo(TrustLevel value) {
+  trustLevelEqualTo(TrustLevel value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'trustLevel',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'trustLevel', value: value),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      trustLevelGreaterThan(
-    TrustLevel value, {
-    bool include = false,
-  }) {
+  trustLevelGreaterThan(TrustLevel value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'trustLevel',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'trustLevel',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      trustLevelLessThan(
-    TrustLevel value, {
-    bool include = false,
-  }) {
+  trustLevelLessThan(TrustLevel value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'trustLevel',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'trustLevel',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      trustLevelBetween(
+  trustLevelBetween(
     TrustLevel lower,
     TrustLevel upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'trustLevel',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'trustLevel',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      verifiedAtIsNull() {
+  verifiedAtIsNull() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNull(
-        property: r'verifiedAt',
-      ));
+      return query.addFilterCondition(
+        const FilterCondition.isNull(property: r'verifiedAt'),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      verifiedAtIsNotNull() {
+  verifiedAtIsNotNull() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNotNull(
-        property: r'verifiedAt',
-      ));
+      return query.addFilterCondition(
+        const FilterCondition.isNotNull(property: r'verifiedAt'),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      verifiedAtEqualTo(int? value) {
+  verifiedAtEqualTo(int? value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'verifiedAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'verifiedAt', value: value),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      verifiedAtGreaterThan(
-    int? value, {
-    bool include = false,
-  }) {
+  verifiedAtGreaterThan(int? value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'verifiedAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'verifiedAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      verifiedAtLessThan(
-    int? value, {
-    bool include = false,
-  }) {
+  verifiedAtLessThan(int? value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'verifiedAt',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'verifiedAt',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterFilterCondition>
-      verifiedAtBetween(
+  verifiedAtBetween(
     int? lower,
     int? upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'verifiedAt',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'verifiedAt',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 }
@@ -1789,7 +1795,7 @@ extension IdentityEntityQuerySortBy
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByCreatedAtDesc() {
+  sortByCreatedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.desc);
     });
@@ -1802,7 +1808,7 @@ extension IdentityEntityQuerySortBy
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByDeviceIdDesc() {
+  sortByDeviceIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'deviceId', Sort.desc);
     });
@@ -1815,21 +1821,21 @@ extension IdentityEntityQuerySortBy
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByIsLocalDesc() {
+  sortByIsLocalDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isLocal', Sort.desc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByKeyChangedAt() {
+  sortByKeyChangedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'keyChangedAt', Sort.asc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByKeyChangedAtDesc() {
+  sortByKeyChangedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'keyChangedAt', Sort.desc);
     });
@@ -1848,56 +1854,56 @@ extension IdentityEntityQuerySortBy
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByOdidDevice() {
+  sortByOdidDevice() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'odidDevice', Sort.asc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByOdidDeviceDesc() {
+  sortByOdidDeviceDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'odidDevice', Sort.desc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByRegistrationId() {
+  sortByRegistrationId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'registrationId', Sort.asc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByRegistrationIdDesc() {
+  sortByRegistrationIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'registrationId', Sort.desc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByTrustLevel() {
+  sortByTrustLevel() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'trustLevel', Sort.asc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByTrustLevelDesc() {
+  sortByTrustLevelDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'trustLevel', Sort.desc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByVerifiedAt() {
+  sortByVerifiedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'verifiedAt', Sort.asc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      sortByVerifiedAtDesc() {
+  sortByVerifiedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'verifiedAt', Sort.desc);
     });
@@ -1913,7 +1919,7 @@ extension IdentityEntityQuerySortThenBy
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByCreatedAtDesc() {
+  thenByCreatedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.desc);
     });
@@ -1926,7 +1932,7 @@ extension IdentityEntityQuerySortThenBy
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByDeviceIdDesc() {
+  thenByDeviceIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'deviceId', Sort.desc);
     });
@@ -1951,21 +1957,21 @@ extension IdentityEntityQuerySortThenBy
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByIsLocalDesc() {
+  thenByIsLocalDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isLocal', Sort.desc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByKeyChangedAt() {
+  thenByKeyChangedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'keyChangedAt', Sort.asc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByKeyChangedAtDesc() {
+  thenByKeyChangedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'keyChangedAt', Sort.desc);
     });
@@ -1984,56 +1990,56 @@ extension IdentityEntityQuerySortThenBy
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByOdidDevice() {
+  thenByOdidDevice() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'odidDevice', Sort.asc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByOdidDeviceDesc() {
+  thenByOdidDeviceDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'odidDevice', Sort.desc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByRegistrationId() {
+  thenByRegistrationId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'registrationId', Sort.asc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByRegistrationIdDesc() {
+  thenByRegistrationIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'registrationId', Sort.desc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByTrustLevel() {
+  thenByTrustLevel() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'trustLevel', Sort.asc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByTrustLevelDesc() {
+  thenByTrustLevelDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'trustLevel', Sort.desc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByVerifiedAt() {
+  thenByVerifiedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'verifiedAt', Sort.asc);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QAfterSortBy>
-      thenByVerifiedAtDesc() {
+  thenByVerifiedAtDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'verifiedAt', Sort.desc);
     });
@@ -2043,14 +2049,15 @@ extension IdentityEntityQuerySortThenBy
 extension IdentityEntityQueryWhereDistinct
     on QueryBuilder<IdentityEntity, IdentityEntity, QDistinct> {
   QueryBuilder<IdentityEntity, IdentityEntity, QDistinct>
-      distinctByCreatedAt() {
+  distinctByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'createdAt');
     });
   }
 
-  QueryBuilder<IdentityEntity, IdentityEntity, QDistinct> distinctByDeviceId(
-      {bool caseSensitive = true}) {
+  QueryBuilder<IdentityEntity, IdentityEntity, QDistinct> distinctByDeviceId({
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'deviceId', caseSensitive: caseSensitive);
     });
@@ -2063,56 +2070,58 @@ extension IdentityEntityQueryWhereDistinct
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QDistinct>
-      distinctByKeyChangedAt() {
+  distinctByKeyChangedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'keyChangedAt');
     });
   }
 
-  QueryBuilder<IdentityEntity, IdentityEntity, QDistinct> distinctByOdid(
-      {bool caseSensitive = true}) {
+  QueryBuilder<IdentityEntity, IdentityEntity, QDistinct> distinctByOdid({
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'odid', caseSensitive: caseSensitive);
     });
   }
 
-  QueryBuilder<IdentityEntity, IdentityEntity, QDistinct> distinctByOdidDevice(
-      {bool caseSensitive = true}) {
+  QueryBuilder<IdentityEntity, IdentityEntity, QDistinct> distinctByOdidDevice({
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'odidDevice', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QDistinct>
-      distinctByPrivateKey() {
+  distinctByPrivateKey() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'privateKey');
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QDistinct>
-      distinctByPublicKey() {
+  distinctByPublicKey() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'publicKey');
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QDistinct>
-      distinctByRegistrationId() {
+  distinctByRegistrationId() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'registrationId');
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QDistinct>
-      distinctByTrustLevel() {
+  distinctByTrustLevel() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'trustLevel');
     });
   }
 
   QueryBuilder<IdentityEntity, IdentityEntity, QDistinct>
-      distinctByVerifiedAt() {
+  distinctByVerifiedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'verifiedAt');
     });
@@ -2164,14 +2173,14 @@ extension IdentityEntityQueryProperty
   }
 
   QueryBuilder<IdentityEntity, List<int>?, QQueryOperations>
-      privateKeyProperty() {
+  privateKeyProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'privateKey');
     });
   }
 
   QueryBuilder<IdentityEntity, List<int>, QQueryOperations>
-      publicKeyProperty() {
+  publicKeyProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'publicKey');
     });
@@ -2184,7 +2193,7 @@ extension IdentityEntityQueryProperty
   }
 
   QueryBuilder<IdentityEntity, TrustLevel, QQueryOperations>
-      trustLevelProperty() {
+  trustLevelProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'trustLevel');
     });

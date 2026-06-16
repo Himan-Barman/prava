@@ -210,6 +210,12 @@ class _AccountInformationPageState extends State<AccountInformationPage> {
                       PravaInput(
                         controller: _emailController,
                         hint: 'Email address',
+                        label: 'Email address',
+                        fieldType: PravaInputFieldType.email,
+                        variant: PravaInputVariant.settings,
+                        prefixIcon: const Icon(Icons.mail_rounded),
+                        showClearButton: true,
+                        requiredField: true,
                         keyboardType: TextInputType.emailAddress,
                       ),
                       const SizedBox(height: 12),
@@ -235,6 +241,10 @@ class _AccountInformationPageState extends State<AccountInformationPage> {
                             child: PravaInput(
                               controller: _firstNameController,
                               hint: 'First name',
+                              label: 'First name',
+                              fieldType: PravaInputFieldType.name,
+                              variant: PravaInputVariant.profile,
+                              textCapitalization: TextCapitalization.words,
                               inputFormatters: [
                                 FilteringTextInputFormatter.allow(
                                   RegExp(r"[A-Za-z '\\-]"),
@@ -248,6 +258,10 @@ class _AccountInformationPageState extends State<AccountInformationPage> {
                             child: PravaInput(
                               controller: _lastNameController,
                               hint: 'Last name',
+                              label: 'Last name',
+                              fieldType: PravaInputFieldType.name,
+                              variant: PravaInputVariant.profile,
+                              textCapitalization: TextCapitalization.words,
                               inputFormatters: [
                                 FilteringTextInputFormatter.allow(
                                   RegExp(r"[A-Za-z '\\-]"),
@@ -266,6 +280,9 @@ class _AccountInformationPageState extends State<AccountInformationPage> {
                             child: PravaInput(
                               controller: _phoneCountryController,
                               hint: '+91',
+                              label: 'Code',
+                              fieldType: PravaInputFieldType.phone,
+                              variant: PravaInputVariant.profile,
                               keyboardType: TextInputType.phone,
                               inputFormatters: [
                                 FilteringTextInputFormatter.allow(
@@ -280,6 +297,10 @@ class _AccountInformationPageState extends State<AccountInformationPage> {
                             child: PravaInput(
                               controller: _phoneController,
                               hint: 'Phone number',
+                              label: 'Phone number',
+                              fieldType: PravaInputFieldType.phone,
+                              variant: PravaInputVariant.profile,
+                              prefixIcon: const Icon(Icons.call_rounded),
                               keyboardType: TextInputType.phone,
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
@@ -328,7 +349,7 @@ class _SectionCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: PravaTypography.h3.copyWith(
+            style: PravaTypography.titleSmall.copyWith(
               color: primary,
               fontWeight: FontWeight.w700,
             ),
