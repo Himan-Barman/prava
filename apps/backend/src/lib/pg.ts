@@ -1004,6 +1004,9 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
   await runDatabaseFoundationMigrations(p);
 
   await p.query(`
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS notification_type VARCHAR(48);
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_uuid UUID;
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actor_uuid UUID;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_user_id UUID;
     UPDATE notifications
        SET recipient_user_id = users.id
