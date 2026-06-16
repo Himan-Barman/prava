@@ -1003,22 +1003,15 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
 
   await runDatabaseFoundationMigrations(p);
 
+  // ── Phase 1: Add all missing columns (DDL only) ──
+  // Must be a separate query() so PostgreSQL parses later statements
+  // AFTER these columns exist.
   await p.query(`
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS notification_type VARCHAR(48);
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_uuid UUID;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actor_uuid UUID;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_user_id UUID;
-    UPDATE notifications
-       SET recipient_user_id = users.id
-      FROM users
-     WHERE notifications.user_id = users.user_id
-       AND notifications.recipient_user_id IS NULL;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actor_internal_user_id UUID;
-    UPDATE notifications
-       SET actor_internal_user_id = users.id
-      FROM users
-     WHERE notifications.actor_user_id = users.user_id
-       AND notifications.actor_internal_user_id IS NULL;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS aggregation_key TEXT;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal';
@@ -1027,6 +1020,38 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_id TEXT DEFAULT NULL;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_eligible BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS preference_category TEXT NOT NULL DEFAULT 'system';
+
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS preference_category TEXT;
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS push_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS email_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS quiet_hours_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC';
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS public_device_id TEXT;
+    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS push_provider TEXT NOT NULL DEFAULT 'fcm';
+    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS push_token TEXT;
+    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS token_refreshed_at TIMESTAMPTZ;
+    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ;
+
+    ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;
+    ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS locked_by TEXT;
+    ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
+  `);
+
+  // ── Phase 2: Backfill data & create indexes/tables that reference new columns ──
+  await p.query(`
+    UPDATE notifications
+       SET recipient_user_id = users.id
+      FROM users
+     WHERE notifications.user_id = users.user_id
+       AND notifications.recipient_user_id IS NULL;
+    UPDATE notifications
+       SET actor_internal_user_id = users.id
+      FROM users
+     WHERE notifications.actor_user_id = users.user_id
+       AND notifications.actor_internal_user_id IS NULL;
     UPDATE notifications SET notification_type = type WHERE notification_type IS NULL;
     UPDATE notifications SET recipient_uuid = recipient_user_id WHERE recipient_uuid IS NULL AND recipient_user_id IS NOT NULL;
     UPDATE notifications SET actor_uuid = actor_internal_user_id WHERE actor_uuid IS NULL AND actor_internal_user_id IS NOT NULL;
@@ -1065,22 +1090,10 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       ON notification_outbox (locked_at, attempt_count, created_at)
       WHERE published_at IS NULL;
 
-    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS preference_category TEXT;
     UPDATE notification_preferences SET preference_category = notification_type WHERE preference_category IS NULL;
-    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE;
-    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS push_enabled BOOLEAN NOT NULL DEFAULT TRUE;
-    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS email_enabled BOOLEAN NOT NULL DEFAULT FALSE;
-    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS quiet_hours_enabled BOOLEAN NOT NULL DEFAULT FALSE;
-    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC';
-    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     CREATE INDEX IF NOT EXISTS idx_notification_preferences_user_category
       ON notification_preferences (user_id, preference_category);
 
-    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS public_device_id TEXT;
-    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS push_provider TEXT NOT NULL DEFAULT 'fcm';
-    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS push_token TEXT;
-    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS token_refreshed_at TIMESTAMPTZ;
-    ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_user_devices_public_active
       ON user_devices (user_id, public_device_id)
       WHERE public_device_id IS NOT NULL AND invalidated_at IS NULL AND revoked_at IS NULL;
@@ -1138,9 +1151,5 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_notification_dead_letters_failed
       ON notification_dead_letters (resolved_at, failed_at DESC);
-
-    ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;
-    ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS locked_by TEXT;
-    ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
   `);
 }
