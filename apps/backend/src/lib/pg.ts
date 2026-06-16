@@ -1020,7 +1020,22 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_id TEXT DEFAULT NULL;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS push_eligible BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS preference_category TEXT NOT NULL DEFAULT 'system';
+  `);
 
+  // Ensure notification_preferences table exists with notification_type column
+  // (may have been created by older migration without it)
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      user_id UUID NOT NULL,
+      channel VARCHAR(24) NOT NULL,
+      notification_type VARCHAR(64) NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT true,
+      quiet_hours_start TIME,
+      quiet_hours_end TIME,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, channel, notification_type)
+    );
+    ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS notification_type VARCHAR(64);
     ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS preference_category TEXT;
     ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS push_enabled BOOLEAN NOT NULL DEFAULT TRUE;
@@ -1035,6 +1050,12 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS token_refreshed_at TIMESTAMPTZ;
     ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ;
 
+    CREATE TABLE IF NOT EXISTS outbox_events (
+      id BIGSERIAL PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      payload JSONB NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;
     ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS locked_by TEXT;
     ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
