@@ -303,43 +303,33 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
       : 'Conversation';
 
   return (
-    <div className="flex flex-col h-full bg-prava-light-surface dark:bg-prava-dark-surface rounded-[24px] overflow-hidden border border-prava-light-border dark:border-prava-dark-border shadow-2xl relative">
+    <div className="chat-window">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-prava-light-border dark:border-prava-dark-border bg-white/50 dark:bg-black/20 backdrop-blur-md z-10">
-        <div className="flex items-center gap-3">
+      <div className="chat-window__header">
+        <div className="chat-window__header-left">
           {onBack && (
-            <button onClick={onBack} className="md:hidden p-2 -ml-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10">
-              <ArrowLeft className="w-5 h-5 text-prava-light-text-secondary dark:text-prava-dark-text-secondary" />
+            <button onClick={onBack} className="chat-window__back" aria-label="Back">
+              <ArrowLeft size={20} />
             </button>
           )}
-          <div className="w-10 h-10 rounded-full bg-prava-accent/15 flex items-center justify-center shrink-0">
-            <span className="text-prava-accent font-semibold">{displayName.charAt(0)}</span>
+          <div className="chat-window__avatar">
+            <span>{displayName.charAt(0)}</span>
           </div>
-          <div>
-            <h3 className="font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-              {displayName}
-            </h3>
-            <p className="text-xs text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-              {peerTyping ? 'Typing...' : 'Online'}
-            </p>
+          <div className="chat-window__header-info">
+            <h3>{displayName}</h3>
+            <p>{peerTyping ? 'Typing...' : 'Online'}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-prava-accent">
-          <button className="p-2 rounded-full hover:bg-prava-accent/10 transition-colors">
-            <Phone className="w-5 h-5" />
-          </button>
-          <button className="p-2 rounded-full hover:bg-prava-accent/10 transition-colors">
-            <Video className="w-5 h-5" />
-          </button>
-          <button className="p-2 rounded-full hover:bg-prava-accent/10 transition-colors text-prava-light-text-secondary dark:text-prava-dark-text-secondary">
-            <MoreVertical className="w-5 h-5" />
-          </button>
+        <div className="chat-window__header-actions">
+          <button aria-label="Audio call"><Phone size={20} /></button>
+          <button aria-label="Video call"><Video size={20} /></button>
+          <button aria-label="More options"><MoreVertical size={20} /></button>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-prava-light-bg dark:bg-prava-dark-bg">
+      <div className="chat-window__messages">
         {messages.map((msg, i) => {
           const isMe = msg.senderId === user?.id;
           const isSequential = i > 0 && messages[i - 1].senderId === msg.senderId;
@@ -347,14 +337,9 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
           return (
             <div
               key={msg.id}
-              className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} ${isSequential ? 'mt-1' : 'mt-4'}`}
+              className={`chat-msg ${isMe ? 'chat-msg--own' : 'chat-msg--peer'} ${isSequential ? 'chat-msg--sequential' : ''}`}
             >
-              <div
-                className={`max-w-[70%] px-4 py-2.5 rounded-[18px] text-body-sm ${isMe
-                    ? 'bg-prava-accent text-white rounded-tr-sm'
-                    : 'bg-white dark:bg-white/[0.08] text-prava-light-text-primary dark:text-prava-dark-text-primary border border-prava-light-border dark:border-prava-dark-border rounded-tl-sm'
-                  }`}
-              >
+              <div className={`chat-msg__bubble ${isMe ? 'chat-msg__bubble--own' : 'chat-msg__bubble--peer'}`}>
                 {msg.deletedForAllAt
                   ? 'Message deleted'
                   : isEncryptedPayload(msg.body)
@@ -362,7 +347,7 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
                     : msg.body}
               </div>
               {Array.isArray(msg.reactions) && msg.reactions.length > 0 && (
-                <div className="mt-1 text-[10px] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10">
+                <div className="chat-msg__reactions">
                   {Object.entries(
                     msg.reactions.reduce<Record<string, number>>((acc, reaction) => {
                       const emoji = reaction.emoji || '';
@@ -375,9 +360,7 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
                     .join('  ')}
                 </div>
               )}
-              <span className="text-[10px] text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary mt-1 px-1">
-                {timeAgo(msg.createdAt)}
-              </span>
+              <span className="chat-msg__time">{timeAgo(msg.createdAt)}</span>
             </div>
           );
         })}
@@ -385,13 +368,13 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
       </div>
 
       {/* Input */}
-      <div className="p-4 bg-white dark:bg-prava-dark-surface border-t border-prava-light-border dark:border-prava-dark-border">
-        <form onSubmit={handleSend} className="flex items-center gap-2">
-          <button type="button" className="p-2 text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors">
-            <Image className="w-5 h-5" />
+      <div className="chat-window__composer">
+        <form onSubmit={handleSend} className="chat-window__composer-form">
+          <button type="button" className="chat-window__composer-action" aria-label="Attach image">
+            <Image size={20} />
           </button>
           <input
-            className="flex-1 px-4 py-2.5 rounded-full bg-prava-light-bg dark:bg-prava-dark-bg border border-prava-light-border dark:border-prava-dark-border focus:outline-none focus:border-prava-accent transition-colors text-body-sm text-prava-light-text-primary dark:text-prava-dark-text-primary"
+            className="chat-window__input"
             placeholder="Type a message..."
             value={inputText}
             onChange={(e) => handleComposerChange(e.target.value)}
@@ -399,9 +382,10 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
           <button
             type="submit"
             disabled={!inputText.trim() || sending}
-            className="p-2.5 circle bg-prava-accent text-white rounded-full hover:bg-prava-accent-muted disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-prava-glow"
+            className="chat-window__send"
+            aria-label="Send"
           >
-            <Send className="w-5 h-5 ml-0.5" />
+            <Send size={20} />
           </button>
         </form>
       </div>
