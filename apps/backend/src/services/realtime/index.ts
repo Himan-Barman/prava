@@ -1,17 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 
-import {
-  ensure,
-  verifyAccessToken,
-  toIso,
-} from "../../lib/security.js";
+import { ensure, verifyAccessToken, toIso } from "../../lib/security.js";
 import { query } from "../../lib/pg.js";
 import {
   MESSAGE_TYPES,
   createMessage,
   deleteMessageForUser,
   editMessageForUser,
+  hydrateMessageMedia,
   loadConversationForUserOrNull,
   normalizeString,
   setReactionForUser,
@@ -24,7 +21,10 @@ import {
   registerConnection,
   unregisterConnection,
 } from "./hub.js";
-import { canSendDirectMessage, hasBlockBetween } from "../../shared/policies/index.js";
+import {
+  canSendDirectMessage,
+  hasBlockBetween,
+} from "../../shared/policies/index.js";
 
 function parseIntStrict(value: unknown): number | null {
   const parsed = Number.parseInt(String(value || ""), 10);
@@ -71,7 +71,11 @@ function normalizeEventType(value: unknown): string {
   return EVENT_ALIASES.get(key) || key;
 }
 
-function sendSocketEvent(socket: any, type: string, payload: Record<string, unknown>): void {
+function sendSocketEvent(
+  socket: any,
+  type: string,
+  payload: Record<string, unknown>,
+): void {
   try {
     socket.send(
       JSON.stringify({
@@ -81,14 +85,16 @@ function sendSocketEvent(socket: any, type: string, payload: Record<string, unkn
         event_id: randomUUID(),
         timestamp: new Date().toISOString(),
         payload,
-      })
+      }),
     );
   } catch {
     // Transport write failures are handled by the socket close path.
   }
 }
 
-export default async function realtimeService(app: FastifyInstance): Promise<void> {
+export default async function realtimeService(
+  app: FastifyInstance,
+): Promise<void> {
   const handleConnection = async (socket: any, request: any) => {
     const params = request.query as Record<string, unknown> | undefined;
     const token = normalizeString(params?.token);
@@ -115,10 +121,9 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
         return;
       }
       lastSeenTouchedAt = current;
-      void query(
-        `UPDATE users SET last_seen_at = NOW() WHERE user_id = $1`,
-        [userId]
-      ).catch(() => undefined);
+      void query(`UPDATE users SET last_seen_at = NOW() WHERE user_id = $1`, [
+        userId,
+      ]).catch(() => undefined);
     };
 
     touchLastSeen(true);
@@ -128,7 +133,10 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       userId,
       deviceId,
       subscribedConversations: new Set<string>(),
-      conversationMeta: new Map<string, { memberIds: string[]; type?: string }>(),
+      conversationMeta: new Map<
+        string,
+        { memberIds: string[]; type?: string }
+      >(),
       feedSubscribed: false,
     };
 
@@ -180,8 +188,10 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       const conversation = await getConversation(conversationId);
       if (!conversation) return;
       if (conversation.type === "dm") {
-        const peerId = (conversation.memberIds || []).find((id: string) => id !== userId);
-        if (peerId && await hasBlockBetween(userId, peerId)) return;
+        const peerId = (conversation.memberIds || []).find(
+          (id: string) => id !== userId,
+        );
+        if (peerId && (await hasBlockBetween(userId, peerId))) return;
       }
       publishToConversation(
         conversation.memberIds,
@@ -191,12 +201,17 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       );
     };
 
-    const sendRecording = async (conversationId: string, isRecording: boolean) => {
+    const sendRecording = async (
+      conversationId: string,
+      isRecording: boolean,
+    ) => {
       const conversation = await getConversation(conversationId);
       if (!conversation) return;
       if (conversation.type === "dm") {
-        const peerId = (conversation.memberIds || []).find((id: string) => id !== userId);
-        if (peerId && await hasBlockBetween(userId, peerId)) return;
+        const peerId = (conversation.memberIds || []).find(
+          (id: string) => id !== userId,
+        );
+        if (peerId && (await hasBlockBetween(userId, peerId))) return;
       }
       publishToConversation(
         conversation.memberIds,
@@ -213,7 +228,9 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
       const conversation = await getConversation(conversationId);
       if (!conversation) return;
       if (conversation.type === "dm") {
-        const peerId = (conversation.memberIds || []).find((id: string) => id !== userId);
+        const peerId = (conversation.memberIds || []).find(
+          (id: string) => id !== userId,
+        );
         if (peerId) {
           const policy = await canSendDirectMessage(userId, peerId);
           ensure(policy.allowed, 403, "User interaction is blocked");
@@ -317,12 +334,14 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
         clientTimestamp: payload.clientTimestamp ?? null,
       });
       const message = result.message;
+      const hydratedRows = await hydrateMessageMedia([message]);
+      const hydratedMessage = hydratedRows[0] || message;
 
       if (result.created) {
         publishToConversation(
           conversation.memberIds,
           "MESSAGE_PUSH",
-          toRealtimeMessagePayload(message),
+          toRealtimeMessagePayload(hydratedMessage),
         );
       }
 
@@ -457,8 +476,10 @@ export default async function realtimeService(app: FastifyInstance): Promise<voi
             if (!conversation) return;
             state.subscribedConversations.add(conversationId);
             if (conversation.type === "dm") {
-              const peerId = (conversation.memberIds || []).find((id: string) => id !== userId);
-              if (peerId && await hasBlockBetween(userId, peerId)) return;
+              const peerId = (conversation.memberIds || []).find(
+                (id: string) => id !== userId,
+              );
+              if (peerId && (await hasBlockBetween(userId, peerId))) return;
               publishToConversation(
                 conversation.memberIds,
                 "PRESENCE_UPDATE",

@@ -1,12 +1,7 @@
 import type pg from "pg";
 
 import { query, queryMany, queryOne, withTransaction } from "../../lib/pg.js";
-import {
-  HttpError,
-  generateId,
-  now,
-  toIso,
-} from "../../lib/security.js";
+import { HttpError, generateId, now, toIso } from "../../lib/security.js";
 
 export const MESSAGE_TYPES = new Set([
   "text",
@@ -19,7 +14,12 @@ export const MESSAGE_TYPES = new Set([
   "voice_note",
 ]);
 
-export function parseLimit(raw: unknown, fallback: number, min: number, max: number): number {
+export function parseLimit(
+  raw: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   const parsed = Number.parseInt(String(raw || ""), 10);
   if (Number.isNaN(parsed)) {
     return fallback;
@@ -128,7 +128,7 @@ export function getGroupMeta(conversation: any) {
   const adminSet = new Set(
     (Array.isArray(conversation.adminIds) ? conversation.adminIds : [])
       .map((id) => String(id))
-      .filter((id) => memberIds.includes(id))
+      .filter((id) => memberIds.includes(id)),
   );
   if (ownerUserId) {
     adminSet.add(ownerUserId);
@@ -155,19 +155,23 @@ export function isGroupAdmin(groupMeta: any, userId: string): boolean {
   return roleForUser(groupMeta, userId) !== "member";
 }
 
-async function loadMembersForConversations(conversationIds: string[]): Promise<Map<string, any[]>> {
+async function loadMembersForConversations(
+  conversationIds: string[],
+): Promise<Map<string, any[]>> {
   const out = new Map<string, any[]>();
   if (conversationIds.length === 0) {
     return out;
   }
 
-  const placeholders = conversationIds.map((_, index) => `$${index + 1}`).join(", ");
+  const placeholders = conversationIds
+    .map((_, index) => `$${index + 1}`)
+    .join(", ");
   const rows = await queryMany(
     `SELECT conversation_id, user_id, role, joined_at, left_at
      FROM conversation_members
      WHERE conversation_id IN (${placeholders}) AND left_at IS NULL
      ORDER BY joined_at ASC`,
-    conversationIds
+    conversationIds,
   );
 
   for (const row of rows) {
@@ -181,8 +185,12 @@ async function loadMembersForConversations(conversationIds: string[]): Promise<M
 }
 
 export async function hydrateConversations(rows: any[]): Promise<any[]> {
-  const memberMap = await loadMembersForConversations(rows.map((row) => row.conversation_id));
-  return rows.map((row) => mapConversationRow(row, memberMap.get(row.conversation_id) || []));
+  const memberMap = await loadMembersForConversations(
+    rows.map((row) => row.conversation_id),
+  );
+  return rows.map((row) =>
+    mapConversationRow(row, memberMap.get(row.conversation_id) || []),
+  );
 }
 
 export async function hydrateConversation(row: any): Promise<any> {
@@ -190,13 +198,16 @@ export async function hydrateConversation(row: any): Promise<any> {
   return conversation;
 }
 
-export async function loadConversationForUser(conversationId: string, userId: string): Promise<any> {
+export async function loadConversationForUser(
+  conversationId: string,
+  userId: string,
+): Promise<any> {
   const row = await queryOne(
     `SELECT c.*
      FROM conversations c
      JOIN conversation_members cm ON cm.conversation_id = c.conversation_id
      WHERE c.conversation_id = $1 AND cm.user_id = $2 AND cm.left_at IS NULL`,
-    [conversationId, userId]
+    [conversationId, userId],
   );
 
   if (!row) {
@@ -206,7 +217,10 @@ export async function loadConversationForUser(conversationId: string, userId: st
   return hydrateConversation(row);
 }
 
-export async function loadConversationForUserOrNull(conversationId: string, userId: string): Promise<any | null> {
+export async function loadConversationForUserOrNull(
+  conversationId: string,
+  userId: string,
+): Promise<any | null> {
   try {
     return await loadConversationForUser(conversationId, userId);
   } catch (error) {
@@ -222,7 +236,7 @@ export async function ensureUserExists(userId: string): Promise<any> {
     `SELECT user_id, username, display_name
      FROM users
      WHERE user_id = $1 AND deleted_at IS NULL`,
-    [userId]
+    [userId],
   );
 
   if (!user) {
@@ -245,7 +259,9 @@ function mapReaction(row: any) {
   };
 }
 
-export async function loadReactions(messageIds: string[]): Promise<Map<string, any[]>> {
+export async function loadReactions(
+  messageIds: string[],
+): Promise<Map<string, any[]>> {
   const out = new Map<string, any[]>();
   if (messageIds.length === 0) {
     return out;
@@ -257,7 +273,7 @@ export async function loadReactions(messageIds: string[]): Promise<Map<string, a
      FROM message_reactions
      WHERE message_id IN (${placeholders})
      ORDER BY reacted_at ASC`,
-    messageIds
+    messageIds,
   );
 
   for (const row of rows) {
@@ -276,10 +292,17 @@ export async function getMessageReactions(messageId: string): Promise<any[]> {
 }
 
 export function mapMessage(message: any, reactions: any[] = []) {
+  const mediaUrl =
+    message.media_secure_url ||
+    message.media_url ||
+    message.secure_url ||
+    message.url ||
+    null;
   return {
     id: message.message_id,
     messageId: message.message_id,
-    clientMessageId: message.client_message_id || message.client_message_uuid || null,
+    clientMessageId:
+      message.client_message_id || message.client_message_uuid || null,
     conversationId: message.conversation_id,
     senderUserId: message.sender_user_id,
     senderDeviceId: message.sender_device_id || "",
@@ -287,7 +310,18 @@ export function mapMessage(message: any, reactions: any[] = []) {
     contentType: message.content_type,
     seq: Number(message.seq || 0),
     mediaAssetId: message.media_asset_id || null,
+    mediaUrl,
+    mediaSecureUrl: mediaUrl,
+    mediaResourceType:
+      message.media_resource_type || message.resource_type || null,
+    mediaWidth:
+      message.media_width == null ? null : Number(message.media_width),
+    mediaHeight:
+      message.media_height == null ? null : Number(message.media_height),
+    mediaBytes:
+      message.media_bytes == null ? null : Number(message.media_bytes),
     replyToMessageId: message.reply_to_message_id || null,
+    replyToId: message.reply_to_message_id || null,
     editVersion: Number(message.edit_version || 0),
     reactions,
     createdAt: toIso(message.created_at),
@@ -296,30 +330,90 @@ export function mapMessage(message: any, reactions: any[] = []) {
 }
 
 export function toRealtimeMessagePayload(message: any) {
+  const mediaUrl =
+    message.media_secure_url ||
+    message.media_url ||
+    message.secure_url ||
+    message.url ||
+    null;
   return {
     conversationId: message.conversation_id,
     messageId: message.message_id,
-    clientMessageId: message.client_message_id || message.client_message_uuid || null,
+    clientMessageId:
+      message.client_message_id || message.client_message_uuid || null,
     senderUserId: message.sender_user_id,
     senderDeviceId: message.sender_device_id || "",
     seq: Number(message.seq || 0),
     contentType: message.content_type,
     body: message.body,
     replyToMessageId: message.reply_to_message_id || null,
+    replyToId: message.reply_to_message_id || null,
     mediaAssetId: message.media_asset_id || null,
+    mediaUrl,
+    mediaSecureUrl: mediaUrl,
+    mediaResourceType:
+      message.media_resource_type || message.resource_type || null,
+    mediaWidth:
+      message.media_width == null ? null : Number(message.media_width),
+    mediaHeight:
+      message.media_height == null ? null : Number(message.media_height),
+    mediaBytes:
+      message.media_bytes == null ? null : Number(message.media_bytes),
     editVersion: Number(message.edit_version || 0),
     deletedForAllAt: toIso(message.deleted_for_all_at),
     createdAt: toIso(message.created_at),
   };
 }
 
+export async function hydrateMessageMedia<T extends Record<string, any>>(
+  messages: T[],
+): Promise<T[]> {
+  const mediaAssetIds = [
+    ...new Set(
+      messages
+        .map((message) => normalizeString(message.media_asset_id))
+        .filter((id) => id.length > 0),
+    ),
+  ];
+
+  if (mediaAssetIds.length === 0) {
+    return messages;
+  }
+
+  const assets = await queryMany(
+    `SELECT asset_id, secure_url, url, resource_type, width, height, bytes
+     FROM media_assets
+     WHERE asset_id = ANY($1::text[])`,
+    [mediaAssetIds],
+  );
+  const assetMap = new Map(
+    assets.map((asset) => [String(asset.asset_id), asset]),
+  );
+
+  return messages.map((message) => {
+    const asset = assetMap.get(normalizeString(message.media_asset_id));
+    if (!asset) {
+      return message;
+    }
+    return {
+      ...message,
+      media_secure_url: asset.secure_url || asset.url || null,
+      media_url: asset.secure_url || asset.url || null,
+      media_resource_type: asset.resource_type || null,
+      media_width: asset.width ?? null,
+      media_height: asset.height ?? null,
+      media_bytes: asset.bytes ?? null,
+    };
+  });
+}
+
 async function ensureConversationUuid(
   client: pg.PoolClient,
-  conversationId: string
+  conversationId: string,
 ): Promise<string | null> {
   const current = await client.query(
     `SELECT id FROM conversations WHERE conversation_id = $1 LIMIT 1`,
-    [conversationId]
+    [conversationId],
   );
   if (current.rows[0]?.id) {
     return String(current.rows[0].id);
@@ -331,7 +425,7 @@ async function ensureConversationUuid(
      SET id = $2
      WHERE conversation_id = $1 AND id IS NULL
      RETURNING id`,
-    [conversationId, generated]
+    [conversationId, generated],
   );
   if (updated.rows[0]?.id) {
     return String(updated.rows[0].id);
@@ -339,18 +433,18 @@ async function ensureConversationUuid(
 
   const reloaded = await client.query(
     `SELECT id FROM conversations WHERE conversation_id = $1 LIMIT 1`,
-    [conversationId]
+    [conversationId],
   );
   return reloaded.rows[0]?.id ? String(reloaded.rows[0].id) : null;
 }
 
 async function ensureUserUuid(
   client: pg.PoolClient,
-  userId: string
+  userId: string,
 ): Promise<string | null> {
   const current = await client.query(
     `SELECT id FROM users WHERE user_id = $1 LIMIT 1`,
-    [userId]
+    [userId],
   );
   if (current.rows[0]?.id) {
     return String(current.rows[0].id);
@@ -362,7 +456,7 @@ async function ensureUserUuid(
      SET id = $2
      WHERE user_id = $1 AND id IS NULL
      RETURNING id`,
-    [userId, generated]
+    [userId, generated],
   );
   if (updated.rows[0]?.id) {
     return String(updated.rows[0].id);
@@ -370,7 +464,7 @@ async function ensureUserUuid(
 
   const reloaded = await client.query(
     `SELECT id FROM users WHERE user_id = $1 LIMIT 1`,
-    [userId]
+    [userId],
   );
   return reloaded.rows[0]?.id ? String(reloaded.rows[0].id) : null;
 }
@@ -378,7 +472,7 @@ async function ensureUserUuid(
 async function loadReplyMessageUuid(
   client: pg.PoolClient,
   conversationId: string,
-  messageId?: string | null
+  messageId?: string | null,
 ): Promise<string | null> {
   if (!messageId) {
     return null;
@@ -389,7 +483,7 @@ async function loadReplyMessageUuid(
      FROM messages
      WHERE conversation_id = $1 AND message_id = $2
      LIMIT 1`,
-    [conversationId, messageId]
+    [conversationId, messageId],
   );
   return row.rows[0]?.message_uuid ? String(row.rows[0].message_uuid) : null;
 }
@@ -400,7 +494,7 @@ async function upsertReadStateWithClient(
   userId: string,
   lastReadSeq: number,
   lastDeliveredSeq: number,
-  ts: Date
+  ts: Date,
 ): Promise<void> {
   await client.query(
     `INSERT INTO conversation_reads (conversation_id, user_id, last_read_seq, last_delivered_seq, updated_at)
@@ -410,20 +504,23 @@ async function upsertReadStateWithClient(
        last_read_seq = GREATEST(conversation_reads.last_read_seq, EXCLUDED.last_read_seq),
        last_delivered_seq = GREATEST(conversation_reads.last_delivered_seq, EXCLUDED.last_delivered_seq),
        updated_at = EXCLUDED.updated_at`,
-    [conversationId, userId, lastReadSeq, lastDeliveredSeq, ts]
+    [conversationId, userId, lastReadSeq, lastDeliveredSeq, ts],
   );
 }
 
 export async function upsertReadState(
   conversation: any,
   userId: string,
-  options: { lastReadSeq?: number; lastDeliveredSeq?: number }
+  options: { lastReadSeq?: number; lastDeliveredSeq?: number },
 ): Promise<{ lastReadSeq?: number; lastDeliveredSeq?: number }> {
   const seqCounter = Number(conversation.seqCounter || 0);
   const ts = now();
 
   if (options.lastReadSeq !== undefined) {
-    const lastReadSeq = Math.min(Math.max(options.lastReadSeq, 0), seqCounter || options.lastReadSeq);
+    const lastReadSeq = Math.min(
+      Math.max(options.lastReadSeq, 0),
+      seqCounter || options.lastReadSeq,
+    );
     await query(
       `INSERT INTO conversation_reads (conversation_id, user_id, last_read_seq, last_delivered_seq, updated_at)
        VALUES ($1, $2, $3, 0, $4)
@@ -431,13 +528,16 @@ export async function upsertReadState(
        DO UPDATE SET
          last_read_seq = GREATEST(conversation_reads.last_read_seq, EXCLUDED.last_read_seq),
          updated_at = EXCLUDED.updated_at`,
-      [conversation.conversationId, userId, lastReadSeq, ts]
+      [conversation.conversationId, userId, lastReadSeq, ts],
     );
     return { lastReadSeq };
   }
 
   const requestedDeliveredSeq = options.lastDeliveredSeq || 0;
-  const lastDeliveredSeq = Math.min(Math.max(requestedDeliveredSeq, 0), seqCounter || requestedDeliveredSeq);
+  const lastDeliveredSeq = Math.min(
+    Math.max(requestedDeliveredSeq, 0),
+    seqCounter || requestedDeliveredSeq,
+  );
   await query(
     `INSERT INTO conversation_reads (conversation_id, user_id, last_read_seq, last_delivered_seq, updated_at)
      VALUES ($1, $2, 0, $3, $4)
@@ -445,7 +545,7 @@ export async function upsertReadState(
      DO UPDATE SET
        last_delivered_seq = GREATEST(conversation_reads.last_delivered_seq, EXCLUDED.last_delivered_seq),
        updated_at = EXCLUDED.updated_at`,
-    [conversation.conversationId, userId, lastDeliveredSeq, ts]
+    [conversation.conversationId, userId, lastDeliveredSeq, ts],
   );
   return { lastDeliveredSeq };
 }
@@ -461,7 +561,7 @@ export async function createMessage(
     replyToMessageId?: string | null;
     clientMessageId?: string | null;
     clientTimestamp?: unknown;
-  }
+  },
 ): Promise<{ message: any; created: boolean }> {
   const ts = now();
   const clientMessageId = normalizeUuid(input.clientMessageId);
@@ -475,19 +575,22 @@ export async function createMessage(
            AND sender_user_id = $2
            AND client_message_id = $3::uuid
          LIMIT 1`,
-        [conversation.conversationId, input.senderUserId, clientMessageId]
+        [conversation.conversationId, input.senderUserId, clientMessageId],
       );
       if (existing.rows[0]) {
         return { message: existing.rows[0], created: false };
       }
     }
 
-    const conversationUuid = await ensureConversationUuid(client, conversation.conversationId);
+    const conversationUuid = await ensureConversationUuid(
+      client,
+      conversation.conversationId,
+    );
     const senderUuid = await ensureUserUuid(client, input.senderUserId);
     const replyToMessageUuid = await loadReplyMessageUuid(
       client,
       conversation.conversationId,
-      input.replyToMessageId || null
+      input.replyToMessageId || null,
     );
 
     const seqResult = await client.query(
@@ -495,7 +598,7 @@ export async function createMessage(
        SET seq_counter = seq_counter + 1, updated_at = $2
        WHERE conversation_id = $1
        RETURNING seq_counter`,
-      [conversation.conversationId, ts]
+      [conversation.conversationId, ts],
     );
 
     const nextSeq = Number(seqResult.rows[0]?.seq_counter || 1);
@@ -541,7 +644,7 @@ export async function createMessage(
         JSON.stringify({}),
         ts,
         ts,
-      ]
+      ],
     );
 
     const message = messageResult.rows[0];
@@ -563,7 +666,7 @@ export async function createMessage(
           message.message_id,
           ts,
           input.mediaAssetId,
-        ]
+        ],
       );
     }
 
@@ -588,7 +691,7 @@ export async function createMessage(
         message.body,
         message.content_type,
         ts,
-      ]
+      ],
     );
 
     await upsertReadStateWithClient(
@@ -597,7 +700,7 @@ export async function createMessage(
       input.senderUserId,
       nextSeq,
       nextSeq,
-      ts
+      ts,
     );
 
     return { message, created: true };
@@ -608,7 +711,7 @@ export async function editMessageForUser(
   conversation: any,
   messageId: string,
   userId: string,
-  body: string
+  body: string,
 ): Promise<any | null> {
   const ts = now();
   const updated = await queryOne(
@@ -619,7 +722,7 @@ export async function editMessageForUser(
        AND sender_user_id = $3
        AND deleted_for_all_at IS NULL
      RETURNING *`,
-    [conversation.conversationId, messageId, userId, body, ts]
+    [conversation.conversationId, messageId, userId, body, ts],
   );
 
   if (!updated) {
@@ -641,7 +744,7 @@ export async function editMessageForUser(
         body,
         updated.content_type || "text",
         Number(updated.edit_version || 0),
-      ]
+      ],
     );
   }
 
@@ -651,7 +754,7 @@ export async function editMessageForUser(
 export async function deleteMessageForUser(
   conversation: any,
   messageId: string,
-  userId: string
+  userId: string,
 ): Promise<any | null> {
   const ts = now();
   const updated = await queryOne(
@@ -665,7 +768,7 @@ export async function deleteMessageForUser(
        AND sender_user_id = $3
        AND deleted_for_all_at IS NULL
      RETURNING *`,
-    [conversation.conversationId, messageId, userId, ts]
+    [conversation.conversationId, messageId, userId, ts],
   );
 
   if (!updated) {
@@ -681,7 +784,7 @@ export async function deleteMessageForUser(
            last_message_edit_version = $3,
            updated_at = $2
        WHERE conversation_id = $1`,
-      [conversation.conversationId, ts, Number(updated.edit_version || 0)]
+      [conversation.conversationId, ts, Number(updated.edit_version || 0)],
     );
   }
 
@@ -692,11 +795,11 @@ export async function setReactionForUser(
   conversationId: string,
   messageId: string,
   userId: string,
-  emoji: string | null
+  emoji: string | null,
 ): Promise<any[] | null> {
   const message = await queryOne(
     `SELECT message_id FROM messages WHERE conversation_id = $1 AND message_id = $2`,
-    [conversationId, messageId]
+    [conversationId, messageId],
   );
   if (!message) {
     return null;
@@ -706,7 +809,7 @@ export async function setReactionForUser(
   if (emoji === null) {
     await query(
       `DELETE FROM message_reactions WHERE message_id = $1 AND user_id = $2`,
-      [messageId, userId]
+      [messageId, userId],
     );
   } else {
     await query(
@@ -714,7 +817,7 @@ export async function setReactionForUser(
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (message_id, user_id)
        DO UPDATE SET emoji = EXCLUDED.emoji, updated_at = EXCLUDED.updated_at`,
-      [messageId, userId, emoji, ts, ts]
+      [messageId, userId, emoji, ts, ts],
     );
   }
 

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 
+import '../../../core/network/api_exception.dart';
 import '../../../shell/settings_controller.dart';
 import '../../../ui-system/colors.dart';
+import '../../../ui-system/feedback/prava_toast.dart';
+import '../../../ui-system/feedback/toast_type.dart';
 import '../../../ui-system/typography.dart';
 import 'settings_detail_shell.dart';
 
@@ -17,6 +20,13 @@ class LanguagePage extends StatelessWidget {
     'French',
     'German',
   ];
+
+  String _errorMessage(Object error) {
+    if (error is ApiException && error.message.trim().isNotEmpty) {
+      return error.message;
+    }
+    return 'Unable to save language';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,11 +55,21 @@ class LanguagePage extends StatelessWidget {
                 children: [
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    onTap: () {
-                      controller.update(
-                        controller.state.copyWith(languageLabel: language),
-                      );
-                      Navigator.of(context).pop();
+                    onTap: () async {
+                      try {
+                        await controller.updateNow(
+                          controller.state.copyWith(languageLabel: language),
+                        );
+                        if (!context.mounted) return;
+                        Navigator.of(context).pop();
+                      } catch (error) {
+                        if (!context.mounted) return;
+                        PravaToast.show(
+                          context,
+                          message: _errorMessage(error),
+                          type: PravaToastType.error,
+                        );
+                      }
                     },
                     title: Text(
                       language,

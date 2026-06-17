@@ -16,9 +16,11 @@ import '../../../../services/chat_realtime.dart';
 import '../../../../services/chat_sync_store.dart';
 import '../../../../services/e2ee_service.dart';
 import '../../../../services/group_e2ee_service.dart';
+import '../../../../services/privacy_service.dart';
 import '../../../../core/storage/secure_store.dart';
 import 'chat_thread_page.dart';
 import '../../pages/new_group_page.dart';
+import '../profile/public_profile_page.dart';
 import 'message_requests_page.dart';
 
 DateTime? _parseDate(dynamic value) {
@@ -109,6 +111,7 @@ class _ChatsPageState extends State<ChatsPage> {
   final ChatRealtime _realtime = ChatRealtime();
   final SecureStore _store = SecureStore();
   final ChatSyncStore _syncStore = ChatSyncStore();
+  final PrivacyService _privacyService = PrivacyService();
 
   List<ChatPreview> _chats = [];
   bool _loading = true;
@@ -307,7 +310,7 @@ class _ChatsPageState extends State<ChatsPage> {
       case _ChatListFilter.unread:
         return 'No unread chats';
       case _ChatListFilter.direct:
-        return 'No direct chats';
+        return 'No friend chats';
       case _ChatListFilter.favoriteGroups:
         return 'No favourite groups';
       case _ChatListFilter.groups:
@@ -328,7 +331,7 @@ class _ChatsPageState extends State<ChatsPage> {
       case _ChatListFilter.unread:
         return 'Unread messages will appear here.';
       case _ChatListFilter.direct:
-        return 'One-to-one chats will appear here.';
+        return 'One-to-one friend chats will appear here.';
       case _ChatListFilter.favoriteGroups:
         return 'Favourite group chats will appear here.';
       case _ChatListFilter.groups:
@@ -717,15 +720,198 @@ class _ChatsPageState extends State<ChatsPage> {
     }
   }
 
+  Future<bool> _confirmChatAction({
+    required String title,
+    required String message,
+    required String action,
+    bool destructive = false,
+  }) async {
+    final result = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: destructive,
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
+  void _showChatSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  Future<void> _markChatRead(ChatPreview chat) async {
+    final lastSeq = chat.lastMessageSeq;
+    if (lastSeq == null || lastSeq <= 0) {
+      _updateChat(chat.id, (current) => current.copyWith(unreadCount: 0));
+      return;
+    }
+    final previous = chat.unreadCount;
+    _updateChat(chat.id, (current) => current.copyWith(unreadCount: 0));
+    final ok = await _chatService.markRead(
+      conversationId: chat.id,
+      lastReadSeq: lastSeq,
+    );
+    if (!ok && mounted) {
+      _updateChat(
+        chat.id,
+        (current) => current.copyWith(unreadCount: previous),
+      );
+      _showChatSnack('Could not mark chat read');
+    }
+  }
+
+  Future<void> _markChatUnread(ChatPreview chat) async {
+    final previous = chat.unreadCount;
+    _updateChat(chat.id, (current) => current.copyWith(unreadCount: 1));
+    final ok = await _chatService.markUnread(chat.id);
+    if (!ok && mounted) {
+      _updateChat(
+        chat.id,
+        (current) => current.copyWith(unreadCount: previous),
+      );
+      _showChatSnack('Could not mark chat unread');
+    }
+  }
+
+  Future<void> _clearChat(ChatPreview chat) async {
+    final confirmed = await _confirmChatAction(
+      title: 'Clear chat?',
+      message: 'Messages will be cleared on this device.',
+      action: 'Clear',
+      destructive: true,
+    );
+    if (!confirmed) return;
+    final ok = await _chatService.clearLocalConversation(chat.id);
+    if (ok) {
+      _loadChats(showLoading: false);
+      _showChatSnack('Chat cleared');
+    } else {
+      _showChatSnack('Could not clear chat');
+    }
+  }
+
+  Future<void> _deleteChat(ChatPreview chat) async {
+    final confirmed = await _confirmChatAction(
+      title: 'Delete chat?',
+      message: 'This removes the conversation from your chat list.',
+      action: 'Delete',
+      destructive: true,
+    );
+    if (!confirmed) return;
+    final ok = await _chatService.deleteConversationLocal(chat.id);
+    if (ok) {
+      setState(
+        () => _chats = _chats.where((item) => item.id != chat.id).toList(),
+      );
+      _showChatSnack('Chat deleted');
+    } else {
+      _showChatSnack('Could not delete chat');
+    }
+  }
+
+  void _openChatProfile(ChatPreview chat) {
+    final peerId = chat.peerUserId.trim();
+    if (chat.isGroup || peerId.isEmpty) return;
+    PravaNavigator.push(context, PublicProfilePage(userId: peerId));
+  }
+
+  Future<void> _blockChatPeer(ChatPreview chat) async {
+    final peerId = chat.peerUserId.trim();
+    if (chat.isGroup || peerId.isEmpty) return;
+    final confirmed = await _confirmChatAction(
+      title: 'Block ${chat.name}?',
+      message: 'They will not be able to message or interact with you.',
+      action: 'Block',
+      destructive: true,
+    );
+    if (!confirmed) return;
+    try {
+      await _privacyService.blockUser(peerId);
+      setState(
+        () => _chats = _chats.where((item) => item.id != chat.id).toList(),
+      );
+      _showChatSnack('User blocked');
+    } catch (_) {
+      _showChatSnack('Could not block user');
+    }
+  }
+
+  Future<void> _reportChat(ChatPreview chat) async {
+    final reason = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: Text('Report ${chat.name}'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('spam'),
+            child: const Text('Spam'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('harassment'),
+            child: const Text('Harassment'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('scam'),
+            child: const Text('Scam or fraud'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('other'),
+            child: const Text('Other'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+    if (reason == null) return;
+    final ok = await _chatService.reportConversation(
+      conversationId: chat.id,
+      reportedUserId: chat.isGroup ? null : chat.peerUserId,
+      reason: reason,
+    );
+    _showChatSnack(ok ? 'Report sent' : 'Could not send report');
+  }
+
   Future<void> _showChatActions(ChatPreview chat) async {
     HapticFeedback.selectionClick();
     final action = await showCupertinoModalPopup<String>(
       context: context,
       builder: (context) {
         final actions = <CupertinoActionSheetAction>[
+          if (!chat.isGroup && chat.peerUserId.trim().isNotEmpty)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(context).pop('profile'),
+              child: const Text('View profile'),
+            ),
           CupertinoActionSheetAction(
             onPressed: () => Navigator.of(context).pop('star'),
-            child: Text(chat.isStarred ? 'Remove star' : 'Star chat'),
+            child: Text(chat.isStarred ? 'Unpin chat' : 'Pin chat'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(
+              context,
+            ).pop(chat.unreadCount > 0 ? 'read' : 'unread'),
+            child: Text(
+              chat.unreadCount > 0 ? 'Mark as read' : 'Mark as unread',
+            ),
           ),
           CupertinoActionSheetAction(
             onPressed: () => Navigator.of(context).pop('mute'),
@@ -735,10 +921,25 @@ class _ChatsPageState extends State<ChatsPage> {
             onPressed: () => Navigator.of(context).pop('archive'),
             child: Text(chat.isArchived ? 'Unarchive chat' : 'Archive chat'),
           ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('clear'),
+            isDestructiveAction: true,
+            child: const Text('Clear chat'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('delete'),
+            isDestructiveAction: true,
+            child: const Text('Delete chat'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop('report'),
+            isDestructiveAction: true,
+            child: const Text('Report'),
+          ),
         ];
         if (chat.isGroup) {
           actions.insert(
-            1,
+            2,
             CupertinoActionSheetAction(
               onPressed: () => Navigator.of(context).pop('favorite'),
               child: Text(
@@ -746,6 +947,14 @@ class _ChatsPageState extends State<ChatsPage> {
                     ? 'Remove from favourite groups'
                     : 'Add to favourite groups',
               ),
+            ),
+          );
+        } else if (chat.peerUserId.trim().isNotEmpty) {
+          actions.add(
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(context).pop('block'),
+              isDestructiveAction: true,
+              child: const Text('Block user'),
             ),
           );
         }
@@ -762,14 +971,28 @@ class _ChatsPageState extends State<ChatsPage> {
       },
     );
 
-    if (action == 'star') {
+    if (action == 'profile') {
+      _openChatProfile(chat);
+    } else if (action == 'star') {
       _updateChatPreferences(chat, isStarred: !chat.isStarred);
+    } else if (action == 'read') {
+      _markChatRead(chat);
+    } else if (action == 'unread') {
+      _markChatUnread(chat);
     } else if (action == 'favorite') {
       _updateChatPreferences(chat, isFavorite: !chat.isFavorite);
     } else if (action == 'mute') {
       _updateChatPreferences(chat, isMuted: !chat.isMuted);
     } else if (action == 'archive') {
       _setArchived(chat, !chat.isArchived);
+    } else if (action == 'clear') {
+      _clearChat(chat);
+    } else if (action == 'delete') {
+      _deleteChat(chat);
+    } else if (action == 'report') {
+      _reportChat(chat);
+    } else if (action == 'block') {
+      _blockChatPeer(chat);
     }
   }
 
@@ -889,18 +1112,10 @@ class _ChatsPageState extends State<ChatsPage> {
                     ),
                     const SizedBox(width: 8),
                     _FilterChip(
-                      label: 'Direct',
+                      label: 'Friends',
                       selected: _filter == _ChatListFilter.direct,
                       onTap: () =>
                           setState(() => _filter = _ChatListFilter.direct),
-                    ),
-                    const SizedBox(width: 8),
-                    _FilterChip(
-                      label: 'Favourites',
-                      selected: _filter == _ChatListFilter.favoriteGroups,
-                      onTap: () => setState(
-                        () => _filter = _ChatListFilter.favoriteGroups,
-                      ),
                     ),
                     const SizedBox(width: 8),
                     _FilterChip(
@@ -911,10 +1126,9 @@ class _ChatsPageState extends State<ChatsPage> {
                     ),
                     const SizedBox(width: 8),
                     _FilterChip(
-                      label: 'Starred',
-                      selected: _filter == _ChatListFilter.starred,
-                      onTap: () =>
-                          setState(() => _filter = _ChatListFilter.starred),
+                      label: 'Requests',
+                      selected: false,
+                      onTap: _openMessageRequests,
                     ),
                     const SizedBox(width: 8),
                     _FilterChip(
@@ -1091,6 +1305,9 @@ class _ChatTile extends StatelessWidget {
             fontWeight: FontWeight.w600,
           )
         : PravaTypography.caption.copyWith(color: secondary);
+    final initial = chat.name.trim().isNotEmpty
+        ? chat.name.trim()[0].toUpperCase()
+        : 'P';
 
     return Material(
       color: Colors.transparent,
@@ -1124,10 +1341,16 @@ class _ChatTile extends StatelessWidget {
                     CircleAvatar(
                       radius: 26,
                       backgroundColor: accent.withValues(alpha: 0.18),
-                      child: chat.isGroup
+                      backgroundImage:
+                          !chat.isGroup && chat.avatarUrl.trim().isNotEmpty
+                          ? NetworkImage(chat.avatarUrl.trim())
+                          : null,
+                      child: !chat.isGroup && chat.avatarUrl.trim().isNotEmpty
+                          ? null
+                          : chat.isGroup
                           ? Icon(CupertinoIcons.person_2_fill, color: accent)
                           : Text(
-                              chat.name[0].toUpperCase(),
+                              initial,
                               style: PravaTypography.titleSmall.copyWith(
                                 color: accent,
                                 fontWeight: FontWeight.w700,

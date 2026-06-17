@@ -73,6 +73,16 @@ function normalizeTag(value: unknown): string {
     .slice(0, 32);
 }
 
+function normalizePostVisibility(value: unknown): string {
+  const visibility = String(value || "public").trim().toLowerCase();
+  return ["public", "followers", "friends", "private"].includes(visibility) ? visibility : "public";
+}
+
+function normalizeSensitiveLabel(value: unknown): string {
+  const label = String(value || "").trim().toLowerCase();
+  return label === "sensitive" ? label : "";
+}
+
 function placeholders(count: number, offset = 1): string {
   return Array.from({ length: count }, (_, index) => `$${index + offset}`).join(", ");
 }
@@ -111,6 +121,8 @@ function mapFeedPost(post: any, author: any, liked: boolean, followed: boolean) 
     candidateSources: Array.isArray(post.candidate_sources) ? post.candidate_sources : [],
     liked,
     followed,
+    visibility: post.visibility || "public",
+    sensitiveLabel: post.sensitive_label || "",
     mentions: Array.isArray(post.mentions) ? post.mentions : [],
     hashtags: Array.isArray(post.hashtags) ? post.hashtags : [],
     relationship: followed ? "following" : "other",
@@ -358,7 +370,15 @@ async function findTaggedPosts(tag: string, currentUserId: string, before: Date 
      JOIN posts p ON p.post_id = pt.post_id
      LEFT JOIN follows f
        ON f.follower_id = $1 AND f.following_id = p.author_id
+     LEFT JOIN follows incoming
+       ON incoming.follower_id = p.author_id AND incoming.following_id = $1
      WHERE pt.tag = $2
+       AND (
+         p.author_id = $1
+         OR COALESCE(p.visibility, 'public') = 'public'
+         OR (p.visibility = 'followers' AND f.following_id IS NOT NULL)
+         OR (p.visibility = 'friends' AND f.following_id IS NOT NULL AND incoming.following_id IS NOT NULL)
+       )
        ${beforeSql}
      ORDER BY p.created_at DESC, rank_score DESC
      LIMIT $${params.length}`,
@@ -641,6 +661,8 @@ export default async function feedService(app: any) {
 
   app.post("/", { preHandler: requireAuth }, async (request: any) => {
     const body = normalizeBody(request.body?.body, MAX_POST_WORDS, MAX_POST_CHARS, "Post");
+    const visibility = normalizePostVisibility(request.body?.visibility);
+    const sensitiveLabel = normalizeSensitiveLabel(request.body?.sensitiveLabel || request.body?.sensitive_label);
 
     const createdAt = now();
     const postId = generateId();
@@ -648,9 +670,9 @@ export default async function feedService(app: any) {
     const hashtags = extractHashtags(body);
 
     await query(
-      `INSERT INTO posts (post_id, author_id, body, media_urls, mentions, hashtags, like_count, comment_count, share_count, share_of_post_id, created_at, updated_at)
-       VALUES ($1, $2, $3, '[]', $4, $5, 0, 0, 0, NULL, $6, $7)`,
-      [postId, request.user.userId, body, JSON.stringify(mentions), JSON.stringify(hashtags), createdAt, createdAt]
+      `INSERT INTO posts (post_id, author_id, body, media_urls, mentions, hashtags, like_count, comment_count, share_count, visibility, sensitive_label, share_of_post_id, created_at, updated_at)
+       VALUES ($1, $2, $3, '[]', $4, $5, 0, 0, 0, $6, $7, NULL, $8, $9)`,
+      [postId, request.user.userId, body, JSON.stringify(mentions), JSON.stringify(hashtags), visibility, sensitiveLabel, createdAt, createdAt]
     );
     await writePostTags(postId, request.user.userId, hashtags, createdAt);
     await recordPostReads([postId], request.user.userId);
@@ -667,6 +689,8 @@ export default async function feedService(app: any) {
         share_count: 0,
         read_count: 1,
         rank_score: 0,
+        visibility,
+        sensitive_label: sensitiveLabel,
         mentions,
         hashtags,
         author_id: request.user.userId
@@ -728,8 +752,26 @@ export default async function feedService(app: any) {
     const postId = String(request.params.postId || "").trim();
     ensure(postId.length >= 8, 400, "Invalid post");
 
-    const post = await queryOne(`SELECT * FROM posts WHERE post_id = $1`, [postId]);
+    const post = await queryOne(
+      `SELECT p.*,
+              f.following_id AS viewer_follows_author,
+              incoming.following_id AS author_follows_viewer
+       FROM posts p
+       LEFT JOIN follows f
+         ON f.follower_id = $1 AND f.following_id = p.author_id
+       LEFT JOIN follows incoming
+         ON incoming.follower_id = p.author_id AND incoming.following_id = $1
+       WHERE p.post_id = $2`,
+      [request.user.userId, postId]
+    );
     if (!post) {
+      throw new HttpError(404, "Post not found");
+    }
+    const visibility = String(post.visibility || "public");
+    const ownPost = String(post.author_id || "") === request.user.userId;
+    const followsAuthor = Boolean(post.viewer_follows_author);
+    const mutualFriends = followsAuthor && Boolean(post.author_follows_viewer);
+    if (!ownPost && (visibility === "private" || (visibility === "followers" && !followsAuthor) || (visibility === "friends" && !mutualFriends))) {
       throw new HttpError(404, "Post not found");
     }
 

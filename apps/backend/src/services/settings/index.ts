@@ -865,6 +865,43 @@ async function requirePassword(userId: string, body: any) {
   ensure(verifyPassword(password, user?.password_hash), 401, "Invalid password");
 }
 
+async function createAccountLifecycleRequest({
+  userId,
+  requestType,
+  reason,
+  recoveryUntil,
+}: {
+  userId: string;
+  requestType: "deactivate" | "delete";
+  reason: string;
+  recoveryUntil?: Date;
+}) {
+  const requestId = generateId();
+  const ts = now();
+  try {
+    await query(
+      `INSERT INTO account_deletion_requests (request_id, user_id, request_type, status, reason, recovery_until, created_at, updated_at)
+       VALUES ($1, $2, $3, 'pending', $4, $5, $6, $6)`,
+      [requestId, userId, requestType, reason.slice(0, 500), recoveryUntil || null, ts]
+    );
+    return { requestId, createdAt: ts };
+  } catch (error: any) {
+    if (!["42703", "42804", "23502"].includes(String(error?.code || ""))) {
+      throw error;
+    }
+  }
+
+  const user = await queryOne(`SELECT id FROM users WHERE user_id = $1`, [userId]);
+  ensure(user?.id, 500, "Account lifecycle table is not compatible with this database");
+  const scheduledAt = recoveryUntil || new Date(ts.getTime() + 30 * 24 * 60 * 60 * 1000);
+  await query(
+    `INSERT INTO account_deletion_requests (id, user_id, reason, scheduled_delete_at, requested_at)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [requestId, user.id, reason.slice(0, 500), scheduledAt, ts]
+  );
+  return { requestId, createdAt: ts };
+}
+
 function summaryFromBundle(bundle: any) {
   return {
     accountCard: {
@@ -1084,13 +1121,11 @@ export default async function settingsService(app: any) {
 
   app.post("/api/account/deactivate", { preHandler: requireAuth }, async (request: any) => {
     await requirePassword(request.user.userId, request.body || {});
-    const requestId = generateId();
-    const ts = now();
-    await query(
-      `INSERT INTO account_deletion_requests (request_id, user_id, request_type, status, reason, created_at, updated_at)
-       VALUES ($1, $2, 'deactivate', 'pending', $3, $4, $4)`,
-      [requestId, request.user.userId, String(request.body?.reason || "").slice(0, 500), ts]
-    );
+    const { requestId } = await createAccountLifecycleRequest({
+      userId: request.user.userId,
+      requestType: "deactivate",
+      reason: String(request.body?.reason || ""),
+    });
     await auditSetting(request.user.userId, "danger", "deactivate", null, { requestId }, request, "critical");
     return { deactivated: false, pending: true, requestId };
   });
@@ -1100,28 +1135,45 @@ export default async function settingsService(app: any) {
     const confirmation = String(request.body?.confirmation || "").trim();
     const user = await queryOne(`SELECT username FROM users WHERE user_id = $1`, [request.user.userId]);
     ensure(confirmation === "DELETE" || confirmation === user?.username, 400, "Confirmation required");
-    const requestId = generateId();
     const ts = now();
     const recoveryUntil = new Date(ts.getTime() + 30 * 24 * 60 * 60 * 1000);
-    await query(
-      `INSERT INTO account_deletion_requests (request_id, user_id, request_type, status, reason, recovery_until, created_at, updated_at)
-       VALUES ($1, $2, 'delete', 'pending', $3, $4, $5, $5)`,
-      [requestId, request.user.userId, String(request.body?.reason || "").slice(0, 500), recoveryUntil, ts]
-    );
-    await auditSetting(request.user.userId, "danger", "delete_request", null, { requestId }, request, "critical");
-    return { deletionRequested: true, requestId, recoveryUntil: recoveryUntil.toISOString() };
+    const created = await createAccountLifecycleRequest({
+      userId: request.user.userId,
+      requestType: "delete",
+      reason: String(request.body?.reason || ""),
+      recoveryUntil,
+    });
+    await auditSetting(request.user.userId, "danger", "delete_request", null, { requestId: created.requestId }, request, "critical");
+    return { deletionRequested: true, requestId: created.requestId, recoveryUntil: recoveryUntil.toISOString() };
   });
 
   app.post("/api/account/delete-cancel", { preHandler: requireAuth }, async (request: any) => {
     const ts = now();
-    const result = await query(
-      `UPDATE account_deletion_requests
-       SET status = 'canceled', canceled_at = $2, updated_at = $2
-       WHERE user_id = $1 AND status = 'pending' AND request_type = 'delete'`,
-      [request.user.userId, ts]
-    );
-    await auditSetting(request.user.userId, "danger", "delete_cancel", null, { canceled: (result.rowCount || 0) > 0 }, request, "critical");
-    return { canceled: (result.rowCount || 0) > 0 };
+    let canceled = false;
+    try {
+      const result = await query(
+        `UPDATE account_deletion_requests
+         SET status = 'canceled', canceled_at = $2, updated_at = $2
+         WHERE user_id = $1 AND status = 'pending' AND request_type = 'delete'`,
+        [request.user.userId, ts]
+      );
+      canceled = (result.rowCount || 0) > 0;
+    } catch (error: any) {
+      if (!["42703", "42804"].includes(String(error?.code || ""))) {
+        throw error;
+      }
+      const user = await queryOne(`SELECT id FROM users WHERE user_id = $1`, [request.user.userId]);
+      ensure(user?.id, 500, "Account lifecycle table is not compatible with this database");
+      const result = await query(
+        `UPDATE account_deletion_requests
+         SET cancelled_at = $2
+         WHERE user_id = $1 AND cancelled_at IS NULL AND completed_at IS NULL`,
+        [user.id, ts]
+      );
+      canceled = (result.rowCount || 0) > 0;
+    }
+    await auditSetting(request.user.userId, "danger", "delete_cancel", null, { canceled }, request, "critical");
+    return { canceled };
   });
 
   app.post("/api/sessions/logout-all", { preHandler: requireAuth }, async (request: any) => {

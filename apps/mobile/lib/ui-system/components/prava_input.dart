@@ -373,8 +373,16 @@ class _PravaInputState extends State<PravaInput> {
               hintText: widget.hint,
               hintStyle: _placeholderStyle(tokens),
               prefixIcon: _prefixIcon(tokens, metrics),
+              prefixIconConstraints: BoxConstraints(
+                minWidth: metrics.iconSize + metrics.padding.left + 10,
+                minHeight: metrics.iconSize,
+              ),
               prefix: widget.prefix,
               suffixIcon: _suffix(tokens, metrics),
+              suffixIconConstraints: BoxConstraints(
+                minWidth: metrics.iconSize + metrics.trailingPadding + 10,
+                minHeight: metrics.iconSize,
+              ),
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,

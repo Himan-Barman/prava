@@ -7,14 +7,9 @@ import {
   now,
   toIso,
 } from "../../lib/security.js";
-import {
-  publishToConversation,
-  publishToUsers,
-} from "../realtime/hub.js";
+import { publishToConversation, publishToUsers } from "../realtime/hub.js";
 import { enqueueNotificationEvent } from "../notification/repository.js";
-import {
-  canSendDirectMessage,
-} from "../../shared/policies/index.js";
+import { canSendDirectMessage } from "../../shared/policies/index.js";
 import {
   MESSAGE_TYPES,
   createMessage,
@@ -22,6 +17,7 @@ import {
   editMessageForUser,
   ensureUserExists,
   getGroupMeta,
+  hydrateMessageMedia,
   hydrateConversations,
   isGroupAdmin,
   loadConversationForUser,
@@ -45,10 +41,12 @@ function userDisplayName(row: any): string {
 async function shouldCreateNotification(userId: string, categoryKey: string) {
   const row = await queryOne(
     `SELECT settings FROM user_settings WHERE user_id = $1`,
-    [userId]
+    [userId],
   );
   const settings = row?.settings || {};
-  return settings.pushNotifications !== false && settings[categoryKey] !== false;
+  return (
+    settings.pushNotifications !== false && settings[categoryKey] !== false
+  );
 }
 
 async function createChatNotifications({
@@ -69,20 +67,22 @@ async function createChatNotifications({
 
   const actor = await queryOne(
     `SELECT username, display_name FROM users WHERE user_id = $1`,
-    [actorUserId]
+    [actorUserId],
   );
   const actorName = userDisplayName(actor);
-  const title = conversation.type === "group"
-    ? conversation.title || "New group message"
-    : actorName;
+  const title =
+    conversation.type === "group"
+      ? conversation.title || "New group message"
+      : actorName;
   const preview = body.length > 90 ? `${body.slice(0, 87)}...` : body;
 
   for (const userId of recipients) {
     if (!(await shouldCreateNotification(userId, "notifyChats"))) continue;
     await enqueueNotificationEvent({
-      eventType: conversation.type === "group"
-        ? "GROUP_MESSAGE_RECEIVED"
-        : "DM_MESSAGE_RECEIVED",
+      eventType:
+        conversation.type === "group"
+          ? "GROUP_MESSAGE_RECEIVED"
+          : "DM_MESSAGE_RECEIVED",
       recipientUserId: userId,
       actorUserId,
       entityType: "conversation",
@@ -104,22 +104,34 @@ async function loadActiveUsers(ids: string[]): Promise<any[]> {
     `SELECT user_id, username, display_name, avatar_url, last_seen_at
      FROM users
      WHERE user_id = ANY($1::text[]) AND deleted_at IS NULL`,
-    [ids]
+    [ids],
   );
 }
 
 async function loadMessagesWithReactions(rows: any[]): Promise<any[]> {
-  const reactionMap = await loadReactions(rows.map((row) => row.message_id));
-  return rows.map((row) => mapMessage(row, reactionMap.get(row.message_id) || []));
+  const hydratedRows = await hydrateMessageMedia(rows);
+  const reactionMap = await loadReactions(
+    hydratedRows.map((row) => row.message_id),
+  );
+  return hydratedRows.map((row) =>
+    mapMessage(row, reactionMap.get(row.message_id) || []),
+  );
 }
 
-function conversationSummary(conversation: any, currentUserId: string, peerMap: Map<string, any>, lastReadSeq: number) {
+function conversationSummary(
+  conversation: any,
+  currentUserId: string,
+  peerMap: Map<string, any>,
+  lastReadSeq: number,
+) {
   let title = conversation.title || "Conversation";
   let peerUserId = "";
   let peerAvatarUrl = "";
   let peerLastSeenAt: Date | null = null;
   if (conversation.type === "dm") {
-    const peerId = (conversation.memberIds || []).find((id) => id !== currentUserId);
+    const peerId = (conversation.memberIds || []).find(
+      (id) => id !== currentUserId,
+    );
     peerUserId = peerId || "";
     const peer = peerId ? peerMap.get(peerId) : null;
     if (peer) {
@@ -130,14 +142,14 @@ function conversationSummary(conversation: any, currentUserId: string, peerMap: 
   }
 
   const lastSeq = Number(conversation.seqCounter || 0);
-  const groupMeta = conversation.type === "group"
-    ? getGroupMeta(conversation)
-    : undefined;
+  const groupMeta =
+    conversation.type === "group" ? getGroupMeta(conversation) : undefined;
 
   const computedUnread = Math.max(0, lastSeq - lastReadSeq);
-  const unreadCount = conversation.markedUnread === true && lastSeq > 0
-    ? Math.max(1, computedUnread)
-    : computedUnread;
+  const unreadCount =
+    conversation.markedUnread === true && lastSeq > 0
+      ? Math.max(1, computedUnread)
+      : computedUnread;
 
   return {
     id: conversation.conversationId,
@@ -153,7 +165,9 @@ function conversationSummary(conversation: any, currentUserId: string, peerMap: 
     lastMessageDeletedForAllAt: toIso(conversation.lastMessageDeletedForAllAt),
     lastMessageCreatedAt: toIso(conversation.lastMessageCreatedAt),
     lastMessageEditVersion: Number(conversation.lastMessageEditVersion || 0),
-    memberCount: Array.isArray(conversation.memberIds) ? conversation.memberIds.length : 0,
+    memberCount: Array.isArray(conversation.memberIds)
+      ? conversation.memberIds.length
+      : 0,
     isAdmin: groupMeta ? isGroupAdmin(groupMeta, currentUserId) : false,
     myRole: groupMeta ? roleForUser(groupMeta, currentUserId) : "member",
     peerUserId,
@@ -181,10 +195,14 @@ async function areMutualFollowers(a: string, b: string): Promise<boolean> {
      FROM follows
      WHERE (follower_id = $1 AND following_id = $2)
         OR (follower_id = $2 AND following_id = $1)`,
-    [a, b]
+    [a, b],
   );
-  const aFollowsB = rows.some((row) => row.follower_id === a && row.following_id === b);
-  const bFollowsA = rows.some((row) => row.follower_id === b && row.following_id === a);
+  const aFollowsB = rows.some(
+    (row) => row.follower_id === a && row.following_id === b,
+  );
+  const bFollowsA = rows.some(
+    (row) => row.follower_id === b && row.following_id === a,
+  );
   return aFollowsB && bFollowsA;
 }
 
@@ -192,18 +210,27 @@ function ensureConversationOpenForUser(conversation: any, userId: string) {
   if (conversation.type !== "dm") {
     return;
   }
-  ensure(conversation.dmRequestStatus !== "declined", 403, "Message request was removed");
+  ensure(
+    conversation.dmRequestStatus !== "declined",
+    403,
+    "Message request was removed",
+  );
   if (
     conversation.dmRequestStatus === "pending" &&
     conversation.dmRequestRecipientUserId === userId
   ) {
-    throw new HttpError(403, "Accept the message request before opening this chat");
+    throw new HttpError(
+      403,
+      "Accept the message request before opening this chat",
+    );
   }
 }
 
 async function ensureDmSendAllowed(conversation: any, userId: string) {
   if (conversation.type !== "dm") return;
-  const peerId = (conversation.memberIds || []).find((id: string) => id !== userId);
+  const peerId = (conversation.memberIds || []).find(
+    (id: string) => id !== userId,
+  );
   if (!peerId) return;
   const policy = await canSendDirectMessage(userId, peerId);
   ensure(policy.allowed, 403, "User interaction is blocked");
@@ -230,7 +257,7 @@ async function loadPreference(conversationId: string, userId: string) {
             draft_text, draft_updated_at, cleared_before_seq, local_deleted_at
      FROM conversation_user_preferences
      WHERE conversation_id = $1 AND user_id = $2`,
-    [conversationId, userId]
+    [conversationId, userId],
   );
 
   return {
@@ -249,16 +276,20 @@ async function loadPreference(conversationId: string, userId: string) {
 async function savePreference(
   conversationId: string,
   userId: string,
-  patch: ConversationPreferencePatch
+  patch: ConversationPreferencePatch,
 ) {
   const current = await loadPreference(conversationId, userId);
   const ts = now();
-  const draftText = patch.draftText === undefined
-    ? current.draftText
-    : normalizeString(patch.draftText).slice(0, 8000);
-  const draftUpdatedAt = patch.draftText === undefined
-    ? current.draftUpdatedAt
-    : (draftText ? ts : null);
+  const draftText =
+    patch.draftText === undefined
+      ? current.draftText
+      : normalizeString(patch.draftText).slice(0, 8000);
+  const draftUpdatedAt =
+    patch.draftText === undefined
+      ? current.draftUpdatedAt
+      : draftText
+        ? ts
+        : null;
   const next = {
     isFavorite: patch.isFavorite ?? current.isFavorite,
     isStarred: patch.isStarred ?? current.isStarred,
@@ -268,9 +299,10 @@ async function savePreference(
     draftText,
     draftUpdatedAt,
     clearedBeforeSeq: patch.clearedBeforeSeq ?? current.clearedBeforeSeq,
-    localDeletedAt: patch.localDeletedAt === undefined
-      ? current.localDeletedAt
-      : patch.localDeletedAt,
+    localDeletedAt:
+      patch.localDeletedAt === undefined
+        ? current.localDeletedAt
+        : patch.localDeletedAt,
   };
 
   await query(
@@ -305,7 +337,7 @@ async function savePreference(
       next.clearedBeforeSeq,
       next.localDeletedAt,
       ts,
-    ]
+    ],
   );
 
   return {
@@ -325,7 +357,7 @@ async function savePreference(
 async function setConversationFlag(
   conversationId: string,
   userId: string,
-  patch: ConversationPreferencePatch
+  patch: ConversationPreferencePatch,
 ) {
   await loadConversationForUser(conversationId, userId);
   return savePreference(conversationId, userId, patch);
@@ -335,7 +367,8 @@ function attachmentTypeFromMime(mimeType: string): string {
   if (mimeType.startsWith("image/")) return "image";
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("audio/")) return "audio";
-  if (mimeType === "application/pdf" || mimeType.startsWith("text/")) return "document";
+  if (mimeType === "application/pdf" || mimeType.startsWith("text/"))
+    return "document";
   return "file";
 }
 
@@ -394,7 +427,7 @@ async function ensureOwnedMediaAsset(mediaAssetId: string, userId: string) {
     `SELECT asset_id, resource_type, bytes
      FROM media_assets
      WHERE asset_id = $1 AND user_id = $2`,
-    [mediaAssetId, userId]
+    [mediaAssetId, userId],
   );
   if (!row) {
     throw new HttpError(404, "Media asset not found");
@@ -402,7 +435,10 @@ async function ensureOwnedMediaAsset(mediaAssetId: string, userId: string) {
   return row;
 }
 
-async function ensureGroupConversationForAdmin(conversationId: string, userId: string) {
+async function ensureGroupConversationForAdmin(
+  conversationId: string,
+  userId: string,
+) {
   const conversation = await loadConversationForUser(conversationId, userId);
   ensure(conversation.type === "group", 400, "Conversation is not a group");
   const groupMeta = getGroupMeta(conversation);
@@ -413,10 +449,14 @@ async function ensureGroupConversationForAdmin(conversationId: string, userId: s
 export default async function chatService(app: any) {
   app.get("/", { preHandler: requireAuth }, async (request: any) => {
     const limit = parseLimit(request.query?.limit, 30, 1, 100);
-    const archivedOnly = String(request.query?.archived || "").toLowerCase() === "true";
-    const includeArchived = String(request.query?.includeArchived || "").toLowerCase() === "true";
-    const starredOnly = String(request.query?.starred || "").toLowerCase() === "true";
-    const favoriteOnly = String(request.query?.favorite || "").toLowerCase() === "true";
+    const archivedOnly =
+      String(request.query?.archived || "").toLowerCase() === "true";
+    const includeArchived =
+      String(request.query?.includeArchived || "").toLowerCase() === "true";
+    const starredOnly =
+      String(request.query?.starred || "").toLowerCase() === "true";
+    const favoriteOnly =
+      String(request.query?.favorite || "").toLowerCase() === "true";
 
     const preferenceFilters: string[] = [];
     if (archivedOnly) {
@@ -461,7 +501,7 @@ export default async function chatService(app: any) {
          )
        ORDER BY c.updated_at DESC
        LIMIT $2`,
-      [request.user.userId, limit]
+      [request.user.userId, limit],
     );
 
     const conversations = await hydrateConversations(rows);
@@ -474,9 +514,14 @@ export default async function chatService(app: any) {
       `SELECT conversation_id, last_read_seq
        FROM conversation_reads
        WHERE user_id = $1 AND conversation_id = ANY($2::text[])`,
-      [request.user.userId, conversationIds]
+      [request.user.userId, conversationIds],
     );
-    const readMap = new Map(reads.map((item) => [item.conversation_id, Number(item.last_read_seq || 0)]));
+    const readMap = new Map(
+      reads.map((item) => [
+        item.conversation_id,
+        Number(item.last_read_seq || 0),
+      ]),
+    );
 
     const otherUserIds = new Set<string>();
     for (const conversation of conversations) {
@@ -497,8 +542,8 @@ export default async function chatService(app: any) {
         conversation,
         request.user.userId,
         userMap,
-        readMap.get(conversation.conversationId) || 0
-      )
+        readMap.get(conversation.conversationId) || 0,
+      ),
     );
   });
 
@@ -533,7 +578,7 @@ export default async function chatService(app: any) {
          )
        ORDER BY c.updated_at DESC
        LIMIT $2`,
-      [request.user.userId, limit]
+      [request.user.userId, limit],
     );
 
     const conversations = await hydrateConversations(rows);
@@ -546,9 +591,14 @@ export default async function chatService(app: any) {
       `SELECT conversation_id, last_read_seq
        FROM conversation_reads
        WHERE user_id = $1 AND conversation_id = ANY($2::text[])`,
-      [request.user.userId, conversationIds]
+      [request.user.userId, conversationIds],
     );
-    const readMap = new Map(reads.map((item) => [item.conversation_id, Number(item.last_read_seq || 0)]));
+    const readMap = new Map(
+      reads.map((item) => [
+        item.conversation_id,
+        Number(item.last_read_seq || 0),
+      ]),
+    );
 
     const otherUserIds = new Set<string>();
     for (const conversation of conversations) {
@@ -567,97 +617,141 @@ export default async function chatService(app: any) {
         conversation,
         request.user.userId,
         userMap,
-        readMap.get(conversation.conversationId) || 0
-      )
+        readMap.get(conversation.conversationId) || 0,
+      ),
     );
   });
 
-  app.post("/requests/:conversationId/accept", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.post(
+    "/requests/:conversationId/accept",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensure(conversation.type === "dm", 400, "Conversation is not a DM");
-    ensure(conversation.dmRequestStatus === "pending", 400, "Message request is not pending");
-    ensure(conversation.dmRequestRecipientUserId === request.user.userId, 403, "Only the recipient can accept this request");
-    await ensureDmSendAllowed(conversation, request.user.userId);
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensure(conversation.type === "dm", 400, "Conversation is not a DM");
+      ensure(
+        conversation.dmRequestStatus === "pending",
+        400,
+        "Message request is not pending",
+      );
+      ensure(
+        conversation.dmRequestRecipientUserId === request.user.userId,
+        403,
+        "Only the recipient can accept this request",
+      );
+      await ensureDmSendAllowed(conversation, request.user.userId);
 
-    const ts = now();
-    await query(
-      `UPDATE conversations
+      const ts = now();
+      await query(
+        `UPDATE conversations
        SET dm_request_status = 'active',
            dm_request_responded_at = $2,
            updated_at = $2
        WHERE conversation_id = $1`,
-      [conversationId, ts]
-    );
+        [conversationId, ts],
+      );
 
-    publishToConversation(conversation.memberIds, "MESSAGE_REQUEST_ACCEPTED", {
-      conversationId,
-      acceptedBy: request.user.userId,
-      acceptedAt: toIso(ts),
-    });
+      publishToConversation(
+        conversation.memberIds,
+        "MESSAGE_REQUEST_ACCEPTED",
+        {
+          conversationId,
+          acceptedBy: request.user.userId,
+          acceptedAt: toIso(ts),
+        },
+      );
 
-    return {
-      success: true,
-      conversationId,
-      requestStatus: "active",
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        requestStatus: "active",
+      };
+    },
+  );
 
-  app.delete("/requests/:conversationId", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.delete(
+    "/requests/:conversationId",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensure(conversation.type === "dm", 400, "Conversation is not a DM");
-    ensure(conversation.dmRequestStatus === "pending", 400, "Message request is not pending");
-    ensure(conversation.dmRequestRecipientUserId === request.user.userId, 403, "Only the recipient can remove this request");
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensure(conversation.type === "dm", 400, "Conversation is not a DM");
+      ensure(
+        conversation.dmRequestStatus === "pending",
+        400,
+        "Message request is not pending",
+      );
+      ensure(
+        conversation.dmRequestRecipientUserId === request.user.userId,
+        403,
+        "Only the recipient can remove this request",
+      );
 
-    const ts = now();
-    await query(
-      `UPDATE conversations
+      const ts = now();
+      await query(
+        `UPDATE conversations
        SET dm_request_status = 'declined',
            dm_request_responded_at = $2,
            updated_at = $2
        WHERE conversation_id = $1`,
-      [conversationId, ts]
-    );
+        [conversationId, ts],
+      );
 
-    publishToConversation(conversation.memberIds, "MESSAGE_REQUEST_DECLINED", {
-      conversationId,
-      declinedBy: request.user.userId,
-      declinedAt: toIso(ts),
-    });
+      publishToConversation(
+        conversation.memberIds,
+        "MESSAGE_REQUEST_DECLINED",
+        {
+          conversationId,
+          declinedBy: request.user.userId,
+          declinedAt: toIso(ts),
+        },
+      );
 
-    return {
-      success: true,
-      conversationId,
-      requestStatus: "declined",
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        requestStatus: "declined",
+      };
+    },
+  );
 
   app.get("/settings", { preHandler: requireAuth }, async (request: any) => {
     const row = await queryOne(
       `SELECT settings FROM user_settings WHERE user_id = $1`,
-      [request.user.userId]
+      [request.user.userId],
     );
     const settings = row?.settings || {};
 
     return {
-      readReceipts: settings.chatReadReceipts !== false && settings.readReceipts !== false,
+      readReceipts:
+        settings.chatReadReceipts !== false && settings.readReceipts !== false,
       lastSeenVisibility: settings.chatLastSeenVisibility || "everyone",
       onlineStatusVisibility: settings.chatOnlineStatusVisibility || "everyone",
       typingIndicators: settings.chatTypingIndicators !== false,
       messagePreviewNotifications: settings.chatMessagePreviews !== false,
-      notificationSound: settings.chatNotificationSound !== false && settings.inAppSounds !== false,
-      vibration: settings.chatVibration !== false && settings.inAppHaptics !== false,
+      notificationSound:
+        settings.chatNotificationSound !== false &&
+        settings.inAppSounds !== false,
+      vibration:
+        settings.chatVibration !== false && settings.inAppHaptics !== false,
       groupNotifications: settings.chatGroupNotifications || "all",
       mediaAutoDownload: settings.chatMediaAutoDownload || "wifi",
-      dataSavingMode: settings.chatDataSavingMode === true || settings.dataSaver === true,
+      dataSavingMode:
+        settings.chatDataSavingMode === true || settings.dataSaver === true,
       fontScale: Number(settings.chatFontScale || settings.textScale || 1),
       archivedBehavior: settings.chatArchivedBehavior || "keep_archived",
-      securityNotice: "Messages are securely transmitted. End-to-end encryption is only shown when verified.",
+      securityNotice:
+        "Messages are securely transmitted. End-to-end encryption is only shown when verified.",
     };
   });
 
@@ -669,12 +763,18 @@ export default async function chatService(app: any) {
     const archivedValues = new Set(["keep_archived", "unarchive_on_message"]);
     const patch: Record<string, unknown> = {};
 
-    if (body.readReceipts !== undefined) patch.chatReadReceipts = body.readReceipts === true;
-    if (body.typingIndicators !== undefined) patch.chatTypingIndicators = body.typingIndicators === true;
-    if (body.messagePreviewNotifications !== undefined) patch.chatMessagePreviews = body.messagePreviewNotifications === true;
-    if (body.notificationSound !== undefined) patch.chatNotificationSound = body.notificationSound === true;
-    if (body.vibration !== undefined) patch.chatVibration = body.vibration === true;
-    if (body.dataSavingMode !== undefined) patch.chatDataSavingMode = body.dataSavingMode === true;
+    if (body.readReceipts !== undefined)
+      patch.chatReadReceipts = body.readReceipts === true;
+    if (body.typingIndicators !== undefined)
+      patch.chatTypingIndicators = body.typingIndicators === true;
+    if (body.messagePreviewNotifications !== undefined)
+      patch.chatMessagePreviews = body.messagePreviewNotifications === true;
+    if (body.notificationSound !== undefined)
+      patch.chatNotificationSound = body.notificationSound === true;
+    if (body.vibration !== undefined)
+      patch.chatVibration = body.vibration === true;
+    if (body.dataSavingMode !== undefined)
+      patch.chatDataSavingMode = body.dataSavingMode === true;
 
     const lastSeenVisibility = normalizeString(body.lastSeenVisibility);
     if (lastSeenVisibility && visibilityValues.has(lastSeenVisibility)) {
@@ -682,7 +782,10 @@ export default async function chatService(app: any) {
     }
 
     const onlineStatusVisibility = normalizeString(body.onlineStatusVisibility);
-    if (onlineStatusVisibility && visibilityValues.has(onlineStatusVisibility)) {
+    if (
+      onlineStatusVisibility &&
+      visibilityValues.has(onlineStatusVisibility)
+    ) {
       patch.chatOnlineStatusVisibility = onlineStatusVisibility;
     }
 
@@ -716,7 +819,7 @@ export default async function chatService(app: any) {
        DO UPDATE SET
          settings = COALESCE(user_settings.settings, '{}'::jsonb) || EXCLUDED.settings,
          updated_at = EXCLUDED.updated_at`,
-      [request.user.userId, JSON.stringify(patch), ts]
+      [request.user.userId, JSON.stringify(patch), ts],
     );
 
     return {
@@ -726,83 +829,102 @@ export default async function chatService(app: any) {
     };
   });
 
-  app.post("/attachments/upload-init", { preHandler: requireAuth }, async (request: any) => {
-    const body = request.body || {};
-    const conversationId = normalizeString(body.conversationId);
-    if (conversationId) {
-      const conversation = await loadConversationForUser(conversationId, request.user.userId);
-      ensureConversationOpenForUser(conversation, request.user.userId);
-    }
+  app.post(
+    "/attachments/upload-init",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const body = request.body || {};
+      const conversationId = normalizeString(body.conversationId);
+      if (conversationId) {
+        const conversation = await loadConversationForUser(
+          conversationId,
+          request.user.userId,
+        );
+        ensureConversationOpenForUser(conversation, request.user.userId);
+      }
 
-    const fileName = normalizeString(body.fileName).slice(0, 240);
-    const mimeType = normalizeString(body.mimeType || "application/octet-stream")
-      .toLowerCase()
-      .slice(0, 160);
-    const byteSize = Math.max(0, Math.trunc(Number(body.byteSize || 0)));
-    const attachmentType = normalizeString(body.attachmentType || attachmentTypeFromMime(mimeType))
-      .toLowerCase()
-      .slice(0, 40);
-    const maxBytes = attachmentType === "video"
-      ? 100 * 1024 * 1024
-      : attachmentType === "voice_note" || attachmentType === "audio"
-        ? 25 * 1024 * 1024
-        : 30 * 1024 * 1024;
+      const fileName = normalizeString(body.fileName).slice(0, 240);
+      const mimeType = normalizeString(
+        body.mimeType || "application/octet-stream",
+      )
+        .toLowerCase()
+        .slice(0, 160);
+      const byteSize = Math.max(0, Math.trunc(Number(body.byteSize || 0)));
+      const attachmentType = normalizeString(
+        body.attachmentType || attachmentTypeFromMime(mimeType),
+      )
+        .toLowerCase()
+        .slice(0, 40);
+      const maxBytes =
+        attachmentType === "video"
+          ? 100 * 1024 * 1024
+          : attachmentType === "voice_note" || attachmentType === "audio"
+            ? 25 * 1024 * 1024
+            : 30 * 1024 * 1024;
 
-    ensure(fileName.length > 0 && fileName.length <= 240, 400, "Invalid file name");
-    ensure(mimeType.length > 0, 400, "Invalid MIME type");
-    ensure(byteSize > 0 && byteSize <= maxBytes, 400, "Invalid file size");
+      ensure(
+        fileName.length > 0 && fileName.length <= 240,
+        400,
+        "Invalid file name",
+      );
+      ensure(mimeType.length > 0, 400, "Invalid MIME type");
+      ensure(byteSize > 0 && byteSize <= maxBytes, 400, "Invalid file size");
 
-    const attachmentId = generateId();
-    const uploadSessionId = generateId();
-    const ts = now();
-    await query(
-      `INSERT INTO chat_attachments (
+      const attachmentId = generateId();
+      const uploadSessionId = generateId();
+      const ts = now();
+      await query(
+        `INSERT INTO chat_attachments (
          attachment_id, owner_user_id, conversation_id, upload_session_id,
          attachment_type, file_name, mime_type, byte_size, status, metadata,
          created_at, updated_at
        )
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11)`,
-      [
+        [
+          attachmentId,
+          request.user.userId,
+          conversationId || null,
+          uploadSessionId,
+          attachmentType || "file",
+          fileName,
+          mimeType,
+          byteSize,
+          JSON.stringify({
+            uploadProvider: "media-service",
+            maxBytes,
+          }),
+          ts,
+          ts,
+        ],
+      );
+
+      return {
         attachmentId,
-        request.user.userId,
-        conversationId || null,
         uploadSessionId,
-        attachmentType || "file",
-        fileName,
-        mimeType,
-        byteSize,
-        JSON.stringify({
-          uploadProvider: "media-service",
-          maxBytes,
-        }),
-        ts,
-        ts,
-      ]
-    );
+        provider: "media-service",
+        uploadUrl: "/api/media/upload",
+        completeUrl: "/api/conversations/attachments/upload-complete",
+        maxBytes,
+        expiresAt: toIso(new Date(ts.getTime() + 30 * 60 * 1000)),
+      };
+    },
+  );
 
-    return {
-      attachmentId,
-      uploadSessionId,
-      provider: "media-service",
-      uploadUrl: "/api/media/upload",
-      completeUrl: "/api/conversations/attachments/upload-complete",
-      maxBytes,
-      expiresAt: toIso(new Date(ts.getTime() + 30 * 60 * 1000)),
-    };
-  });
+  app.post(
+    "/attachments/upload-complete",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const attachmentId = normalizeString(request.body?.attachmentId);
+      const uploadSessionId = normalizeString(request.body?.uploadSessionId);
+      const mediaAssetId = normalizeString(request.body?.mediaAssetId);
+      ensure(attachmentId.length >= 8, 400, "Invalid attachment");
+      ensure(uploadSessionId.length >= 8, 400, "Invalid upload session");
+      ensure(mediaAssetId.length >= 3, 400, "Invalid media asset");
 
-  app.post("/attachments/upload-complete", { preHandler: requireAuth }, async (request: any) => {
-    const attachmentId = normalizeString(request.body?.attachmentId);
-    const uploadSessionId = normalizeString(request.body?.uploadSessionId);
-    const mediaAssetId = normalizeString(request.body?.mediaAssetId);
-    ensure(attachmentId.length >= 8, 400, "Invalid attachment");
-    ensure(uploadSessionId.length >= 8, 400, "Invalid upload session");
-    ensure(mediaAssetId.length >= 3, 400, "Invalid media asset");
-
-    await ensureOwnedMediaAsset(mediaAssetId, request.user.userId);
-    const ts = now();
-    const row = await queryOne(
-      `UPDATE chat_attachments
+      await ensureOwnedMediaAsset(mediaAssetId, request.user.userId);
+      const ts = now();
+      const row = await queryOne(
+        `UPDATE chat_attachments
        SET media_asset_id = $4,
            status = 'ready',
            updated_at = $5,
@@ -812,41 +934,48 @@ export default async function chatService(app: any) {
          AND owner_user_id = $3
          AND deleted_at IS NULL
        RETURNING *`,
-      [
-        attachmentId,
-        uploadSessionId,
+        [
+          attachmentId,
+          uploadSessionId,
+          request.user.userId,
+          mediaAssetId,
+          ts,
+          JSON.stringify({ completedAt: toIso(ts) }),
+        ],
+      );
+      if (!row) {
+        throw new HttpError(404, "Attachment upload session not found");
+      }
+
+      return {
+        success: true,
+        attachment: mapChatAttachment(row),
+      };
+    },
+  );
+
+  app.get(
+    "/:conversationId/attachments",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      const conversation = await loadConversationForUser(
+        conversationId,
         request.user.userId,
-        mediaAssetId,
-        ts,
-        JSON.stringify({ completedAt: toIso(ts) }),
-      ]
-    );
-    if (!row) {
-      throw new HttpError(404, "Attachment upload session not found");
-    }
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const limit = parseLimit(request.query?.limit, 30, 1, 100);
+      const attachmentType = normalizeString(request.query?.type).toLowerCase();
+      const params: unknown[] = [conversationId, limit];
+      let typeClause = "";
+      if (attachmentType) {
+        params.push(attachmentType);
+        typeClause = `AND attachment_type = $${params.length}`;
+      }
 
-    return {
-      success: true,
-      attachment: mapChatAttachment(row),
-    };
-  });
-
-  app.get("/:conversationId/attachments", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const limit = parseLimit(request.query?.limit, 30, 1, 100);
-    const attachmentType = normalizeString(request.query?.type).toLowerCase();
-    const params: unknown[] = [conversationId, limit];
-    let typeClause = "";
-    if (attachmentType) {
-      params.push(attachmentType);
-      typeClause = `AND attachment_type = $${params.length}`;
-    }
-
-    const rows = await queryMany(
-      `SELECT *
+      const rows = await queryMany(
+        `SELECT *
        FROM chat_attachments
        WHERE conversation_id = $1
          AND deleted_at IS NULL
@@ -854,21 +983,25 @@ export default async function chatService(app: any) {
          ${typeClause}
        ORDER BY created_at DESC
        LIMIT $2`,
-      params
-    );
+        params,
+      );
 
-    return {
-      items: rows.map(mapChatAttachment),
-    };
-  });
+      return {
+        items: rows.map(mapChatAttachment),
+      };
+    },
+  );
 
-  app.delete("/attachments/:attachmentId", { preHandler: requireAuth }, async (request: any) => {
-    const attachmentId = normalizeString(request.params.attachmentId);
-    ensure(attachmentId.length >= 8, 400, "Invalid attachment");
+  app.delete(
+    "/attachments/:attachmentId",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const attachmentId = normalizeString(request.params.attachmentId);
+      ensure(attachmentId.length >= 8, 400, "Invalid attachment");
 
-    const ts = now();
-    const row = await queryOne(
-      `UPDATE chat_attachments
+      const ts = now();
+      const row = await queryOne(
+        `UPDATE chat_attachments
        SET status = 'deleted',
            deleted_at = $3,
            updated_at = $3
@@ -876,164 +1009,204 @@ export default async function chatService(app: any) {
          AND owner_user_id = $2
          AND deleted_at IS NULL
        RETURNING *`,
-      [attachmentId, request.user.userId, ts]
-    );
-    if (!row) {
-      throw new HttpError(404, "Attachment not found");
-    }
+        [attachmentId, request.user.userId, ts],
+      );
+      if (!row) {
+        throw new HttpError(404, "Attachment not found");
+      }
 
-    return {
-      success: true,
-      attachment: mapChatAttachment(row),
-    };
-  });
+      return {
+        success: true,
+        attachment: mapChatAttachment(row),
+      };
+    },
+  );
 
-  app.get("/groups/:conversationId/invites", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    await ensureGroupConversationForAdmin(conversationId, request.user.userId);
-    const rows = await queryMany(
-      `SELECT *
+  app.get(
+    "/groups/:conversationId/invites",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      await ensureGroupConversationForAdmin(
+        conversationId,
+        request.user.userId,
+      );
+      const rows = await queryMany(
+        `SELECT *
        FROM group_invites
        WHERE conversation_id = $1
        ORDER BY created_at DESC
        LIMIT 50`,
-      [conversationId]
-    );
-    return { items: rows.map(mapGroupInvite) };
-  });
+        [conversationId],
+      );
+      return { items: rows.map(mapGroupInvite) };
+    },
+  );
 
-  app.post("/groups/:conversationId/invites", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    const { conversation, groupMeta } = await ensureGroupConversationForAdmin(
-      conversationId,
-      request.user.userId
-    );
+  app.post(
+    "/groups/:conversationId/invites",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      const { conversation, groupMeta } = await ensureGroupConversationForAdmin(
+        conversationId,
+        request.user.userId,
+      );
 
-    const maxUsesRaw = Number.parseInt(String(request.body?.maxUses || ""), 10);
-    const maxUses = Number.isNaN(maxUsesRaw)
-      ? null
-      : Math.max(1, Math.min(10_000, maxUsesRaw));
-    const expiresInHoursRaw = Number.parseInt(String(request.body?.expiresInHours || ""), 10);
-    const expiresAt = Number.isNaN(expiresInHoursRaw)
-      ? null
-      : new Date(Date.now() + Math.max(1, Math.min(24 * 90, expiresInHoursRaw)) * 60 * 60 * 1000);
-    const requiresApproval = request.body?.requiresApproval === true;
-    const inviteId = generateId();
-    const inviteToken = generateId();
-    const ts = now();
+      const maxUsesRaw = Number.parseInt(
+        String(request.body?.maxUses || ""),
+        10,
+      );
+      const maxUses = Number.isNaN(maxUsesRaw)
+        ? null
+        : Math.max(1, Math.min(10_000, maxUsesRaw));
+      const expiresInHoursRaw = Number.parseInt(
+        String(request.body?.expiresInHours || ""),
+        10,
+      );
+      const expiresAt = Number.isNaN(expiresInHoursRaw)
+        ? null
+        : new Date(
+            Date.now() +
+              Math.max(1, Math.min(24 * 90, expiresInHoursRaw)) *
+                60 *
+                60 *
+                1000,
+          );
+      const requiresApproval = request.body?.requiresApproval === true;
+      const inviteId = generateId();
+      const inviteToken = generateId();
+      const ts = now();
 
-    const row = await queryOne(
-      `INSERT INTO group_invites (
+      const row = await queryOne(
+        `INSERT INTO group_invites (
          invite_id, conversation_id, invite_token, created_by_user_id,
          max_uses, use_count, requires_approval, status, expires_at, created_at
        )
        VALUES ($1, $2, $3, $4, $5, 0, $6, 'active', $7, $8)
        RETURNING *`,
-      [
-        inviteId,
+        [
+          inviteId,
+          conversationId,
+          inviteToken,
+          request.user.userId,
+          maxUses,
+          requiresApproval,
+          expiresAt,
+          ts,
+        ],
+      );
+
+      publishToConversation(groupMeta.memberIds, "GROUP_INVITE_CREATED", {
         conversationId,
-        inviteToken,
-        request.user.userId,
-        maxUses,
+        inviteId,
+        createdBy: request.user.userId,
         requiresApproval,
-        expiresAt,
-        ts,
-      ]
-    );
+      });
 
-    publishToConversation(groupMeta.memberIds, "GROUP_INVITE_CREATED", {
-      conversationId,
-      inviteId,
-      createdBy: request.user.userId,
-      requiresApproval,
-    });
+      return {
+        invite: mapGroupInvite(row),
+        joinUrl: `/chat/groups/join/${inviteToken}`,
+        conversationTitle: conversation.title || "Group",
+      };
+    },
+  );
 
-    return {
-      invite: mapGroupInvite(row),
-      joinUrl: `/chat/groups/join/${inviteToken}`,
-      conversationTitle: conversation.title || "Group",
-    };
-  });
+  app.delete(
+    "/groups/:conversationId/invites/:inviteId",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const inviteId = normalizeString(request.params.inviteId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(inviteId.length >= 8, 400, "Invalid invite");
+      const { groupMeta } = await ensureGroupConversationForAdmin(
+        conversationId,
+        request.user.userId,
+      );
 
-  app.delete("/groups/:conversationId/invites/:inviteId", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const inviteId = normalizeString(request.params.inviteId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(inviteId.length >= 8, 400, "Invalid invite");
-    const { groupMeta } = await ensureGroupConversationForAdmin(
-      conversationId,
-      request.user.userId
-    );
-
-    const ts = now();
-    const row = await queryOne(
-      `UPDATE group_invites
+      const ts = now();
+      const row = await queryOne(
+        `UPDATE group_invites
        SET status = 'revoked',
            revoked_at = $3
        WHERE conversation_id = $1
          AND invite_id = $2
          AND status = 'active'
        RETURNING *`,
-      [conversationId, inviteId, ts]
-    );
-    if (!row) {
-      throw new HttpError(404, "Invite not found");
-    }
+        [conversationId, inviteId, ts],
+      );
+      if (!row) {
+        throw new HttpError(404, "Invite not found");
+      }
 
-    publishToConversation(groupMeta.memberIds, "GROUP_INVITE_REVOKED", {
-      conversationId,
-      inviteId,
-      revokedBy: request.user.userId,
-      revokedAt: toIso(ts),
-    });
+      publishToConversation(groupMeta.memberIds, "GROUP_INVITE_REVOKED", {
+        conversationId,
+        inviteId,
+        revokedBy: request.user.userId,
+        revokedAt: toIso(ts),
+      });
 
-    return {
-      success: true,
-      invite: mapGroupInvite(row),
-    };
-  });
+      return {
+        success: true,
+        invite: mapGroupInvite(row),
+      };
+    },
+  );
 
-  app.post("/groups/join/:inviteToken", { preHandler: requireAuth }, async (request: any) => {
-    const inviteToken = normalizeString(request.params.inviteToken);
-    ensure(inviteToken.length >= 8, 400, "Invalid invite");
+  app.post(
+    "/groups/join/:inviteToken",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const inviteToken = normalizeString(request.params.inviteToken);
+      ensure(inviteToken.length >= 8, 400, "Invalid invite");
 
-    const invite = await queryOne(
-      `SELECT gi.*, c.title, c.type
+      const invite = await queryOne(
+        `SELECT gi.*, c.title, c.type
        FROM group_invites gi
        JOIN conversations c ON c.conversation_id = gi.conversation_id
        WHERE gi.invite_token = $1
          AND gi.status = 'active'
        LIMIT 1`,
-      [inviteToken]
-    );
-    if (!invite || invite.type !== "group") {
-      throw new HttpError(404, "Invite not found");
-    }
-    if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
-      throw new HttpError(410, "Invite expired");
-    }
-    if (invite.max_uses != null && Number(invite.use_count || 0) >= Number(invite.max_uses)) {
-      throw new HttpError(410, "Invite usage limit reached");
-    }
+        [inviteToken],
+      );
+      if (!invite || invite.type !== "group") {
+        throw new HttpError(404, "Invite not found");
+      }
+      if (
+        invite.expires_at &&
+        new Date(invite.expires_at).getTime() < Date.now()
+      ) {
+        throw new HttpError(410, "Invite expired");
+      }
+      if (
+        invite.max_uses != null &&
+        Number(invite.use_count || 0) >= Number(invite.max_uses)
+      ) {
+        throw new HttpError(410, "Invite usage limit reached");
+      }
 
-    const conversationId = String(invite.conversation_id);
-    const conversation = await loadConversationForUserOrNull(conversationId, request.user.userId);
-    if (conversation) {
-      return {
-        success: true,
-        status: "joined",
+      const conversationId = String(invite.conversation_id);
+      const conversation = await loadConversationForUserOrNull(
         conversationId,
-        alreadyMember: true,
-      };
-    }
+        request.user.userId,
+      );
+      if (conversation) {
+        return {
+          success: true,
+          status: "joined",
+          conversationId,
+          alreadyMember: true,
+        };
+      }
 
-    const ts = now();
-    if (invite.requires_approval === true) {
-      const requestId = generateId();
-      const row = await queryOne(
-        `INSERT INTO group_join_requests (
+      const ts = now();
+      if (invite.requires_approval === true) {
+        const requestId = generateId();
+        const row = await queryOne(
+          `INSERT INTO group_join_requests (
            request_id, invite_id, conversation_id, requester_user_id,
            status, created_at
          )
@@ -1041,159 +1214,187 @@ export default async function chatService(app: any) {
          ON CONFLICT (conversation_id, requester_user_id, status)
          DO UPDATE SET invite_id = EXCLUDED.invite_id
          RETURNING *`,
-        [requestId, invite.invite_id, conversationId, request.user.userId, ts]
-      );
+          [
+            requestId,
+            invite.invite_id,
+            conversationId,
+            request.user.userId,
+            ts,
+          ],
+        );
 
-      const fullConversation = await queryOne(
-        `SELECT c.*
+        const fullConversation = await queryOne(
+          `SELECT c.*
          FROM conversations c
          WHERE c.conversation_id = $1`,
-        [conversationId]
-      );
-      const hydrated = fullConversation ? await hydrateConversations([fullConversation]) : [];
-      const memberIds = hydrated[0]?.memberIds || [];
-      publishToConversation(memberIds, "GROUP_JOIN_REQUEST_CREATED", {
+          [conversationId],
+        );
+        const hydrated = fullConversation
+          ? await hydrateConversations([fullConversation])
+          : [];
+        const memberIds = hydrated[0]?.memberIds || [];
+        publishToConversation(memberIds, "GROUP_JOIN_REQUEST_CREATED", {
+          conversationId,
+          requestId: row.request_id,
+          requesterUserId: request.user.userId,
+        });
+
+        return {
+          success: true,
+          status: "pending",
+          request: mapJoinRequest(row),
+        };
+      }
+
+      await withTransaction(async (client) => {
+        await client.query(
+          `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at, left_at)
+         VALUES ($1, $2, 'member', $3, NULL)
+         ON CONFLICT (conversation_id, user_id)
+         DO UPDATE SET role = 'member', joined_at = EXCLUDED.joined_at, left_at = NULL`,
+          [conversationId, request.user.userId, ts],
+        );
+        await client.query(
+          `UPDATE group_invites SET use_count = use_count + 1 WHERE invite_id = $1`,
+          [invite.invite_id],
+        );
+        await client.query(
+          `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
+          [conversationId, ts],
+        );
+      });
+
+      const loaded = await loadConversationForUser(
         conversationId,
-        requestId: row.request_id,
-        requesterUserId: request.user.userId,
+        request.user.userId,
+      );
+      publishToConversation(loaded.memberIds, "GROUP_MEMBER_ADDED", {
+        conversationId,
+        addedBy: request.user.userId,
+        memberIds: [request.user.userId],
+        viaInvite: true,
       });
 
       return {
         success: true,
-        status: "pending",
-        request: mapJoinRequest(row),
+        status: "joined",
+        conversationId,
       };
-    }
+    },
+  );
 
-    await withTransaction(async (client) => {
-      await client.query(
-        `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at, left_at)
-         VALUES ($1, $2, 'member', $3, NULL)
-         ON CONFLICT (conversation_id, user_id)
-         DO UPDATE SET role = 'member', joined_at = EXCLUDED.joined_at, left_at = NULL`,
-        [conversationId, request.user.userId, ts]
+  app.get(
+    "/groups/:conversationId/join-requests",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      await ensureGroupConversationForAdmin(
+        conversationId,
+        request.user.userId,
       );
-      await client.query(
-        `UPDATE group_invites SET use_count = use_count + 1 WHERE invite_id = $1`,
-        [invite.invite_id]
-      );
-      await client.query(
-        `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
-        [conversationId, ts]
-      );
-    });
-
-    const loaded = await loadConversationForUser(conversationId, request.user.userId);
-    publishToConversation(loaded.memberIds, "GROUP_MEMBER_ADDED", {
-      conversationId,
-      addedBy: request.user.userId,
-      memberIds: [request.user.userId],
-      viaInvite: true,
-    });
-
-    return {
-      success: true,
-      status: "joined",
-      conversationId,
-    };
-  });
-
-  app.get("/groups/:conversationId/join-requests", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    await ensureGroupConversationForAdmin(conversationId, request.user.userId);
-    const rows = await queryMany(
-      `SELECT *
+      const rows = await queryMany(
+        `SELECT *
        FROM group_join_requests
        WHERE conversation_id = $1
          AND status = 'pending'
        ORDER BY created_at ASC
        LIMIT 100`,
-      [conversationId]
-    );
-    return { items: rows.map(mapJoinRequest) };
-  });
+        [conversationId],
+      );
+      return { items: rows.map(mapJoinRequest) };
+    },
+  );
 
-  app.post("/groups/:conversationId/join-requests/:requestId/approve", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const requestId = normalizeString(request.params.requestId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(requestId.length >= 8, 400, "Invalid request");
-    const { groupMeta } = await ensureGroupConversationForAdmin(
-      conversationId,
-      request.user.userId
-    );
+  app.post(
+    "/groups/:conversationId/join-requests/:requestId/approve",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const requestId = normalizeString(request.params.requestId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(requestId.length >= 8, 400, "Invalid request");
+      const { groupMeta } = await ensureGroupConversationForAdmin(
+        conversationId,
+        request.user.userId,
+      );
 
-    const joinRequest = await queryOne(
-      `SELECT *
+      const joinRequest = await queryOne(
+        `SELECT *
        FROM group_join_requests
        WHERE conversation_id = $1
          AND request_id = $2
          AND status = 'pending'`,
-      [conversationId, requestId]
-    );
-    if (!joinRequest) {
-      throw new HttpError(404, "Join request not found");
-    }
+        [conversationId, requestId],
+      );
+      if (!joinRequest) {
+        throw new HttpError(404, "Join request not found");
+      }
 
-    const ts = now();
-    await withTransaction(async (client) => {
-      await client.query(
-        `UPDATE group_join_requests
+      const ts = now();
+      await withTransaction(async (client) => {
+        await client.query(
+          `UPDATE group_join_requests
          SET status = 'approved',
              decided_by_user_id = $3,
              decided_at = $4
          WHERE conversation_id = $1 AND request_id = $2`,
-        [conversationId, requestId, request.user.userId, ts]
-      );
-      await client.query(
-        `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at, left_at)
+          [conversationId, requestId, request.user.userId, ts],
+        );
+        await client.query(
+          `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at, left_at)
          VALUES ($1, $2, 'member', $3, NULL)
          ON CONFLICT (conversation_id, user_id)
          DO UPDATE SET role = 'member', joined_at = EXCLUDED.joined_at, left_at = NULL`,
-        [conversationId, joinRequest.requester_user_id, ts]
-      );
-      if (joinRequest.invite_id) {
-        await client.query(
-          `UPDATE group_invites SET use_count = use_count + 1 WHERE invite_id = $1`,
-          [joinRequest.invite_id]
+          [conversationId, joinRequest.requester_user_id, ts],
         );
-      }
-      await client.query(
-        `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
-        [conversationId, ts]
+        if (joinRequest.invite_id) {
+          await client.query(
+            `UPDATE group_invites SET use_count = use_count + 1 WHERE invite_id = $1`,
+            [joinRequest.invite_id],
+          );
+        }
+        await client.query(
+          `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
+          [conversationId, ts],
+        );
+      });
+
+      const memberIds = [
+        ...new Set([...groupMeta.memberIds, joinRequest.requester_user_id]),
+      ];
+      publishToConversation(memberIds, "GROUP_JOIN_REQUEST_APPROVED", {
+        conversationId,
+        requestId,
+        requesterUserId: joinRequest.requester_user_id,
+        approvedBy: request.user.userId,
+      });
+
+      return {
+        success: true,
+        requestId,
+        status: "approved",
+        userId: joinRequest.requester_user_id,
+      };
+    },
+  );
+
+  app.post(
+    "/groups/:conversationId/join-requests/:requestId/reject",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const requestId = normalizeString(request.params.requestId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(requestId.length >= 8, 400, "Invalid request");
+      const { groupMeta } = await ensureGroupConversationForAdmin(
+        conversationId,
+        request.user.userId,
       );
-    });
 
-    const memberIds = [...new Set([...groupMeta.memberIds, joinRequest.requester_user_id])];
-    publishToConversation(memberIds, "GROUP_JOIN_REQUEST_APPROVED", {
-      conversationId,
-      requestId,
-      requesterUserId: joinRequest.requester_user_id,
-      approvedBy: request.user.userId,
-    });
-
-    return {
-      success: true,
-      requestId,
-      status: "approved",
-      userId: joinRequest.requester_user_id,
-    };
-  });
-
-  app.post("/groups/:conversationId/join-requests/:requestId/reject", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const requestId = normalizeString(request.params.requestId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(requestId.length >= 8, 400, "Invalid request");
-    const { groupMeta } = await ensureGroupConversationForAdmin(
-      conversationId,
-      request.user.userId
-    );
-
-    const ts = now();
-    const row = await queryOne(
-      `UPDATE group_join_requests
+      const ts = now();
+      const row = await queryOne(
+        `UPDATE group_join_requests
        SET status = 'rejected',
            decided_by_user_id = $3,
            decided_at = $4
@@ -1201,263 +1402,399 @@ export default async function chatService(app: any) {
          AND request_id = $2
          AND status = 'pending'
        RETURNING *`,
-      [conversationId, requestId, request.user.userId, ts]
-    );
-    if (!row) {
-      throw new HttpError(404, "Join request not found");
-    }
+        [conversationId, requestId, request.user.userId, ts],
+      );
+      if (!row) {
+        throw new HttpError(404, "Join request not found");
+      }
 
-    publishToConversation([...groupMeta.memberIds, row.requester_user_id], "GROUP_JOIN_REQUEST_REJECTED", {
-      conversationId,
-      requestId,
-      requesterUserId: row.requester_user_id,
-      rejectedBy: request.user.userId,
-    });
+      publishToConversation(
+        [...groupMeta.memberIds, row.requester_user_id],
+        "GROUP_JOIN_REQUEST_REJECTED",
+        {
+          conversationId,
+          requestId,
+          requesterUserId: row.requester_user_id,
+          rejectedBy: request.user.userId,
+        },
+      );
 
-    return {
-      success: true,
-      request: mapJoinRequest(row),
-    };
-  });
+      return {
+        success: true,
+        request: mapJoinRequest(row),
+      };
+    },
+  );
 
-  app.patch("/groups/:conversationId/members/:memberUserId/role", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const memberUserId = normalizeString(request.params.memberUserId);
-    const role = normalizeString(request.body?.role).toLowerCase();
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(memberUserId.length >= 8, 400, "Invalid user");
-    ensure(["admin", "member"].includes(role), 400, "Invalid role");
+  app.patch(
+    "/groups/:conversationId/members/:memberUserId/role",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const memberUserId = normalizeString(request.params.memberUserId);
+      const role = normalizeString(request.body?.role).toLowerCase();
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(memberUserId.length >= 8, 400, "Invalid user");
+      ensure(["admin", "member"].includes(role), 400, "Invalid role");
 
-    const { groupMeta } = await ensureGroupConversationForAdmin(
-      conversationId,
-      request.user.userId
-    );
-    ensure(groupMeta.memberIds.includes(memberUserId), 404, "Member not found");
-    ensure(memberUserId !== groupMeta.ownerUserId, 400, "Owner role cannot be changed");
-    if (role === "admin" || groupMeta.adminIds.includes(memberUserId)) {
-      ensure(request.user.userId === groupMeta.ownerUserId, 403, "Only owner can change admin roles");
-    }
+      const { groupMeta } = await ensureGroupConversationForAdmin(
+        conversationId,
+        request.user.userId,
+      );
+      ensure(
+        groupMeta.memberIds.includes(memberUserId),
+        404,
+        "Member not found",
+      );
+      ensure(
+        memberUserId !== groupMeta.ownerUserId,
+        400,
+        "Owner role cannot be changed",
+      );
+      if (role === "admin" || groupMeta.adminIds.includes(memberUserId)) {
+        ensure(
+          request.user.userId === groupMeta.ownerUserId,
+          403,
+          "Only owner can change admin roles",
+        );
+      }
 
-    const ts = now();
-    await query(
-      `UPDATE conversation_members
+      const ts = now();
+      await query(
+        `UPDATE conversation_members
        SET role = $3
        WHERE conversation_id = $1
          AND user_id = $2
          AND left_at IS NULL`,
-      [conversationId, memberUserId, role]
-    );
-    await query(
-      `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
-      [conversationId, ts]
-    );
+        [conversationId, memberUserId, role],
+      );
+      await query(
+        `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
+        [conversationId, ts],
+      );
 
-    publishToConversation(groupMeta.memberIds, "GROUP_MEMBER_ROLE", {
-      conversationId,
-      changedBy: request.user.userId,
-      userId: memberUserId,
-      role,
-    });
+      publishToConversation(groupMeta.memberIds, "GROUP_MEMBER_ROLE", {
+        conversationId,
+        changedBy: request.user.userId,
+        userId: memberUserId,
+        role,
+      });
 
-    return {
-      success: true,
-      conversationId,
-      userId: memberUserId,
-      role,
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        userId: memberUserId,
+        role,
+      };
+    },
+  );
 
-  app.put("/:conversationId/preferences", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    await loadConversationForUser(conversationId, request.user.userId);
+  app.put(
+    "/:conversationId/preferences",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      await loadConversationForUser(conversationId, request.user.userId);
 
-    const incoming = request.body || {};
-    const current = await loadPreference(conversationId, request.user.userId);
-    const patch: ConversationPreferencePatch = {
-      isFavorite: boolOrCurrent(incoming.isFavorite, current.isFavorite),
-      isStarred: boolOrCurrent(incoming.isStarred, current.isStarred),
-      isMuted: boolOrCurrent(incoming.isMuted, current.isMuted),
-      isArchived: boolOrCurrent(incoming.isArchived, current.isArchived),
-      markedUnread: boolOrCurrent(incoming.markedUnread, current.markedUnread),
-    };
-    if (incoming.draftText !== undefined) {
-      patch.draftText = incoming.draftText;
-    }
+      const incoming = request.body || {};
+      const current = await loadPreference(conversationId, request.user.userId);
+      const patch: ConversationPreferencePatch = {
+        isFavorite: boolOrCurrent(incoming.isFavorite, current.isFavorite),
+        isStarred: boolOrCurrent(incoming.isStarred, current.isStarred),
+        isMuted: boolOrCurrent(incoming.isMuted, current.isMuted),
+        isArchived: boolOrCurrent(incoming.isArchived, current.isArchived),
+        markedUnread: boolOrCurrent(
+          incoming.markedUnread,
+          current.markedUnread,
+        ),
+      };
+      if (incoming.draftText !== undefined) {
+        patch.draftText = incoming.draftText;
+      }
 
-    const preferences = await savePreference(conversationId, request.user.userId, patch);
+      const preferences = await savePreference(
+        conversationId,
+        request.user.userId,
+        patch,
+      );
 
-    return {
-      success: true,
-      preferences,
-    };
-  });
+      return {
+        success: true,
+        preferences,
+      };
+    },
+  );
 
-  app.post("/:conversationId/archive", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    const preferences = await setConversationFlag(conversationId, request.user.userId, {
-      isArchived: true,
-    });
-    return { success: true, preferences };
-  });
+  app.post(
+    "/:conversationId/archive",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      const preferences = await setConversationFlag(
+        conversationId,
+        request.user.userId,
+        {
+          isArchived: true,
+        },
+      );
+      return { success: true, preferences };
+    },
+  );
 
-  app.post("/:conversationId/unarchive", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    const preferences = await setConversationFlag(conversationId, request.user.userId, {
-      isArchived: false,
-    });
-    return { success: true, preferences };
-  });
+  app.post(
+    "/:conversationId/unarchive",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      const preferences = await setConversationFlag(
+        conversationId,
+        request.user.userId,
+        {
+          isArchived: false,
+        },
+      );
+      return { success: true, preferences };
+    },
+  );
 
-  app.post("/:conversationId/pin", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    const preferences = await setConversationFlag(conversationId, request.user.userId, {
-      isStarred: true,
-    });
-    return { success: true, preferences };
-  });
+  app.post(
+    "/:conversationId/pin",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      const preferences = await setConversationFlag(
+        conversationId,
+        request.user.userId,
+        {
+          isStarred: true,
+        },
+      );
+      return { success: true, preferences };
+    },
+  );
 
-  app.post("/:conversationId/unpin", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    const preferences = await setConversationFlag(conversationId, request.user.userId, {
-      isStarred: false,
-    });
-    return { success: true, preferences };
-  });
+  app.post(
+    "/:conversationId/unpin",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      const preferences = await setConversationFlag(
+        conversationId,
+        request.user.userId,
+        {
+          isStarred: false,
+        },
+      );
+      return { success: true, preferences };
+    },
+  );
 
-  app.post("/:conversationId/favourite", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    const preferences = await setConversationFlag(conversationId, request.user.userId, {
-      isFavorite: true,
-    });
-    return { success: true, preferences };
-  });
+  app.post(
+    "/:conversationId/favourite",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      const preferences = await setConversationFlag(
+        conversationId,
+        request.user.userId,
+        {
+          isFavorite: true,
+        },
+      );
+      return { success: true, preferences };
+    },
+  );
 
-  app.post("/:conversationId/unfavourite", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    const preferences = await setConversationFlag(conversationId, request.user.userId, {
-      isFavorite: false,
-    });
-    return { success: true, preferences };
-  });
+  app.post(
+    "/:conversationId/unfavourite",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      const preferences = await setConversationFlag(
+        conversationId,
+        request.user.userId,
+        {
+          isFavorite: false,
+        },
+      );
+      return { success: true, preferences };
+    },
+  );
 
-  app.post("/:conversationId/mute", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    const preferences = await setConversationFlag(conversationId, request.user.userId, {
-      isMuted: true,
-    });
-    return { success: true, preferences };
-  });
+  app.post(
+    "/:conversationId/mute",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      const preferences = await setConversationFlag(
+        conversationId,
+        request.user.userId,
+        {
+          isMuted: true,
+        },
+      );
+      return { success: true, preferences };
+    },
+  );
 
-  app.post("/:conversationId/unmute", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    const preferences = await setConversationFlag(conversationId, request.user.userId, {
-      isMuted: false,
-    });
-    return { success: true, preferences };
-  });
+  app.post(
+    "/:conversationId/unmute",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      const preferences = await setConversationFlag(
+        conversationId,
+        request.user.userId,
+        {
+          isMuted: false,
+        },
+      );
+      return { success: true, preferences };
+    },
+  );
 
-  app.post("/:conversationId/clear-local", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.post(
+    "/:conversationId/clear-local",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const clearedBeforeSeq = Number(conversation.seqCounter || 0);
-    const preferences = await savePreference(conversationId, request.user.userId, {
-      clearedBeforeSeq,
-      localDeletedAt: null,
-      markedUnread: false,
-      draftText: "",
-    });
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const clearedBeforeSeq = Number(conversation.seqCounter || 0);
+      const preferences = await savePreference(
+        conversationId,
+        request.user.userId,
+        {
+          clearedBeforeSeq,
+          localDeletedAt: null,
+          markedUnread: false,
+          draftText: "",
+        },
+      );
 
-    return {
-      success: true,
-      conversationId,
-      clearedBeforeSeq,
-      preferences,
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        clearedBeforeSeq,
+        preferences,
+      };
+    },
+  );
 
-  app.delete("/:conversationId", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.delete(
+    "/:conversationId",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const clearedBeforeSeq = Number(conversation.seqCounter || 0);
-    const deletedAt = now();
-    const preferences = await savePreference(conversationId, request.user.userId, {
-      clearedBeforeSeq,
-      localDeletedAt: deletedAt,
-      isArchived: false,
-      markedUnread: false,
-      draftText: "",
-    });
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const clearedBeforeSeq = Number(conversation.seqCounter || 0);
+      const deletedAt = now();
+      const preferences = await savePreference(
+        conversationId,
+        request.user.userId,
+        {
+          clearedBeforeSeq,
+          localDeletedAt: deletedAt,
+          isArchived: false,
+          markedUnread: false,
+          draftText: "",
+        },
+      );
 
-    return {
-      success: true,
-      conversationId,
-      localDeletedAt: toIso(deletedAt),
-      clearedBeforeSeq,
-      preferences,
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        localDeletedAt: toIso(deletedAt),
+        clearedBeforeSeq,
+        preferences,
+      };
+    },
+  );
 
-  app.post("/:conversationId/mark-unread", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.post(
+    "/:conversationId/mark-unread",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const targetReadSeq = Math.max(0, Number(conversation.seqCounter || 0) - 1);
-    await upsertReadState(conversation, request.user.userId, {
-      lastReadSeq: targetReadSeq,
-    });
-    const preferences = await savePreference(conversationId, request.user.userId, {
-      markedUnread: true,
-    });
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const targetReadSeq = Math.max(
+        0,
+        Number(conversation.seqCounter || 0) - 1,
+      );
+      await upsertReadState(conversation, request.user.userId, {
+        lastReadSeq: targetReadSeq,
+      });
+      const preferences = await savePreference(
+        conversationId,
+        request.user.userId,
+        {
+          markedUnread: true,
+        },
+      );
 
-    return {
-      success: true,
-      conversationId,
-      unreadCount: Number(conversation.seqCounter || 0) > 0 ? 1 : 0,
-      preferences,
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        unreadCount: Number(conversation.seqCounter || 0) > 0 ? 1 : 0,
+        preferences,
+      };
+    },
+  );
 
   app.post("/report", { preHandler: requireAuth }, async (request: any) => {
     const body = request.body || {};
     let conversationId = normalizeString(body.conversationId);
     const messageId = normalizeString(body.messageId);
     const reportedUserId = normalizeString(body.reportedUserId);
-    const reason = normalizeString(body.reason || "other").slice(0, 80) || "other";
+    const reason =
+      normalizeString(body.reason || "other").slice(0, 80) || "other";
     const details = normalizeString(body.details).slice(0, 4000);
 
     if (!conversationId && messageId) {
       const messageRow = await queryOne(
         `SELECT conversation_id FROM messages WHERE message_id = $1`,
-        [messageId]
+        [messageId],
       );
       conversationId = normalizeString(messageRow?.conversation_id);
     }
 
     ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
+    const conversation = await loadConversationForUser(
+      conversationId,
+      request.user.userId,
+    );
     ensureConversationOpenForUser(conversation, request.user.userId);
 
     if (messageId) {
       const message = await queryOne(
         `SELECT message_id FROM messages WHERE conversation_id = $1 AND message_id = $2`,
-        [conversationId, messageId]
+        [conversationId, messageId],
       );
       ensure(!!message, 404, "Message not found");
     }
@@ -1465,7 +1802,7 @@ export default async function chatService(app: any) {
     if (reportedUserId) {
       const reportedUser = await queryOne(
         `SELECT user_id FROM users WHERE user_id = $1 AND deleted_at IS NULL`,
-        [reportedUserId]
+        [reportedUserId],
       );
       ensure(!!reportedUser, 404, "Reported user not found");
     }
@@ -1487,7 +1824,7 @@ export default async function chatService(app: any) {
         reason,
         details,
         ts,
-      ]
+      ],
     );
 
     return {
@@ -1498,20 +1835,29 @@ export default async function chatService(app: any) {
     };
   });
 
-  app.get("/:conversationId/search", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.get(
+    "/:conversationId/search",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const preference = await loadPreference(conversationId, request.user.userId);
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const preference = await loadPreference(
+        conversationId,
+        request.user.userId,
+      );
 
-    const q = normalizeString(request.query?.q).slice(0, 120);
-    ensure(q.length >= 2, 400, "Search query is too short");
-    const limit = parseLimit(request.query?.limit, 30, 1, 80);
+      const q = normalizeString(request.query?.q).slice(0, 120);
+      ensure(q.length >= 2, 400, "Search query is too short");
+      const limit = parseLimit(request.query?.limit, 30, 1, 80);
 
-    const messages = await queryMany(
-      `SELECT *
+      const messages = await queryMany(
+        `SELECT *
        FROM messages
        WHERE conversation_id = $1
          AND seq > $4
@@ -1519,90 +1865,126 @@ export default async function chatService(app: any) {
          AND COALESCE(body, '') ILIKE $2
        ORDER BY seq DESC
        LIMIT $3`,
-      [conversationId, `%${q}%`, limit, preference.clearedBeforeSeq]
-    );
+        [conversationId, `%${q}%`, limit, preference.clearedBeforeSeq],
+      );
 
-    return {
-      query: q,
-      results: await loadMessagesWithReactions(messages),
-    };
-  });
+      return {
+        query: q,
+        results: await loadMessagesWithReactions(messages),
+      };
+    },
+  );
 
-  app.get("/:conversationId/pinned-messages", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.get(
+    "/:conversationId/pinned-messages",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const preference = await loadPreference(conversationId, request.user.userId);
-    const limit = parseLimit(request.query?.limit, 30, 1, 80);
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const preference = await loadPreference(
+        conversationId,
+        request.user.userId,
+      );
+      const limit = parseLimit(request.query?.limit, 30, 1, 80);
 
-    const rows = await queryMany(
-      `SELECT m.*, cpm.pinned_by_user_id, cpm.pinned_at
+      const rows = await queryMany(
+        `SELECT m.*, cpm.pinned_by_user_id, cpm.pinned_at
        FROM chat_pinned_messages cpm
        JOIN messages m ON m.message_id = cpm.message_id
        WHERE cpm.conversation_id = $1
          AND m.seq > $3
        ORDER BY cpm.pinned_at DESC
        LIMIT $2`,
-      [conversationId, limit, preference.clearedBeforeSeq]
-    );
-    const messages = await loadMessagesWithReactions(rows);
+        [conversationId, limit, preference.clearedBeforeSeq],
+      );
+      const messages = await loadMessagesWithReactions(rows);
 
-    return messages.map((message, index) => ({
-      ...message,
-      pinnedByUserId: rows[index]?.pinned_by_user_id || null,
-      pinnedAt: toIso(rows[index]?.pinned_at),
-    }));
-  });
+      return messages.map((message, index) => ({
+        ...message,
+        pinnedByUserId: rows[index]?.pinned_by_user_id || null,
+        pinnedAt: toIso(rows[index]?.pinned_at),
+      }));
+    },
+  );
 
-  app.get("/:conversationId", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.get(
+    "/:conversationId",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const groupMeta = conversation.type === "group" ? getGroupMeta(conversation) : null;
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const groupMeta =
+        conversation.type === "group" ? getGroupMeta(conversation) : null;
 
-    let title = conversation.title || "Conversation";
-    if (conversation.type === "dm") {
-      const peerId = (conversation.memberIds || []).find((id) => id !== request.user.userId);
-      if (peerId) {
-        const peer = await queryOne(
-          `SELECT username, display_name FROM users WHERE user_id = $1`,
-          [peerId]
+      let title = conversation.title || "Conversation";
+      if (conversation.type === "dm") {
+        const peerId = (conversation.memberIds || []).find(
+          (id) => id !== request.user.userId,
         );
-        title = userDisplayName(peer);
+        if (peerId) {
+          const peer = await queryOne(
+            `SELECT username, display_name FROM users WHERE user_id = $1`,
+            [peerId],
+          );
+          title = userDisplayName(peer);
+        }
       }
-    }
 
-    return {
-      id: conversation.conversationId,
-      type: conversation.type,
-      title,
-      createdBy: conversation.ownerUserId || null,
-      createdAt: toIso(conversation.createdAt),
-      updatedAt: toIso(conversation.updatedAt),
-      memberCount: Array.isArray(conversation.memberIds) ? conversation.memberIds.length : 0,
-      isAdmin: groupMeta ? isGroupAdmin(groupMeta, request.user.userId) : false,
-      myRole: groupMeta ? roleForUser(groupMeta, request.user.userId) : "member",
-      lastMessageId: conversation.lastMessageId || null,
-      lastMessageSeq: conversation.lastMessageSeq ?? null,
-      lastMessageSenderUserId: conversation.lastMessageSenderUserId || null,
-      lastMessageBody: conversation.lastMessageBody || null,
-      lastMessageContentType: conversation.lastMessageContentType || null,
-      lastMessageDeletedForAllAt: toIso(conversation.lastMessageDeletedForAllAt),
-      lastMessageCreatedAt: toIso(conversation.lastMessageCreatedAt),
-    };
-  });
+      return {
+        id: conversation.conversationId,
+        type: conversation.type,
+        title,
+        createdBy: conversation.ownerUserId || null,
+        createdAt: toIso(conversation.createdAt),
+        updatedAt: toIso(conversation.updatedAt),
+        memberCount: Array.isArray(conversation.memberIds)
+          ? conversation.memberIds.length
+          : 0,
+        isAdmin: groupMeta
+          ? isGroupAdmin(groupMeta, request.user.userId)
+          : false,
+        myRole: groupMeta
+          ? roleForUser(groupMeta, request.user.userId)
+          : "member",
+        lastMessageId: conversation.lastMessageId || null,
+        lastMessageSeq: conversation.lastMessageSeq ?? null,
+        lastMessageSenderUserId: conversation.lastMessageSenderUserId || null,
+        lastMessageBody: conversation.lastMessageBody || null,
+        lastMessageContentType: conversation.lastMessageContentType || null,
+        lastMessageDeletedForAllAt: toIso(
+          conversation.lastMessageDeletedForAllAt,
+        ),
+        lastMessageCreatedAt: toIso(conversation.lastMessageCreatedAt),
+      };
+    },
+  );
 
   app.post("/dm", { preHandler: requireAuth }, async (request: any) => {
     const otherUserId = normalizeString(request.body?.otherUserId);
     ensure(otherUserId.length >= 8, 400, "Invalid user");
-    ensure(otherUserId !== request.user.userId, 400, "Cannot create DM with self");
+    ensure(
+      otherUserId !== request.user.userId,
+      400,
+      "Cannot create DM with self",
+    );
 
     await ensureUserExists(otherUserId);
-    const sendPolicy = await canSendDirectMessage(request.user.userId, otherUserId);
+    const sendPolicy = await canSendDirectMessage(
+      request.user.userId,
+      otherUserId,
+    );
     ensure(sendPolicy.allowed, 403, "User interaction is blocked");
 
     const memberIds = [request.user.userId, otherUserId].sort();
@@ -1630,7 +2012,7 @@ export default async function chatService(app: any) {
           requestStatus === "pending" ? otherUserId : null,
           ts,
           ts,
-        ]
+        ],
       );
 
       let conversationId = inserted.rows[0]?.conversation_id;
@@ -1638,7 +2020,7 @@ export default async function chatService(app: any) {
       if (!conversationId) {
         const existing = await client.query(
           `SELECT conversation_id FROM conversations WHERE type = 'dm' AND member_hash = $1`,
-          [memberHash]
+          [memberHash],
         );
         conversationId = existing.rows[0]?.conversation_id;
       }
@@ -1656,7 +2038,7 @@ export default async function chatService(app: any) {
            WHERE conversation_id = $1
              AND type = 'dm'
              AND dm_request_status <> 'active'`,
-          [conversationId, ts]
+          [conversationId, ts],
         );
       }
 
@@ -1666,13 +2048,13 @@ export default async function chatService(app: any) {
            VALUES ($1, $2, 'member', $3, NULL)
            ON CONFLICT (conversation_id, user_id)
            DO UPDATE SET left_at = NULL`,
-          [conversationId, memberId, ts]
+          [conversationId, memberId, ts],
         );
       }
 
       const statusRow = await client.query(
         `SELECT dm_request_status FROM conversations WHERE conversation_id = $1`,
-        [conversationId]
+        [conversationId],
       );
 
       return {
@@ -1687,18 +2069,29 @@ export default async function chatService(app: any) {
 
   app.post("/group", { preHandler: requireAuth }, async (request: any) => {
     const title = normalizeString(request.body?.title).slice(0, 120);
-    const memberIds = [...new Set([request.user.userId, ...normalizeIdList(request.body?.memberIds)])];
+    const memberIds = [
+      ...new Set([
+        request.user.userId,
+        ...normalizeIdList(request.body?.memberIds),
+      ]),
+    ];
 
     ensure(memberIds.length >= 2, 400, "Group must have at least 2 members");
     ensure(memberIds.length <= 1024, 400, "Group member limit exceeded");
     ensure(title.length > 0 && title.length <= 120, 400, "Invalid title");
 
-    const memberPlaceholders = memberIds.map((_, index) => `$${index + 1}`).join(", ");
+    const memberPlaceholders = memberIds
+      .map((_, index) => `$${index + 1}`)
+      .join(", ");
     const users = await queryMany(
       `SELECT user_id FROM users WHERE user_id IN (${memberPlaceholders}) AND deleted_at IS NULL`,
-      memberIds
+      memberIds,
     );
-    ensure(users.length === memberIds.length, 400, "One or more members not found");
+    ensure(
+      users.length === memberIds.length,
+      400,
+      "One or more members not found",
+    );
 
     const ts = now();
     const conversationId = generateId();
@@ -1709,14 +2102,19 @@ export default async function chatService(app: any) {
            created_at, updated_at
          )
          VALUES ($1, 'group', $2, NULL, $3, 0, $4, $5)`,
-        [conversationId, title, request.user.userId, ts, ts]
+        [conversationId, title, request.user.userId, ts, ts],
       );
 
       for (const memberId of memberIds) {
         await client.query(
           `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at, left_at)
            VALUES ($1, $2, $3, $4, NULL)`,
-          [conversationId, memberId, memberId === request.user.userId ? "owner" : "member", ts]
+          [
+            conversationId,
+            memberId,
+            memberId === request.user.userId ? "owner" : "member",
+            ts,
+          ],
         );
       }
     });
@@ -1724,426 +2122,575 @@ export default async function chatService(app: any) {
     return { conversationId };
   });
 
-  app.patch("/:conversationId", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.patch(
+    "/:conversationId",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensure(conversation.type === "group", 400, "Conversation is not a group");
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensure(conversation.type === "group", 400, "Conversation is not a group");
 
-    const groupMeta = getGroupMeta(conversation);
-    ensure(isGroupAdmin(groupMeta, request.user.userId), 403, "Admin privileges required");
+      const groupMeta = getGroupMeta(conversation);
+      ensure(
+        isGroupAdmin(groupMeta, request.user.userId),
+        403,
+        "Admin privileges required",
+      );
 
-    const title = normalizeString(request.body?.title).slice(0, 120);
-    ensure(title.length > 0, 400, "Invalid title");
+      const title = normalizeString(request.body?.title).slice(0, 120);
+      ensure(title.length > 0, 400, "Invalid title");
 
-    const ts = now();
-    await query(
-      `UPDATE conversations SET title = $2, updated_at = $3 WHERE conversation_id = $1`,
-      [conversationId, title, ts]
-    );
+      const ts = now();
+      await query(
+        `UPDATE conversations SET title = $2, updated_at = $3 WHERE conversation_id = $1`,
+        [conversationId, title, ts],
+      );
 
-    publishToConversation(groupMeta.memberIds, "CONVERSATION_UPDATED", {
-      conversationId,
-      title,
-      updatedAt: toIso(ts),
-    });
+      publishToConversation(groupMeta.memberIds, "CONVERSATION_UPDATED", {
+        conversationId,
+        title,
+        updatedAt: toIso(ts),
+      });
 
-    return {
-      success: true,
-      conversationId,
-      title,
-      updatedAt: toIso(ts),
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        title,
+        updatedAt: toIso(ts),
+      };
+    },
+  );
 
-  app.post("/:conversationId/members", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.post(
+    "/:conversationId/members",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensure(conversation.type === "group", 400, "Conversation is not a group");
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensure(conversation.type === "group", 400, "Conversation is not a group");
 
-    const groupMeta = getGroupMeta(conversation);
-    ensure(isGroupAdmin(groupMeta, request.user.userId), 403, "Admin privileges required");
+      const groupMeta = getGroupMeta(conversation);
+      ensure(
+        isGroupAdmin(groupMeta, request.user.userId),
+        403,
+        "Admin privileges required",
+      );
 
-    const incoming = normalizeIdList(request.body?.memberIds)
-      .filter((id) => id !== request.user.userId);
-    ensure(incoming.length > 0, 400, "No members to add");
+      const incoming = normalizeIdList(request.body?.memberIds).filter(
+        (id) => id !== request.user.userId,
+      );
+      ensure(incoming.length > 0, 400, "No members to add");
 
-    const existingSet = new Set(groupMeta.memberIds);
-    const added = incoming.filter((id) => !existingSet.has(id));
-    ensure(added.length > 0, 400, "No new members were added");
-    ensure(groupMeta.memberIds.length + added.length <= 1024, 400, "Group member limit exceeded");
+      const existingSet = new Set(groupMeta.memberIds);
+      const added = incoming.filter((id) => !existingSet.has(id));
+      ensure(added.length > 0, 400, "No new members were added");
+      ensure(
+        groupMeta.memberIds.length + added.length <= 1024,
+        400,
+        "Group member limit exceeded",
+      );
 
-    const addedPlaceholders = added.map((_, index) => `$${index + 1}`).join(", ");
-    const users = await queryMany(
-      `SELECT user_id FROM users WHERE user_id IN (${addedPlaceholders}) AND deleted_at IS NULL`,
-      added
-    );
-    ensure(users.length === added.length, 400, "One or more members not found");
+      const addedPlaceholders = added
+        .map((_, index) => `$${index + 1}`)
+        .join(", ");
+      const users = await queryMany(
+        `SELECT user_id FROM users WHERE user_id IN (${addedPlaceholders}) AND deleted_at IS NULL`,
+        added,
+      );
+      ensure(
+        users.length === added.length,
+        400,
+        "One or more members not found",
+      );
 
-    const ts = now();
-    await withTransaction(async (client) => {
-      for (const memberId of added) {
-        await client.query(
-          `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at, left_at)
+      const ts = now();
+      await withTransaction(async (client) => {
+        for (const memberId of added) {
+          await client.query(
+            `INSERT INTO conversation_members (conversation_id, user_id, role, joined_at, left_at)
            VALUES ($1, $2, 'member', $3, NULL)
            ON CONFLICT (conversation_id, user_id)
            DO UPDATE SET role = 'member', joined_at = EXCLUDED.joined_at, left_at = NULL`,
-          [conversationId, memberId, ts]
+            [conversationId, memberId, ts],
+          );
+        }
+
+        await client.query(
+          `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
+          [conversationId, ts],
         );
-      }
+      });
 
-      await client.query(
-        `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
-        [conversationId, ts]
+      const memberIds = [...groupMeta.memberIds, ...added];
+      publishToConversation(memberIds, "GROUP_MEMBER_ADDED", {
+        conversationId,
+        addedBy: request.user.userId,
+        memberIds: added,
+      });
+
+      return {
+        success: true,
+        conversationId,
+        added,
+        memberCount: memberIds.length,
+      };
+    },
+  );
+
+  app.delete(
+    "/:conversationId/members/:memberUserId",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const memberUserId = normalizeString(request.params.memberUserId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(memberUserId.length >= 8, 400, "Invalid user");
+
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
       );
-    });
+      ensure(conversation.type === "group", 400, "Conversation is not a group");
 
-    const memberIds = [...groupMeta.memberIds, ...added];
-    publishToConversation(memberIds, "GROUP_MEMBER_ADDED", {
-      conversationId,
-      addedBy: request.user.userId,
-      memberIds: added,
-    });
-
-    return {
-      success: true,
-      conversationId,
-      added,
-      memberCount: memberIds.length,
-    };
-  });
-
-  app.delete("/:conversationId/members/:memberUserId", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const memberUserId = normalizeString(request.params.memberUserId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(memberUserId.length >= 8, 400, "Invalid user");
-
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensure(conversation.type === "group", 400, "Conversation is not a group");
-
-    const groupMeta = getGroupMeta(conversation);
-    ensure(groupMeta.memberIds.includes(memberUserId), 404, "Member not found");
-
-    const selfLeave = memberUserId === request.user.userId;
-    if (!selfLeave) {
-      ensure(isGroupAdmin(groupMeta, request.user.userId), 403, "Admin privileges required");
-      if (memberUserId === groupMeta.ownerUserId) {
-        throw new HttpError(403, "Cannot remove group owner");
-      }
-      if (groupMeta.adminIds.includes(memberUserId) && request.user.userId !== groupMeta.ownerUserId) {
-        throw new HttpError(403, "Only owner can remove admins");
-      }
-    }
-
-    const remainingIds = groupMeta.memberIds.filter((id) => id !== memberUserId);
-    const remainingAdmins = groupMeta.adminIds.filter((id) => id !== memberUserId);
-    let ownerUserId = groupMeta.ownerUserId;
-
-    if (memberUserId === ownerUserId) {
-      ownerUserId = remainingAdmins[0] || remainingIds[0] || "";
-      if (ownerUserId && !remainingAdmins.includes(ownerUserId)) {
-        remainingAdmins.push(ownerUserId);
-      }
-    }
-
-    const ts = now();
-    await withTransaction(async (client) => {
-      await client.query(
-        `UPDATE conversation_members
-         SET left_at = $3, role = 'member'
-         WHERE conversation_id = $1 AND user_id = $2`,
-        [conversationId, memberUserId, ts]
+      const groupMeta = getGroupMeta(conversation);
+      ensure(
+        groupMeta.memberIds.includes(memberUserId),
+        404,
+        "Member not found",
       );
 
-      for (const memberId of remainingIds) {
-        const role = memberId === ownerUserId
-          ? "owner"
-          : (remainingAdmins.includes(memberId) ? "admin" : "member");
+      const selfLeave = memberUserId === request.user.userId;
+      if (!selfLeave) {
+        ensure(
+          isGroupAdmin(groupMeta, request.user.userId),
+          403,
+          "Admin privileges required",
+        );
+        if (memberUserId === groupMeta.ownerUserId) {
+          throw new HttpError(403, "Cannot remove group owner");
+        }
+        if (
+          groupMeta.adminIds.includes(memberUserId) &&
+          request.user.userId !== groupMeta.ownerUserId
+        ) {
+          throw new HttpError(403, "Only owner can remove admins");
+        }
+      }
+
+      const remainingIds = groupMeta.memberIds.filter(
+        (id) => id !== memberUserId,
+      );
+      const remainingAdmins = groupMeta.adminIds.filter(
+        (id) => id !== memberUserId,
+      );
+      let ownerUserId = groupMeta.ownerUserId;
+
+      if (memberUserId === ownerUserId) {
+        ownerUserId = remainingAdmins[0] || remainingIds[0] || "";
+        if (ownerUserId && !remainingAdmins.includes(ownerUserId)) {
+          remainingAdmins.push(ownerUserId);
+        }
+      }
+
+      const ts = now();
+      await withTransaction(async (client) => {
         await client.query(
           `UPDATE conversation_members
-           SET role = $3
-           WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL`,
-          [conversationId, memberId, role]
-        );
-      }
-
-      await client.query(
-        `UPDATE conversations
-         SET owner_user_id = $2, updated_at = $3
-         WHERE conversation_id = $1`,
-        [conversationId, ownerUserId || null, ts]
-      );
-    });
-
-    publishToConversation(remainingIds, "GROUP_MEMBER_REMOVED", {
-      conversationId,
-      removedBy: request.user.userId,
-      memberUserId,
-      removedAt: toIso(ts),
-    });
-
-    return {
-      success: true,
-      conversationId,
-      removedUserId: memberUserId,
-      left: selfLeave,
-    };
-  });
-
-  app.post("/:conversationId/leave", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-
-    const memberUserId = request.user.userId;
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensure(conversation.type === "group", 400, "Conversation is not a group");
-
-    const groupMeta = getGroupMeta(conversation);
-    ensure(groupMeta.memberIds.includes(memberUserId), 403, "Not a member");
-
-    const remainingIds = groupMeta.memberIds.filter((id) => id !== memberUserId);
-    const remainingAdmins = groupMeta.adminIds.filter((id) => id !== memberUserId);
-    let ownerUserId = groupMeta.ownerUserId;
-
-    if (memberUserId === ownerUserId) {
-      ownerUserId = remainingAdmins[0] || remainingIds[0] || "";
-      if (ownerUserId && !remainingAdmins.includes(ownerUserId)) {
-        remainingAdmins.push(ownerUserId);
-      }
-    }
-
-    const ts = now();
-    await withTransaction(async (client) => {
-      await client.query(
-        `UPDATE conversation_members
          SET left_at = $3, role = 'member'
          WHERE conversation_id = $1 AND user_id = $2`,
-        [conversationId, memberUserId, ts]
-      );
+          [conversationId, memberUserId, ts],
+        );
 
-      for (const memberId of remainingIds) {
-        const role = memberId === ownerUserId
-          ? "owner"
-          : (remainingAdmins.includes(memberId) ? "admin" : "member");
-        await client.query(
-          `UPDATE conversation_members
+        for (const memberId of remainingIds) {
+          const role =
+            memberId === ownerUserId
+              ? "owner"
+              : remainingAdmins.includes(memberId)
+                ? "admin"
+                : "member";
+          await client.query(
+            `UPDATE conversation_members
            SET role = $3
            WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL`,
-          [conversationId, memberId, role]
-        );
-      }
+            [conversationId, memberId, role],
+          );
+        }
 
-      await client.query(
-        `UPDATE conversations
+        await client.query(
+          `UPDATE conversations
          SET owner_user_id = $2, updated_at = $3
          WHERE conversation_id = $1`,
-        [conversationId, ownerUserId || null, ts]
+          [conversationId, ownerUserId || null, ts],
+        );
+      });
+
+      publishToConversation(remainingIds, "GROUP_MEMBER_REMOVED", {
+        conversationId,
+        removedBy: request.user.userId,
+        memberUserId,
+        removedAt: toIso(ts),
+      });
+
+      return {
+        success: true,
+        conversationId,
+        removedUserId: memberUserId,
+        left: selfLeave,
+      };
+    },
+  );
+
+  app.post(
+    "/:conversationId/leave",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+
+      const memberUserId = request.user.userId;
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
       );
-    });
+      ensure(conversation.type === "group", 400, "Conversation is not a group");
 
-    publishToConversation(remainingIds, "GROUP_MEMBER_LEFT", {
-      conversationId,
-      userId: memberUserId,
-      leftAt: toIso(ts),
-    });
+      const groupMeta = getGroupMeta(conversation);
+      ensure(groupMeta.memberIds.includes(memberUserId), 403, "Not a member");
 
-    return {
-      success: true,
-      conversationId,
-    };
-  });
+      const remainingIds = groupMeta.memberIds.filter(
+        (id) => id !== memberUserId,
+      );
+      const remainingAdmins = groupMeta.adminIds.filter(
+        (id) => id !== memberUserId,
+      );
+      let ownerUserId = groupMeta.ownerUserId;
 
-  app.post("/:conversationId/admins", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const userId = normalizeString(request.body?.userId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(userId.length >= 8, 400, "Invalid user");
+      if (memberUserId === ownerUserId) {
+        ownerUserId = remainingAdmins[0] || remainingIds[0] || "";
+        if (ownerUserId && !remainingAdmins.includes(ownerUserId)) {
+          remainingAdmins.push(ownerUserId);
+        }
+      }
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensure(conversation.type === "group", 400, "Conversation is not a group");
-    const groupMeta = getGroupMeta(conversation);
-    ensure(isGroupAdmin(groupMeta, request.user.userId), 403, "Admin privileges required");
-    ensure(groupMeta.memberIds.includes(userId), 404, "Member not found");
-    ensure(userId !== groupMeta.ownerUserId, 400, "Owner role cannot be changed");
+      const ts = now();
+      await withTransaction(async (client) => {
+        await client.query(
+          `UPDATE conversation_members
+         SET left_at = $3, role = 'member'
+         WHERE conversation_id = $1 AND user_id = $2`,
+          [conversationId, memberUserId, ts],
+        );
 
-    const ts = now();
-    await query(
-      `UPDATE conversation_members
+        for (const memberId of remainingIds) {
+          const role =
+            memberId === ownerUserId
+              ? "owner"
+              : remainingAdmins.includes(memberId)
+                ? "admin"
+                : "member";
+          await client.query(
+            `UPDATE conversation_members
+           SET role = $3
+           WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL`,
+            [conversationId, memberId, role],
+          );
+        }
+
+        await client.query(
+          `UPDATE conversations
+         SET owner_user_id = $2, updated_at = $3
+         WHERE conversation_id = $1`,
+          [conversationId, ownerUserId || null, ts],
+        );
+      });
+
+      publishToConversation(remainingIds, "GROUP_MEMBER_LEFT", {
+        conversationId,
+        userId: memberUserId,
+        leftAt: toIso(ts),
+      });
+
+      return {
+        success: true,
+        conversationId,
+      };
+    },
+  );
+
+  app.post(
+    "/:conversationId/admins",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const userId = normalizeString(request.body?.userId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(userId.length >= 8, 400, "Invalid user");
+
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensure(conversation.type === "group", 400, "Conversation is not a group");
+      const groupMeta = getGroupMeta(conversation);
+      ensure(
+        isGroupAdmin(groupMeta, request.user.userId),
+        403,
+        "Admin privileges required",
+      );
+      ensure(groupMeta.memberIds.includes(userId), 404, "Member not found");
+      ensure(
+        userId !== groupMeta.ownerUserId,
+        400,
+        "Owner role cannot be changed",
+      );
+
+      const ts = now();
+      await query(
+        `UPDATE conversation_members
        SET role = 'admin'
        WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL`,
-      [conversationId, userId]
-    );
-    await query(
-      `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
-      [conversationId, ts]
-    );
+        [conversationId, userId],
+      );
+      await query(
+        `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
+        [conversationId, ts],
+      );
 
-    publishToConversation(groupMeta.memberIds, "GROUP_MEMBER_ROLE", {
-      conversationId,
-      changedBy: request.user.userId,
-      userId,
-      role: "admin",
-    });
+      publishToConversation(groupMeta.memberIds, "GROUP_MEMBER_ROLE", {
+        conversationId,
+        changedBy: request.user.userId,
+        userId,
+        role: "admin",
+      });
 
-    return {
-      success: true,
-      conversationId,
-      userId,
-      role: "admin",
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        userId,
+        role: "admin",
+      };
+    },
+  );
 
-  app.delete("/:conversationId/admins/:memberUserId", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const memberUserId = normalizeString(request.params.memberUserId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(memberUserId.length >= 8, 400, "Invalid user");
+  app.delete(
+    "/:conversationId/admins/:memberUserId",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const memberUserId = normalizeString(request.params.memberUserId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(memberUserId.length >= 8, 400, "Invalid user");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensure(conversation.type === "group", 400, "Conversation is not a group");
-    const groupMeta = getGroupMeta(conversation);
-    ensure(request.user.userId === groupMeta.ownerUserId, 403, "Only owner can remove admins");
-    ensure(groupMeta.adminIds.includes(memberUserId), 400, "Member is not an admin");
-    ensure(memberUserId !== groupMeta.ownerUserId, 400, "Cannot demote owner");
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensure(conversation.type === "group", 400, "Conversation is not a group");
+      const groupMeta = getGroupMeta(conversation);
+      ensure(
+        request.user.userId === groupMeta.ownerUserId,
+        403,
+        "Only owner can remove admins",
+      );
+      ensure(
+        groupMeta.adminIds.includes(memberUserId),
+        400,
+        "Member is not an admin",
+      );
+      ensure(
+        memberUserId !== groupMeta.ownerUserId,
+        400,
+        "Cannot demote owner",
+      );
 
-    const ts = now();
-    await query(
-      `UPDATE conversation_members
+      const ts = now();
+      await query(
+        `UPDATE conversation_members
        SET role = 'member'
        WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL`,
-      [conversationId, memberUserId]
-    );
-    await query(
-      `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
-      [conversationId, ts]
-    );
+        [conversationId, memberUserId],
+      );
+      await query(
+        `UPDATE conversations SET updated_at = $2 WHERE conversation_id = $1`,
+        [conversationId, ts],
+      );
 
-    publishToConversation(groupMeta.memberIds, "GROUP_MEMBER_ROLE", {
-      conversationId,
-      changedBy: request.user.userId,
-      userId: memberUserId,
-      role: "member",
-    });
+      publishToConversation(groupMeta.memberIds, "GROUP_MEMBER_ROLE", {
+        conversationId,
+        changedBy: request.user.userId,
+        userId: memberUserId,
+        role: "member",
+      });
 
-    return {
-      success: true,
-      conversationId,
-      userId: memberUserId,
-      role: "member",
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        userId: memberUserId,
+        role: "member",
+      };
+    },
+  );
 
-  app.get("/:conversationId/members", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.get(
+    "/:conversationId/members",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    const groupMeta = getGroupMeta(conversation);
-    return (conversation.members || []).map((member) => ({
-      userId: member.userId,
-      role: conversation.type === "group" ? roleForUser(groupMeta, member.userId) : "member",
-      joinedAt: toIso(member.joinedAt),
-      leftAt: toIso(member.leftAt),
-    }));
-  });
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      const groupMeta = getGroupMeta(conversation);
+      return (conversation.members || []).map((member) => ({
+        userId: member.userId,
+        role:
+          conversation.type === "group"
+            ? roleForUser(groupMeta, member.userId)
+            : "member",
+        joinedAt: toIso(member.joinedAt),
+        leftAt: toIso(member.leftAt),
+      }));
+    },
+  );
 
-  app.get("/:conversationId/messages", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.get(
+    "/:conversationId/messages",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const preference = await loadPreference(conversationId, request.user.userId);
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const preference = await loadPreference(
+        conversationId,
+        request.user.userId,
+      );
 
-    const limit = parseLimit(request.query?.limit, 50, 1, 100);
-    const params: unknown[] = [conversationId, preference.clearedBeforeSeq];
-    let where = "conversation_id = $1 AND seq > $2";
-    const beforeSeqRaw = request.query?.beforeSeq;
-    if (beforeSeqRaw !== undefined) {
-      const beforeSeq = Number.parseInt(String(beforeSeqRaw), 10);
-      if (!Number.isNaN(beforeSeq) && beforeSeq > 0) {
-        params.push(beforeSeq);
-        where += ` AND seq < $${params.length}`;
+      const limit = parseLimit(request.query?.limit, 50, 1, 100);
+      const params: unknown[] = [conversationId, preference.clearedBeforeSeq];
+      let where = "conversation_id = $1 AND seq > $2";
+      const beforeSeqRaw = request.query?.beforeSeq;
+      if (beforeSeqRaw !== undefined) {
+        const beforeSeq = Number.parseInt(String(beforeSeqRaw), 10);
+        if (!Number.isNaN(beforeSeq) && beforeSeq > 0) {
+          params.push(beforeSeq);
+          where += ` AND seq < $${params.length}`;
+        }
       }
-    }
-    params.push(limit);
+      params.push(limit);
 
-    const messages = await queryMany(
-      `SELECT *
+      const messages = await queryMany(
+        `SELECT *
        FROM messages
        WHERE ${where}
        ORDER BY seq DESC
        LIMIT $${params.length}`,
-      params
-    );
+        params,
+      );
 
-    return (await loadMessagesWithReactions(messages.reverse()));
-  });
+      return await loadMessagesWithReactions(messages.reverse());
+    },
+  );
 
-  app.get("/:conversationId/messages/:messageId/details", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const messageId = normalizeString(request.params.messageId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(messageId.length >= 8, 400, "Invalid message");
+  app.get(
+    "/:conversationId/messages/:messageId/details",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const messageId = normalizeString(request.params.messageId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(messageId.length >= 8, 400, "Invalid message");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const preference = await loadPreference(conversationId, request.user.userId);
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const preference = await loadPreference(
+        conversationId,
+        request.user.userId,
+      );
 
-    const row = await queryOne(
-      `SELECT * FROM messages WHERE conversation_id = $1 AND message_id = $2`,
-      [conversationId, messageId]
-    );
-    if (!row) {
-      throw new HttpError(404, "Message not found");
-    }
-    if (Number(row.seq || 0) <= preference.clearedBeforeSeq) {
-      throw new HttpError(404, "Message not found");
-    }
+      const row = await queryOne(
+        `SELECT * FROM messages WHERE conversation_id = $1 AND message_id = $2`,
+        [conversationId, messageId],
+      );
+      if (!row) {
+        throw new HttpError(404, "Message not found");
+      }
+      if (Number(row.seq || 0) <= preference.clearedBeforeSeq) {
+        throw new HttpError(404, "Message not found");
+      }
 
-    const reactionMap = await loadReactions([messageId]);
-    const receipts = await queryMany(
-      `SELECT user_id, last_read_seq, last_delivered_seq, updated_at
+      const hydratedRows = await hydrateMessageMedia([row]);
+      const hydratedMessage = hydratedRows[0] || row;
+      const reactionMap = await loadReactions([messageId]);
+      const receipts = await queryMany(
+        `SELECT user_id, last_read_seq, last_delivered_seq, updated_at
        FROM conversation_reads
        WHERE conversation_id = $1 AND user_id = ANY($2::text[])`,
-      [conversationId, conversation.memberIds || []]
-    );
-    const receiptMap = new Map(receipts.map((item) => [String(item.user_id), item]));
-    const messageSeq = Number(row.seq || 0);
+        [conversationId, conversation.memberIds || []],
+      );
+      const receiptMap = new Map(
+        receipts.map((item) => [String(item.user_id), item]),
+      );
+      const messageSeq = Number(row.seq || 0);
 
-    return {
-      message: mapMessage(row, reactionMap.get(messageId) || []),
-      receipts: (conversation.memberIds || []).map((userId: string) => {
-        const receipt = receiptMap.get(userId);
-        const lastReadSeq = Number(receipt?.last_read_seq || 0);
-        const lastDeliveredSeq = Number(receipt?.last_delivered_seq || 0);
-        return {
-          userId,
-          delivered: lastDeliveredSeq >= messageSeq,
-          seen: lastReadSeq >= messageSeq,
-          lastDeliveredSeq,
-          lastReadSeq,
-      updatedAt: toIso(receipt?.updated_at),
-        };
-      }),
-    };
-  });
+      return {
+        message: mapMessage(hydratedMessage, reactionMap.get(messageId) || []),
+        receipts: (conversation.memberIds || []).map((userId: string) => {
+          const receipt = receiptMap.get(userId);
+          const lastReadSeq = Number(receipt?.last_read_seq || 0);
+          const lastDeliveredSeq = Number(receipt?.last_delivered_seq || 0);
+          return {
+            userId,
+            delivered: lastDeliveredSeq >= messageSeq,
+            seen: lastReadSeq >= messageSeq,
+            lastDeliveredSeq,
+            lastReadSeq,
+            updatedAt: toIso(receipt?.updated_at),
+          };
+        }),
+      };
+    },
+  );
 
-  app.get("/:conversationId/saved-messages", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.get(
+    "/:conversationId/saved-messages",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const preference = await loadPreference(conversationId, request.user.userId);
-    const limit = parseLimit(request.query?.limit, 30, 1, 80);
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const preference = await loadPreference(
+        conversationId,
+        request.user.userId,
+      );
+      const limit = parseLimit(request.query?.limit, 30, 1, 80);
 
-    const rows = await queryMany(
-      `SELECT m.*, csm.saved_at, csm.note
+      const rows = await queryMany(
+        `SELECT m.*, csm.saved_at, csm.note
        FROM chat_saved_messages csm
        JOIN messages m ON m.message_id = csm.message_id
        WHERE csm.conversation_id = $1
@@ -2151,207 +2698,268 @@ export default async function chatService(app: any) {
          AND m.seq > $4
        ORDER BY csm.saved_at DESC
        LIMIT $3`,
-      [conversationId, request.user.userId, limit, preference.clearedBeforeSeq]
-    );
-    const messages = await loadMessagesWithReactions(rows);
+        [
+          conversationId,
+          request.user.userId,
+          limit,
+          preference.clearedBeforeSeq,
+        ],
+      );
+      const messages = await loadMessagesWithReactions(rows);
 
-    return messages.map((message, index) => ({
-      ...message,
-      savedAt: toIso(rows[index]?.saved_at),
-      note: rows[index]?.note || "",
-    }));
-  });
+      return messages.map((message, index) => ({
+        ...message,
+        savedAt: toIso(rows[index]?.saved_at),
+        note: rows[index]?.note || "",
+      }));
+    },
+  );
 
-  app.post("/:conversationId/messages/:messageId/save", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const messageId = normalizeString(request.params.messageId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(messageId.length >= 8, 400, "Invalid message");
+  app.post(
+    "/:conversationId/messages/:messageId/save",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const messageId = normalizeString(request.params.messageId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(messageId.length >= 8, 400, "Invalid message");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const preference = await loadPreference(conversationId, request.user.userId);
-    const note = normalizeString(request.body?.note).slice(0, 500);
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const preference = await loadPreference(
+        conversationId,
+        request.user.userId,
+      );
+      const note = normalizeString(request.body?.note).slice(0, 500);
 
-    const message = await queryOne(
-      `SELECT message_id, seq
+      const message = await queryOne(
+        `SELECT message_id, seq
        FROM messages
        WHERE conversation_id = $1 AND message_id = $2 AND deleted_for_all_at IS NULL`,
-      [conversationId, messageId]
-    );
-    if (!message || Number(message.seq || 0) <= preference.clearedBeforeSeq) {
-      throw new HttpError(404, "Message not found");
-    }
+        [conversationId, messageId],
+      );
+      if (!message || Number(message.seq || 0) <= preference.clearedBeforeSeq) {
+        throw new HttpError(404, "Message not found");
+      }
 
-    const ts = now();
-    await query(
-      `INSERT INTO chat_saved_messages (conversation_id, message_id, user_id, saved_at, note)
+      const ts = now();
+      await query(
+        `INSERT INTO chat_saved_messages (conversation_id, message_id, user_id, saved_at, note)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (conversation_id, message_id, user_id)
        DO UPDATE SET saved_at = EXCLUDED.saved_at,
                      note = EXCLUDED.note`,
-      [conversationId, messageId, request.user.userId, ts, note]
-    );
+        [conversationId, messageId, request.user.userId, ts, note],
+      );
 
-    return {
-      success: true,
-      conversationId,
-      messageId,
-      savedAt: toIso(ts),
-      note,
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        messageId,
+        savedAt: toIso(ts),
+        note,
+      };
+    },
+  );
 
-  app.delete("/:conversationId/messages/:messageId/save", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const messageId = normalizeString(request.params.messageId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(messageId.length >= 8, 400, "Invalid message");
+  app.delete(
+    "/:conversationId/messages/:messageId/save",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const messageId = normalizeString(request.params.messageId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(messageId.length >= 8, 400, "Invalid message");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
 
-    const result = await query(
-      `DELETE FROM chat_saved_messages
+      const result = await query(
+        `DELETE FROM chat_saved_messages
        WHERE conversation_id = $1
          AND message_id = $2
          AND user_id = $3`,
-      [conversationId, messageId, request.user.userId]
-    );
+        [conversationId, messageId, request.user.userId],
+      );
 
-    return {
-      success: true,
-      conversationId,
-      messageId,
-      removed: (result.rowCount || 0) > 0,
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        messageId,
+        removed: (result.rowCount || 0) > 0,
+      };
+    },
+  );
 
-  app.post("/:conversationId/messages/:messageId/pin", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const messageId = normalizeString(request.params.messageId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(messageId.length >= 8, 400, "Invalid message");
+  app.post(
+    "/:conversationId/messages/:messageId/pin",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const messageId = normalizeString(request.params.messageId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(messageId.length >= 8, 400, "Invalid message");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const preference = await loadPreference(conversationId, request.user.userId);
-    if (conversation.type === "group") {
-      ensure(isGroupAdmin(getGroupMeta(conversation), request.user.userId), 403, "Admin privileges required");
-    }
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const preference = await loadPreference(
+        conversationId,
+        request.user.userId,
+      );
+      if (conversation.type === "group") {
+        ensure(
+          isGroupAdmin(getGroupMeta(conversation), request.user.userId),
+          403,
+          "Admin privileges required",
+        );
+      }
 
-    const message = await queryOne(
-      `SELECT message_id, seq FROM messages WHERE conversation_id = $1 AND message_id = $2`,
-      [conversationId, messageId]
-    );
-    if (!message || Number(message.seq || 0) <= preference.clearedBeforeSeq) {
-      throw new HttpError(404, "Message not found");
-    }
+      const message = await queryOne(
+        `SELECT message_id, seq FROM messages WHERE conversation_id = $1 AND message_id = $2`,
+        [conversationId, messageId],
+      );
+      if (!message || Number(message.seq || 0) <= preference.clearedBeforeSeq) {
+        throw new HttpError(404, "Message not found");
+      }
 
-    const ts = now();
-    await query(
-      `INSERT INTO chat_pinned_messages (
+      const ts = now();
+      await query(
+        `INSERT INTO chat_pinned_messages (
          conversation_id, message_id, pinned_by_user_id, pinned_at
        )
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (conversation_id, message_id)
        DO UPDATE SET pinned_by_user_id = EXCLUDED.pinned_by_user_id,
                      pinned_at = EXCLUDED.pinned_at`,
-      [conversationId, messageId, request.user.userId, ts]
-    );
+        [conversationId, messageId, request.user.userId, ts],
+      );
 
-    publishToConversation(conversation.memberIds, "MESSAGE_PINNED", {
-      conversationId,
-      messageId,
-      pinnedByUserId: request.user.userId,
-      pinnedAt: toIso(ts),
-    });
+      publishToConversation(conversation.memberIds, "MESSAGE_PINNED", {
+        conversationId,
+        messageId,
+        pinnedByUserId: request.user.userId,
+        pinnedAt: toIso(ts),
+      });
 
-    return {
-      success: true,
-      conversationId,
-      messageId,
-      pinnedByUserId: request.user.userId,
-      pinnedAt: toIso(ts),
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        messageId,
+        pinnedByUserId: request.user.userId,
+        pinnedAt: toIso(ts),
+      };
+    },
+  );
 
-  app.delete("/:conversationId/messages/:messageId/pin", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const messageId = normalizeString(request.params.messageId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(messageId.length >= 8, 400, "Invalid message");
+  app.delete(
+    "/:conversationId/messages/:messageId/pin",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const messageId = normalizeString(request.params.messageId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(messageId.length >= 8, 400, "Invalid message");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const preference = await loadPreference(conversationId, request.user.userId);
-    if (conversation.type === "group") {
-      ensure(isGroupAdmin(getGroupMeta(conversation), request.user.userId), 403, "Admin privileges required");
-    }
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const preference = await loadPreference(
+        conversationId,
+        request.user.userId,
+      );
+      if (conversation.type === "group") {
+        ensure(
+          isGroupAdmin(getGroupMeta(conversation), request.user.userId),
+          403,
+          "Admin privileges required",
+        );
+      }
 
-    const message = await queryOne(
-      `SELECT message_id, seq FROM messages WHERE conversation_id = $1 AND message_id = $2`,
-      [conversationId, messageId]
-    );
-    if (!message || Number(message.seq || 0) <= preference.clearedBeforeSeq) {
-      throw new HttpError(404, "Message not found");
-    }
+      const message = await queryOne(
+        `SELECT message_id, seq FROM messages WHERE conversation_id = $1 AND message_id = $2`,
+        [conversationId, messageId],
+      );
+      if (!message || Number(message.seq || 0) <= preference.clearedBeforeSeq) {
+        throw new HttpError(404, "Message not found");
+      }
 
-    await query(
-      `DELETE FROM chat_pinned_messages WHERE conversation_id = $1 AND message_id = $2`,
-      [conversationId, messageId]
-    );
+      await query(
+        `DELETE FROM chat_pinned_messages WHERE conversation_id = $1 AND message_id = $2`,
+        [conversationId, messageId],
+      );
 
-    publishToConversation(conversation.memberIds, "MESSAGE_UNPINNED", {
-      conversationId,
-      messageId,
-      unpinnedByUserId: request.user.userId,
-      unpinnedAt: toIso(now()),
-    });
+      publishToConversation(conversation.memberIds, "MESSAGE_UNPINNED", {
+        conversationId,
+        messageId,
+        unpinnedByUserId: request.user.userId,
+        unpinnedAt: toIso(now()),
+      });
 
-    return {
-      success: true,
-      conversationId,
-      messageId,
-    };
-  });
+      return {
+        success: true,
+        conversationId,
+        messageId,
+      };
+    },
+  );
 
-  app.get("/:conversationId/reads", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.get(
+    "/:conversationId/reads",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const memberIds = Array.isArray(conversation.memberIds) ? conversation.memberIds : [];
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const memberIds = Array.isArray(conversation.memberIds)
+        ? conversation.memberIds
+        : [];
 
-    const reads = await queryMany(
-      `SELECT user_id, last_read_seq, last_delivered_seq, updated_at
+      const reads = await queryMany(
+        `SELECT user_id, last_read_seq, last_delivered_seq, updated_at
        FROM conversation_reads
        WHERE conversation_id = $1 AND user_id = ANY($2::text[])`,
-      [conversationId, memberIds]
-    );
+        [conversationId, memberIds],
+      );
 
-    const readsByUserId = new Map(
-      reads.map((item) => [
-        String(item.user_id),
-        {
-          userId: String(item.user_id),
-          lastReadSeq: Number(item.last_read_seq || 0),
-          lastDeliveredSeq: Number(item.last_delivered_seq || 0),
-          updatedAt: toIso(item.updated_at),
-        },
-      ])
-    );
+      const readsByUserId = new Map(
+        reads.map((item) => [
+          String(item.user_id),
+          {
+            userId: String(item.user_id),
+            lastReadSeq: Number(item.last_read_seq || 0),
+            lastDeliveredSeq: Number(item.last_delivered_seq || 0),
+            updatedAt: toIso(item.updated_at),
+          },
+        ]),
+      );
 
-    return memberIds.map((userId) => (
-      readsByUserId.get(userId) || {
-        userId,
-        lastReadSeq: 0,
-        lastDeliveredSeq: 0,
-        updatedAt: null,
-      }
-    ));
-  });
+      return memberIds.map(
+        (userId) =>
+          readsByUserId.get(userId) || {
+            userId,
+            lastReadSeq: 0,
+            lastDeliveredSeq: 0,
+            updatedAt: null,
+          },
+      );
+    },
+  );
 
   app.post("/sync", { preHandler: requireAuth }, async (request: any) => {
     const payload = Array.isArray(request.body?.conversations)
@@ -2361,22 +2969,27 @@ export default async function chatService(app: any) {
       request.body?.limitPerConversation,
       50,
       1,
-      100
+      100,
     );
 
-    const normalized: Array<{ conversationId: string; lastKnownSeq: number }> = [];
+    const normalized: Array<{ conversationId: string; lastKnownSeq: number }> =
+      [];
     const seen = new Set<string>();
     for (const row of payload) {
       if (!row || typeof row !== "object") continue;
       const conversationId = normalizeString(row.conversationId);
       if (conversationId.length < 8 || seen.has(conversationId)) continue;
       seen.add(conversationId);
-      const lastKnownSeqRaw = Number.parseInt(String(row.lastKnownSeq || "0"), 10);
+      const lastKnownSeqRaw = Number.parseInt(
+        String(row.lastKnownSeq || "0"),
+        10,
+      );
       normalized.push({
         conversationId,
-        lastKnownSeq: Number.isNaN(lastKnownSeqRaw) || lastKnownSeqRaw < 0
-          ? 0
-          : lastKnownSeqRaw,
+        lastKnownSeq:
+          Number.isNaN(lastKnownSeqRaw) || lastKnownSeqRaw < 0
+            ? 0
+            : lastKnownSeqRaw,
       });
     }
 
@@ -2384,7 +2997,9 @@ export default async function chatService(app: any) {
       return { conversations: [] };
     }
 
-    const requestedConversationIds = normalized.map((item) => item.conversationId);
+    const requestedConversationIds = normalized.map(
+      (item) => item.conversationId,
+    );
     const conversationPlaceholders = requestedConversationIds
       .map((_, index) => `$${index + 2}`)
       .join(", ");
@@ -2396,10 +3011,12 @@ export default async function chatService(app: any) {
        WHERE cm.user_id = $1
          AND cm.left_at IS NULL
          AND c.conversation_id IN (${conversationPlaceholders})`,
-      [request.user.userId, ...requestedConversationIds]
+      [request.user.userId, ...requestedConversationIds],
     );
     const allowedConversations = await hydrateConversations(allowedRows);
-    const allowedMap = new Map(allowedConversations.map((item) => [item.conversationId, item]));
+    const allowedMap = new Map(
+      allowedConversations.map((item) => [item.conversationId, item]),
+    );
 
     const conversations: Array<any> = [];
     for (const item of normalized) {
@@ -2408,15 +3025,19 @@ export default async function chatService(app: any) {
       if (
         meta.type === "dm" &&
         (meta.dmRequestStatus === "declined" ||
-          (
-            meta.dmRequestStatus === "pending" &&
-            meta.dmRequestRecipientUserId === request.user.userId
-          ))
+          (meta.dmRequestStatus === "pending" &&
+            meta.dmRequestRecipientUserId === request.user.userId))
       ) {
         continue;
       }
-      const preference = await loadPreference(item.conversationId, request.user.userId);
-      const lastKnownSeq = Math.max(item.lastKnownSeq, preference.clearedBeforeSeq);
+      const preference = await loadPreference(
+        item.conversationId,
+        request.user.userId,
+      );
+      const lastKnownSeq = Math.max(
+        item.lastKnownSeq,
+        preference.clearedBeforeSeq,
+      );
 
       const deltaMessages = await queryMany(
         `SELECT *
@@ -2424,7 +3045,7 @@ export default async function chatService(app: any) {
          WHERE conversation_id = $1 AND seq > $2
          ORDER BY seq ASC
          LIMIT $3`,
-        [item.conversationId, lastKnownSeq, limitPerConversation]
+        [item.conversationId, lastKnownSeq, limitPerConversation],
       );
 
       conversations.push({
@@ -2439,249 +3060,378 @@ export default async function chatService(app: any) {
     return { conversations };
   });
 
-  app.post("/:conversationId/messages", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+  app.post(
+    "/:conversationId/messages",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    await ensureDmSendAllowed(conversation, request.user.userId);
-    const memberIds = Array.isArray(conversation.memberIds) ? conversation.memberIds : [];
-    if (conversation.type === "dm") {
-      ensure(conversation.dmRequestStatus !== "declined", 403, "Message request was removed");
-      if (
-        conversation.dmRequestStatus === "pending" &&
-        conversation.dmRequestRecipientUserId === request.user.userId
-      ) {
-        throw new HttpError(403, "Accept the message request before replying");
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      await ensureDmSendAllowed(conversation, request.user.userId);
+      const memberIds = Array.isArray(conversation.memberIds)
+        ? conversation.memberIds
+        : [];
+      if (conversation.type === "dm") {
+        ensure(
+          conversation.dmRequestStatus !== "declined",
+          403,
+          "Message request was removed",
+        );
+        if (
+          conversation.dmRequestStatus === "pending" &&
+          conversation.dmRequestRecipientUserId === request.user.userId
+        ) {
+          throw new HttpError(
+            403,
+            "Accept the message request before replying",
+          );
+        }
       }
-    }
 
-    const body = normalizeString(request.body?.body);
-    const contentType = normalizeString(request.body?.contentType || "text").toLowerCase();
-    const deviceId = normalizeString(request.body?.deviceId);
-    const tempId = normalizeString(request.body?.tempId);
-    const clientMessageId = normalizeString(
-      request.body?.clientMessageId || request.body?.client_message_id || tempId
-    );
-    const mediaAssetId = normalizeString(request.body?.mediaAssetId);
-    const replyToMessageId = normalizeString(request.body?.replyToMessageId);
+      const body = normalizeString(request.body?.body);
+      const contentType = normalizeString(
+        request.body?.contentType || "text",
+      ).toLowerCase();
+      const deviceId = normalizeString(request.body?.deviceId);
+      const tempId = normalizeString(request.body?.tempId);
+      const clientMessageId = normalizeString(
+        request.body?.clientMessageId ||
+          request.body?.client_message_id ||
+          tempId,
+      );
+      const mediaAssetId = normalizeString(request.body?.mediaAssetId);
+      const replyToMessageId = normalizeString(request.body?.replyToMessageId);
 
-    ensure(MESSAGE_TYPES.has(contentType), 400, "Invalid content type");
-    ensure(body.length <= 65535, 400, "Invalid body");
-    if (contentType === "text" || contentType === "system") {
-      ensure(body.length > 0, 400, "Invalid body");
-    } else {
-      ensure(mediaAssetId.length > 0, 400, "Attachment media is required");
-    }
-    if (mediaAssetId) {
-      await ensureOwnedMediaAsset(mediaAssetId, request.user.userId);
-    }
-    ensure(deviceId.length >= 3 && deviceId.length <= 128, 400, "Invalid device");
+      ensure(MESSAGE_TYPES.has(contentType), 400, "Invalid content type");
+      ensure(body.length <= 65535, 400, "Invalid body");
+      if (contentType === "text" || contentType === "system") {
+        ensure(body.length > 0, 400, "Invalid body");
+      } else {
+        ensure(mediaAssetId.length > 0, 400, "Attachment media is required");
+      }
+      if (mediaAssetId) {
+        await ensureOwnedMediaAsset(mediaAssetId, request.user.userId);
+      }
+      ensure(
+        deviceId.length >= 3 && deviceId.length <= 128,
+        400,
+        "Invalid device",
+      );
 
-    const result = await createMessage(conversation, {
-      senderUserId: request.user.userId,
-      senderDeviceId: deviceId,
-      body,
-      contentType,
-      mediaAssetId: mediaAssetId || null,
-      replyToMessageId: replyToMessageId || null,
-      clientMessageId: clientMessageId || null,
-      clientTimestamp: request.body?.clientTimestamp,
-    });
-    const message = result.message;
-    await savePreference(conversationId, request.user.userId, {
-      localDeletedAt: null,
-    });
-
-    if (result.created) {
-      publishToConversation(memberIds, "MESSAGE_PUSH", toRealtimeMessagePayload(message));
-      await createChatNotifications({
-        conversationId,
-        conversation,
-        memberIds,
-        actorUserId: request.user.userId,
+      const result = await createMessage(conversation, {
+        senderUserId: request.user.userId,
+        senderDeviceId: deviceId,
         body,
+        contentType,
+        mediaAssetId: mediaAssetId || null,
+        replyToMessageId: replyToMessageId || null,
+        clientMessageId: clientMessageId || null,
+        clientTimestamp: request.body?.clientTimestamp,
       });
-    }
+      const message = result.message;
+      await savePreference(conversationId, request.user.userId, {
+        localDeletedAt: null,
+      });
 
-    if (tempId) {
-      publishToUsers([request.user.userId], "MESSAGE_ACK", {
-        conversationId,
-        tempId,
-        clientMessageId: message.client_message_id || message.client_message_uuid || null,
-        messageId: message.message_id,
-        seq: Number(message.seq || 0),
-        createdAt: toIso(message.created_at),
+      const hydratedRows = await hydrateMessageMedia([message]);
+      const hydratedMessage = hydratedRows[0] || message;
+
+      if (result.created) {
+        publishToConversation(
+          memberIds,
+          "MESSAGE_PUSH",
+          toRealtimeMessagePayload(hydratedMessage),
+        );
+        await createChatNotifications({
+          conversationId,
+          conversation,
+          memberIds,
+          actorUserId: request.user.userId,
+          body,
+        });
+      }
+
+      if (tempId) {
+        publishToUsers([request.user.userId], "MESSAGE_ACK", {
+          conversationId,
+          tempId,
+          clientMessageId:
+            message.client_message_id || message.client_message_uuid || null,
+          messageId: message.message_id,
+          seq: Number(message.seq || 0),
+          createdAt: toIso(message.created_at),
+          created: result.created,
+        });
+      }
+
+      return {
+        message: mapMessage(hydratedMessage),
         created: result.created,
+      };
+    },
+  );
+
+  app.patch(
+    "/:conversationId/messages/:messageId",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const messageId = normalizeString(request.params.messageId);
+      const body = normalizeString(request.body?.body);
+
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(messageId.length >= 8, 400, "Invalid message");
+      ensure(body.length > 0 && body.length <= 65535, 400, "Invalid body");
+
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      const memberIds = Array.isArray(conversation.memberIds)
+        ? conversation.memberIds
+        : [];
+      const updated = await editMessageForUser(
+        conversation,
+        messageId,
+        request.user.userId,
+        body,
+      );
+
+      if (!updated) {
+        throw new HttpError(404, "Message not found");
+      }
+
+      publishToConversation(memberIds, "MESSAGE_EDIT", {
+        conversationId,
+        messageId,
+        body,
+        editVersion: Number(updated.edit_version || 0),
       });
-    }
 
-    return {
-      message: mapMessage(message),
-      created: result.created,
-    };
-  });
+      const reactions = await loadReactions([messageId]);
+      return {
+        success: true,
+        message: mapMessage(updated, reactions.get(messageId) || []),
+      };
+    },
+  );
 
-  app.patch("/:conversationId/messages/:messageId", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const messageId = normalizeString(request.params.messageId);
-    const body = normalizeString(request.body?.body);
+  app.delete(
+    "/:conversationId/messages/:messageId",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const messageId = normalizeString(request.params.messageId);
 
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(messageId.length >= 8, 400, "Invalid message");
-    ensure(body.length > 0 && body.length <= 65535, 400, "Invalid body");
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(messageId.length >= 8, 400, "Invalid message");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    const memberIds = Array.isArray(conversation.memberIds) ? conversation.memberIds : [];
-    const updated = await editMessageForUser(conversation, messageId, request.user.userId, body);
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      const memberIds = Array.isArray(conversation.memberIds)
+        ? conversation.memberIds
+        : [];
+      const updated = await deleteMessageForUser(
+        conversation,
+        messageId,
+        request.user.userId,
+      );
 
-    if (!updated) {
-      throw new HttpError(404, "Message not found");
-    }
+      if (!updated) {
+        throw new HttpError(404, "Message not found");
+      }
 
-    publishToConversation(memberIds, "MESSAGE_EDIT", {
-      conversationId,
-      messageId,
-      body,
-      editVersion: Number(updated.edit_version || 0),
-    });
+      publishToConversation(memberIds, "MESSAGE_DELETE", {
+        conversationId,
+        messageId,
+        deletedForAllAt: toIso(updated.deleted_for_all_at),
+      });
 
-    const reactions = await loadReactions([messageId]);
-    return {
-      success: true,
-      message: mapMessage(updated, reactions.get(messageId) || []),
-    };
-  });
+      return {
+        success: true,
+        deletedForAllAt: toIso(updated.deleted_for_all_at),
+      };
+    },
+  );
 
-  app.delete("/:conversationId/messages/:messageId", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const messageId = normalizeString(request.params.messageId);
+  app.post(
+    "/:conversationId/messages/:messageId/reactions",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const messageId = normalizeString(request.params.messageId);
+      const emoji = normalizeString(request.body?.emoji);
 
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(messageId.length >= 8, 400, "Invalid message");
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(messageId.length >= 8, 400, "Invalid message");
+      ensure(emoji.length > 0 && emoji.length <= 16, 400, "Invalid emoji");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    const memberIds = Array.isArray(conversation.memberIds) ? conversation.memberIds : [];
-    const updated = await deleteMessageForUser(conversation, messageId, request.user.userId);
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      const memberIds = Array.isArray(conversation.memberIds)
+        ? conversation.memberIds
+        : [];
+      const reactions = await setReactionForUser(
+        conversationId,
+        messageId,
+        request.user.userId,
+        emoji,
+      );
+      if (!reactions) {
+        throw new HttpError(404, "Message not found");
+      }
 
-    if (!updated) {
-      throw new HttpError(404, "Message not found");
-    }
+      publishToConversation(memberIds, "REACTION_UPDATE", {
+        conversationId,
+        messageId,
+        userId: request.user.userId,
+        emoji,
+        updatedAt: toIso(now()),
+      });
 
-    publishToConversation(memberIds, "MESSAGE_DELETE", {
-      conversationId,
-      messageId,
-      deletedForAllAt: toIso(updated.deleted_for_all_at),
-    });
+      return {
+        success: true,
+        reactions,
+      };
+    },
+  );
 
-    return {
-      success: true,
-      deletedForAllAt: toIso(updated.deleted_for_all_at),
-    };
-  });
+  app.delete(
+    "/:conversationId/messages/:messageId/reactions",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      const messageId = normalizeString(request.params.messageId);
 
-  app.post("/:conversationId/messages/:messageId/reactions", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const messageId = normalizeString(request.params.messageId);
-    const emoji = normalizeString(request.body?.emoji);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      ensure(messageId.length >= 8, 400, "Invalid message");
 
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(messageId.length >= 8, 400, "Invalid message");
-    ensure(emoji.length > 0 && emoji.length <= 16, 400, "Invalid emoji");
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      const memberIds = Array.isArray(conversation.memberIds)
+        ? conversation.memberIds
+        : [];
+      const reactions = await setReactionForUser(
+        conversationId,
+        messageId,
+        request.user.userId,
+        null,
+      );
+      if (!reactions) {
+        throw new HttpError(404, "Message not found");
+      }
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    const memberIds = Array.isArray(conversation.memberIds) ? conversation.memberIds : [];
-    const reactions = await setReactionForUser(conversationId, messageId, request.user.userId, emoji);
-    if (!reactions) {
-      throw new HttpError(404, "Message not found");
-    }
+      publishToConversation(memberIds, "REACTION_UPDATE", {
+        conversationId,
+        messageId,
+        userId: request.user.userId,
+        emoji: null,
+        updatedAt: toIso(now()),
+      });
 
-    publishToConversation(memberIds, "REACTION_UPDATE", {
-      conversationId,
-      messageId,
-      userId: request.user.userId,
-      emoji,
-      updatedAt: toIso(now()),
-    });
+      return {
+        success: true,
+        reactions,
+      };
+    },
+  );
 
-    return {
-      success: true,
-      reactions,
-    };
-  });
+  app.post(
+    "/:conversationId/delivery",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-  app.delete("/:conversationId/messages/:messageId/reactions", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    const messageId = normalizeString(request.params.messageId);
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const parsed = Number.parseInt(
+        String(request.body?.lastDeliveredSeq || "0"),
+        10,
+      );
+      ensure(
+        !Number.isNaN(parsed) && parsed >= 0,
+        400,
+        "Invalid lastDeliveredSeq",
+      );
 
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-    ensure(messageId.length >= 8, 400, "Invalid message");
+      const { lastDeliveredSeq } = await upsertReadState(
+        conversation,
+        request.user.userId,
+        {
+          lastDeliveredSeq: parsed,
+        },
+      );
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    const memberIds = Array.isArray(conversation.memberIds) ? conversation.memberIds : [];
-    const reactions = await setReactionForUser(conversationId, messageId, request.user.userId, null);
-    if (!reactions) {
-      throw new HttpError(404, "Message not found");
-    }
+      publishToConversation(
+        conversation.memberIds,
+        "DELIVERY_UPDATE",
+        {
+          conversationId,
+          userId: request.user.userId,
+          lastDeliveredSeq,
+        },
+        request.user.userId,
+      );
 
-    publishToConversation(memberIds, "REACTION_UPDATE", {
-      conversationId,
-      messageId,
-      userId: request.user.userId,
-      emoji: null,
-      updatedAt: toIso(now()),
-    });
+      return { success: true, lastDeliveredSeq };
+    },
+  );
 
-    return {
-      success: true,
-      reactions,
-    };
-  });
+  app.post(
+    "/:conversationId/read",
+    { preHandler: requireAuth },
+    async (request: any) => {
+      const conversationId = normalizeString(request.params.conversationId);
+      ensure(conversationId.length >= 8, 400, "Invalid conversation");
 
-  app.post("/:conversationId/delivery", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
+      const conversation = await loadConversationForUser(
+        conversationId,
+        request.user.userId,
+      );
+      ensureConversationOpenForUser(conversation, request.user.userId);
+      const parsed = Number.parseInt(
+        String(request.body?.lastReadSeq || "0"),
+        10,
+      );
+      ensure(!Number.isNaN(parsed) && parsed >= 0, 400, "Invalid lastReadSeq");
 
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const parsed = Number.parseInt(String(request.body?.lastDeliveredSeq || "0"), 10);
-    ensure(!Number.isNaN(parsed) && parsed >= 0, 400, "Invalid lastDeliveredSeq");
+      const { lastReadSeq } = await upsertReadState(
+        conversation,
+        request.user.userId,
+        {
+          lastReadSeq: parsed,
+        },
+      );
+      await savePreference(conversationId, request.user.userId, {
+        markedUnread: false,
+      });
 
-    const { lastDeliveredSeq } = await upsertReadState(conversation, request.user.userId, {
-      lastDeliveredSeq: parsed,
-    });
+      publishToConversation(
+        conversation.memberIds,
+        "READ_UPDATE",
+        {
+          conversationId,
+          userId: request.user.userId,
+          lastReadSeq,
+        },
+        request.user.userId,
+      );
 
-    publishToConversation(conversation.memberIds, "DELIVERY_UPDATE", {
-      conversationId,
-      userId: request.user.userId,
-      lastDeliveredSeq,
-    }, request.user.userId);
-
-    return { success: true, lastDeliveredSeq };
-  });
-
-  app.post("/:conversationId/read", { preHandler: requireAuth }, async (request: any) => {
-    const conversationId = normalizeString(request.params.conversationId);
-    ensure(conversationId.length >= 8, 400, "Invalid conversation");
-
-    const conversation = await loadConversationForUser(conversationId, request.user.userId);
-    ensureConversationOpenForUser(conversation, request.user.userId);
-    const parsed = Number.parseInt(String(request.body?.lastReadSeq || "0"), 10);
-    ensure(!Number.isNaN(parsed) && parsed >= 0, 400, "Invalid lastReadSeq");
-
-    const { lastReadSeq } = await upsertReadState(conversation, request.user.userId, {
-      lastReadSeq: parsed,
-    });
-    await savePreference(conversationId, request.user.userId, {
-      markedUnread: false,
-    });
-
-    publishToConversation(conversation.memberIds, "READ_UPDATE", {
-      conversationId,
-      userId: request.user.userId,
-      lastReadSeq,
-    }, request.user.userId);
-
-    return { success: true, lastReadSeq };
-  });
+      return { success: true, lastReadSeq };
+    },
+  );
 }

@@ -1182,6 +1182,7 @@ async function hardFilterCandidates(
 
   const [
     followingRows,
+    friendRows,
     blockRows,
     muteRows,
     hiddenRows,
@@ -1193,6 +1194,18 @@ async function hardFilterCandidates(
     authorIds.length
       ? queryMany(
           `SELECT following_id FROM follows WHERE follower_id = $1 AND following_id IN (${authorSql})`,
+          [viewerId, ...authorIds]
+        )
+      : Promise.resolve([]),
+    authorIds.length
+      ? queryMany(
+          `SELECT outgoing.following_id
+           FROM follows outgoing
+           JOIN follows incoming
+             ON incoming.follower_id = outgoing.following_id
+            AND incoming.following_id = $1
+           WHERE outgoing.follower_id = $1
+             AND outgoing.following_id IN (${authorSql})`,
           [viewerId, ...authorIds]
         )
       : Promise.resolve([]),
@@ -1244,6 +1257,7 @@ async function hardFilterCandidates(
   ]);
 
   const following = new Set(followingRows.map((row) => row.following_id));
+  const friends = new Set(friendRows.map((row) => row.following_id));
   const blockedAuthors = new Set<string>();
   for (const row of blockRows) {
     const other = row.blocker_id === viewerId ? row.blocked_id : row.blocker_id;
@@ -1270,7 +1284,12 @@ async function hardFilterCandidates(
     if (blockedAuthors.has(authorId) || mutedAuthors.has(authorId)) return false;
     if (hidden.has(postId) || notInterested.has(postId) || served.has(postId)) return false;
     if (preferences.reduceReposts && post.share_of_post_id) return false;
-    if (String(post.visibility || "public") !== "public" && authorId !== viewerId && !following.has(authorId)) return false;
+    const visibility = String(post.visibility || "public");
+    if (authorId !== viewerId) {
+      if (visibility === "private") return false;
+      if (visibility === "friends" && !friends.has(authorId)) return false;
+      if (visibility === "followers" && !following.has(authorId)) return false;
+    }
     if (preferences.reduceSensitiveContent && String(post.sensitive_label || "")) return false;
     if (Number(post.toxicity_score || 0) >= 0.82 || Number(post.spam_score || 0) >= 0.78) return false;
     if (options.strictOutOfNetwork && !following.has(authorId) && authorId !== viewerId) {

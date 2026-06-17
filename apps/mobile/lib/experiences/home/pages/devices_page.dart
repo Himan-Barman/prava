@@ -49,8 +49,46 @@ class _DevicesPageState extends State<DevicesPage> {
     }
   }
 
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+    required String actionLabel,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(
+                actionLabel,
+                style: PravaTypography.buttonMedium.copyWith(
+                  color: PravaColors.error,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    return result == true;
+  }
+
   Future<void> _revokeSession(DeviceSession session) async {
     if (_revoking) return;
+    final confirmed = await _confirm(
+      title: 'Sign out device?',
+      message: '${_deviceLabel(session)} will be signed out of Prava.',
+      actionLabel: 'Sign out',
+    );
+    if (!confirmed) return;
     setState(() => _revoking = true);
     try {
       await _service.revokeSession(session.deviceId);
@@ -79,6 +117,12 @@ class _DevicesPageState extends State<DevicesPage> {
   Future<void> _revokeOthers() async {
     final currentDeviceId = _currentDeviceId;
     if (currentDeviceId == null || _revoking) return;
+    final confirmed = await _confirm(
+      title: 'Sign out other devices?',
+      message: 'Every other active Prava session will be revoked.',
+      actionLabel: 'Sign out',
+    );
+    if (!confirmed) return;
     setState(() => _revoking = true);
     try {
       await _service.revokeOtherSessions(currentDeviceId);

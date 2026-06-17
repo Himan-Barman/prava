@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../navigation/prava_navigator.dart';
+import '../../../../ui-system/background.dart';
 import '../../../../ui-system/colors.dart';
 import '../../../../ui-system/components/prava_input.dart';
 import '../../../../ui-system/typography.dart';
@@ -35,6 +36,13 @@ class _FeedModeOption {
   final IconData icon;
   final String? lens;
 }
+
+typedef _CreatePostCallback =
+    Future<FeedPost?> Function({
+      required String body,
+      required String visibility,
+      required String sensitiveLabel,
+    });
 
 class FeedPage extends StatefulWidget {
   const FeedPage({super.key, this.onChromeVisibilityChanged});
@@ -385,18 +393,22 @@ class _FeedPageState extends State<FeedPage> {
     }
   }
 
-  Future<bool> _createPost() async {
-    if (_posting) return false;
+  Future<FeedPost?> _createPost({
+    required String body,
+    required String visibility,
+    required String sensitiveLabel,
+  }) async {
+    if (_posting) return null;
 
-    final body = _composerController.text.trim();
+    final trimmedBody = body.trim();
     final words = _wordCount(body);
-    if (body.isEmpty) {
+    if (trimmedBody.isEmpty) {
       PravaToast.show(
         context,
         message: 'Write something before posting',
         type: PravaToastType.warning,
       );
-      return false;
+      return null;
     }
     if (words > 200) {
       PravaToast.show(
@@ -404,31 +416,34 @@ class _FeedPageState extends State<FeedPage> {
         message: 'Posts must stay under 200 words',
         type: PravaToastType.warning,
       );
-      return false;
+      return null;
     }
 
     HapticFeedback.selectionClick();
     setState(() => _posting = true);
 
     try {
-      final post = await _feedService.createPost(body);
-      if (!mounted) return false;
+      final post = await _feedService.createPost(
+        trimmedBody,
+        visibility: visibility,
+        sensitiveLabel: sensitiveLabel,
+      );
+      if (!mounted) return null;
 
       setState(() {
         _posts = [post, ..._posts];
-        _composerController.clear();
         _posting = false;
       });
-      return true;
+      return post;
     } catch (_) {
-      if (!mounted) return false;
+      if (!mounted) return null;
       setState(() => _posting = false);
       PravaToast.show(
         context,
         message: 'Post failed. Try again.',
         type: PravaToastType.error,
       );
-      return false;
+      return null;
     }
   }
 
@@ -642,51 +657,26 @@ class _FeedPageState extends State<FeedPage> {
 
   void _openComposer() {
     _setFeedChromeVisible(true);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return AnimatedPadding(
-              duration: const Duration(milliseconds: 120),
-              curve: Curves.easeOut,
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-              ),
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: SafeArea(
-                  top: false,
-                  child: _ComposerCard(
-                    controller: _composerController,
-                    account: _composerAccount,
-                    author: _composerAuthor,
-                    feedService: _feedService,
-                    userSearchService: _userSearchService,
-                    onPost: () async {
-                      final create = _createPost();
-                      setSheetState(() {});
-                      final posted = await create;
-                      if (!sheetContext.mounted) return;
-                      if (posted) {
-                        Navigator.of(sheetContext).pop();
-                      } else {
-                        setSheetState(() {});
-                      }
-                    },
-                    isPosting: _posting,
-                    wordCount: _wordCount,
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
+    Navigator.of(context, rootNavigator: true)
+        .push<FeedPost>(
+          PravaNavigator.route(
+            _PostComposerPage(
+              controller: _composerController,
+              account: _composerAccount,
+              author: _composerAuthor,
+              feedService: _feedService,
+              userSearchService: _userSearchService,
+              wordCount: _wordCount,
+              onCreate: _createPost,
+            ),
+            fullscreenDialog: true,
+          ),
+        )
+        .then((post) {
+          if (post != null) {
+            _composerController.clear();
+          }
+        });
   }
 
   void _openPublicProfile(FeedAuthor author) {
@@ -1694,11 +1684,650 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
   }
 }
 
-class _ComposerCard extends StatefulWidget {
-  const _ComposerCard({
+class _PostComposerPage extends StatefulWidget {
+  const _PostComposerPage({
     required this.controller,
     required this.account,
     required this.author,
+    required this.feedService,
+    required this.userSearchService,
+    required this.wordCount,
+    required this.onCreate,
+  });
+
+  final TextEditingController controller;
+  final AccountInfo? account;
+  final FeedAuthor? author;
+  final FeedService feedService;
+  final UserSearchService userSearchService;
+  final int Function(String value) wordCount;
+  final _CreatePostCallback onCreate;
+
+  @override
+  State<_PostComposerPage> createState() => _PostComposerPageState();
+}
+
+class _PostComposerPageState extends State<_PostComposerPage> {
+  String _visibility = 'public';
+  bool _sensitive = false;
+  bool _posting = false;
+
+  String get _visibilityLabel {
+    switch (_visibility) {
+      case 'followers':
+        return 'Followers';
+      case 'friends':
+        return 'Friends';
+      case 'private':
+        return 'Only me';
+      default:
+        return 'Public';
+    }
+  }
+
+  IconData get _visibilityIcon {
+    switch (_visibility) {
+      case 'followers':
+        return CupertinoIcons.person_2_fill;
+      case 'friends':
+        return CupertinoIcons.person_3_fill;
+      case 'private':
+        return CupertinoIcons.lock_fill;
+      default:
+        return CupertinoIcons.globe;
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_posting) return;
+    setState(() => _posting = true);
+    final post = await widget.onCreate(
+      body: widget.controller.text,
+      visibility: _visibility,
+      sensitiveLabel: _sensitive ? 'sensitive' : '',
+    );
+    if (!mounted) return;
+    setState(() => _posting = false);
+    if (post != null) {
+      Navigator.of(context).pop(post);
+    }
+  }
+
+  Future<void> _clearDraft() async {
+    if (widget.controller.text.trim().isEmpty) return;
+    final shouldClear = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final tokens = dialogContext.pravaColors;
+        return CupertinoAlertDialog(
+          title: const Text('Clear draft?'),
+          content: const Text('This removes the text you have written.'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(
+                'Cancel',
+                style: PravaTypography.bodyMedium.copyWith(
+                  color: tokens.textPrimary,
+                ),
+              ),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Clear'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldClear == true) {
+      widget.controller.clear();
+      HapticFeedback.selectionClick();
+    }
+  }
+
+  void _openSettings() {
+    final tokens = context.pravaColors;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            void selectVisibility(String value) {
+              setState(() => _visibility = value);
+              setSheetState(() {});
+              HapticFeedback.selectionClick();
+            }
+
+            void toggleSensitive(bool value) {
+              setState(() => _sensitive = value);
+              setSheetState(() {});
+              HapticFeedback.selectionClick();
+            }
+
+            return SafeArea(
+              top: false,
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+                decoration: BoxDecoration(
+                  color: tokens.backgroundSurface,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: tokens.borderSubtle),
+                  boxShadow: [
+                    BoxShadow(
+                      color: tokens.shadowMedium,
+                      blurRadius: 28,
+                      offset: const Offset(0, 18),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 18),
+                        decoration: BoxDecoration(
+                          color: tokens.borderStrong,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'Post settings',
+                      style: PravaTypography.titleLarge.copyWith(
+                        color: tokens.textPrimary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Choose who can see this post before publishing.',
+                      style: PravaTypography.bodySmall.copyWith(
+                        color: tokens.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    _ComposerSettingOption(
+                      icon: CupertinoIcons.globe,
+                      title: 'Public',
+                      subtitle: 'Anyone on Prava can view it',
+                      selected: _visibility == 'public',
+                      onTap: () => selectVisibility('public'),
+                    ),
+                    _ComposerSettingOption(
+                      icon: CupertinoIcons.person_2_fill,
+                      title: 'Followers',
+                      subtitle: 'Only your followers can view it',
+                      selected: _visibility == 'followers',
+                      onTap: () => selectVisibility('followers'),
+                    ),
+                    _ComposerSettingOption(
+                      icon: CupertinoIcons.person_3_fill,
+                      title: 'Friends',
+                      subtitle: 'Only mutual friends can view it',
+                      selected: _visibility == 'friends',
+                      onTap: () => selectVisibility('friends'),
+                    ),
+                    _ComposerSettingOption(
+                      icon: CupertinoIcons.lock_fill,
+                      title: 'Only me',
+                      subtitle: 'Keep it private on your profile',
+                      selected: _visibility == 'private',
+                      onTap: () => selectVisibility('private'),
+                    ),
+                    const SizedBox(height: 10),
+                    _ComposerSettingSwitch(
+                      icon: CupertinoIcons.exclamationmark_triangle_fill,
+                      title: 'Sensitive content',
+                      subtitle: 'Label this post for safer feeds',
+                      value: _sensitive,
+                      onChanged: toggleSensitive,
+                    ),
+                    const SizedBox(height: 8),
+                    _ComposerSettingAction(
+                      icon: CupertinoIcons.trash_fill,
+                      title: 'Clear draft',
+                      destructive: true,
+                      onTap: () async {
+                        Navigator.of(sheetContext).pop();
+                        await _clearDraft();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: tokens.backgroundCanvas,
+      body: Stack(
+        children: [
+          PravaBackground(isDark: isDark),
+          SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 10, 12, 8),
+                  child: Row(
+                    children: [
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size.square(42),
+                        onPressed: _posting
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: Icon(
+                          CupertinoIcons.xmark,
+                          color: tokens.iconPrimary,
+                          size: 25,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Create post',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: PravaTypography.displaySmall.copyWith(
+                            color: tokens.textPrimary,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size.square(44),
+                        onPressed: _openSettings,
+                        child: Icon(
+                          CupertinoIcons.ellipsis,
+                          color: tokens.iconPrimary,
+                          size: 30,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    physics: const BouncingScrollPhysics(),
+                    padding: EdgeInsets.fromLTRB(
+                      18,
+                      6,
+                      18,
+                      24 + (bottomInset > 0 ? 8 : 0),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ComposerAuthorHeader(
+                          account: widget.account,
+                          author: widget.author,
+                          visibilityIcon: _visibilityIcon,
+                          visibilityLabel: _visibilityLabel,
+                          sensitive: _sensitive,
+                          onSettingsTap: _openSettings,
+                        ),
+                        const SizedBox(height: 18),
+                        _ComposerCard(
+                          controller: widget.controller,
+                          feedService: widget.feedService,
+                          userSearchService: widget.userSearchService,
+                          onPost: _submit,
+                          isPosting: _posting,
+                          wordCount: widget.wordCount,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ComposerAuthorHeader extends StatelessWidget {
+  const _ComposerAuthorHeader({
+    required this.account,
+    required this.author,
+    required this.visibilityIcon,
+    required this.visibilityLabel,
+    required this.sensitive,
+    required this.onSettingsTap,
+  });
+
+  final AccountInfo? account;
+  final FeedAuthor? author;
+  final IconData visibilityIcon;
+  final String visibilityLabel;
+  final bool sensitive;
+  final VoidCallback onSettingsTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    final name =
+        (account?.displayName.isNotEmpty == true
+                ? account!.displayName
+                : author?.displayName.isNotEmpty == true
+                ? author!.displayName
+                : account?.username.isNotEmpty == true
+                ? account!.username
+                : author?.username ?? 'You')
+            .trim();
+    final username =
+        (account?.username.isNotEmpty == true
+                ? account!.username
+                : author?.username ?? '')
+            .trim();
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _ComposerAvatar(account: account, author: author),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name.isEmpty ? 'You' : name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: PravaTypography.titleMedium.copyWith(
+                  color: tokens.textPrimary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                username.isEmpty ? 'New post' : '@$username',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: PravaTypography.bodySmall.copyWith(
+                  color: tokens.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        _ComposerSettingPill(
+          icon: visibilityIcon,
+          label: sensitive ? '$visibilityLabel - Sensitive' : visibilityLabel,
+          onTap: onSettingsTap,
+        ),
+      ],
+    );
+  }
+}
+
+class _ComposerSettingPill extends StatelessWidget {
+  const _ComposerSettingPill({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: tokens.backgroundSurfaceRaised,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: tokens.borderSubtle),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: tokens.brandContent),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: PravaTypography.caption.copyWith(
+                  color: tokens.textPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerSettingOption extends StatelessWidget {
+  const _ComposerSettingOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          children: [
+            _ComposerSettingIcon(icon: icon, selected: selected),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: PravaTypography.bodyMedium.copyWith(
+                      color: tokens.textPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: PravaTypography.caption.copyWith(
+                      color: tokens.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (selected)
+              Icon(
+                CupertinoIcons.check_mark_circled_solid,
+                color: tokens.brandPrimary,
+                size: 22,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerSettingSwitch extends StatelessWidget {
+  const _ComposerSettingSwitch({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          _ComposerSettingIcon(icon: icon, selected: value),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: PravaTypography.bodyMedium.copyWith(
+                    color: tokens.textPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: PravaTypography.caption.copyWith(
+                    color: tokens.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          CupertinoSwitch(
+            value: value,
+            activeTrackColor: tokens.brandPrimary,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ComposerSettingAction extends StatelessWidget {
+  const _ComposerSettingAction({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.destructive = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    final color = destructive ? tokens.statusError : tokens.textPrimary;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            _ComposerSettingIcon(icon: icon, selected: false, color: color),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: PravaTypography.bodyMedium.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerSettingIcon extends StatelessWidget {
+  const _ComposerSettingIcon({
+    required this.icon,
+    required this.selected,
+    this.color,
+  });
+
+  final IconData icon;
+  final bool selected;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    final iconColor =
+        color ?? (selected ? tokens.brandContent : tokens.iconSecondary);
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: selected
+            ? tokens.brandContainer
+            : tokens.backgroundSurfaceSubtle,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Icon(icon, size: 18, color: iconColor),
+    );
+  }
+}
+
+class _ComposerCard extends StatefulWidget {
+  const _ComposerCard({
+    required this.controller,
     required this.feedService,
     required this.userSearchService,
     required this.onPost,
@@ -1707,8 +2336,6 @@ class _ComposerCard extends StatefulWidget {
   });
 
   final TextEditingController controller;
-  final AccountInfo? account;
-  final FeedAuthor? author;
   final FeedService feedService;
   final UserSearchService userSearchService;
   final VoidCallback onPost;
@@ -1964,11 +2591,10 @@ class _ComposerCardState extends State<_ComposerCard> {
     final secondary = tokens.textSecondary;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(26),
         border: Border.all(color: border),
         boxShadow: [
           BoxShadow(
@@ -1982,32 +2608,23 @@ class _ComposerCardState extends State<_ComposerCard> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _ComposerAvatar(account: widget.account, author: widget.author),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SizedBox(
-                  height: 118,
-                  child: PravaInput(
-                    controller: widget.controller,
-                    hint: 'Share something premium...',
-                    fieldType: PravaInputFieldType.post,
-                    variant: PravaInputVariant.borderless,
-                    size: PravaInputSize.medium,
-                    expands: true,
-                    keyboardType: TextInputType.multiline,
-                    textInputAction: TextInputAction.newline,
-                    textAlignVertical: TextAlignVertical.top,
-                    scrollPhysics: const BouncingScrollPhysics(),
-                  ),
-                ),
-              ),
-            ],
+          SizedBox(
+            height: 260,
+            child: PravaInput(
+              controller: widget.controller,
+              hint: 'Share something with Prava...',
+              fieldType: PravaInputFieldType.post,
+              variant: PravaInputVariant.borderless,
+              size: PravaInputSize.medium,
+              expands: true,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline,
+              textAlignVertical: TextAlignVertical.top,
+              scrollPhysics: const BouncingScrollPhysics(),
+            ),
           ),
           _buildSuggestions(primary, secondary, border),
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
           Row(
             children: [
               Expanded(
@@ -2016,7 +2633,7 @@ class _ComposerCardState extends State<_ComposerCard> {
                   child: Row(
                     children: [
                       _ComposerIcon(
-                        icon: CupertinoIcons.at,
+                        icon: CupertinoIcons.person_crop_circle_badge_plus,
                         label: 'Mention',
                         onTap: () => _insertToken('@'),
                       ),
@@ -2049,13 +2666,13 @@ class _ComposerCardState extends State<_ComposerCard> {
                       const SizedBox(width: 10),
                       CupertinoButton(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 10,
+                          horizontal: 20,
+                          vertical: 11,
                         ),
                         color: canPost
                             ? tokens.brandPrimary
                             : tokens.backgroundPressed,
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(20),
                         onPressed: widget.isPosting || !canPost
                             ? null
                             : widget.onPost,
@@ -2132,7 +2749,7 @@ class _ComposerAvatar extends StatelessWidget {
                 color: tokens.brandContainer,
                 child: Center(
                   child: Text(
-                    name.isEmpty ? '@' : name[0].toUpperCase(),
+                    name.isEmpty ? 'P' : name[0].toUpperCase(),
                     style: PravaTypography.titleSmall.copyWith(
                       color: tokens.brandContent,
                       fontWeight: FontWeight.w800,
@@ -2179,7 +2796,7 @@ class _MentionSuggestionTile extends StatelessWidget {
                         color: tokens.brandContainer,
                         child: Center(
                           child: Text(
-                            name.isEmpty ? '@' : name[0].toUpperCase(),
+                            name.isEmpty ? 'P' : name[0].toUpperCase(),
                             style: PravaTypography.caption.copyWith(
                               color: tokens.brandContent,
                               fontWeight: FontWeight.w800,

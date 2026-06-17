@@ -85,6 +85,9 @@ class ChatMessage {
     this.seq,
     this.clientTempId,
     this.mediaAssetId,
+    this.mediaUrl,
+    this.mediaWidth,
+    this.mediaHeight,
     this.editVersion = 0,
     this.deletedForAllAt,
     this.reactions = const <ChatReaction>[],
@@ -103,6 +106,9 @@ class ChatMessage {
   final String body;
   final String? clientTempId;
   final String? mediaAssetId;
+  final String? mediaUrl;
+  final int? mediaWidth;
+  final int? mediaHeight;
   final int editVersion;
   final DateTime createdAt;
   final DateTime? deletedForAllAt;
@@ -122,6 +128,9 @@ class ChatMessage {
     String? body,
     ChatMessageType? type,
     String? mediaAssetId,
+    String? mediaUrl,
+    int? mediaWidth,
+    int? mediaHeight,
     int? editVersion,
     DateTime? createdAt,
     DateTime? deletedForAllAt,
@@ -143,6 +152,9 @@ class ChatMessage {
       seq: seq ?? this.seq,
       clientTempId: clientTempId ?? this.clientTempId,
       mediaAssetId: mediaAssetId ?? this.mediaAssetId,
+      mediaUrl: mediaUrl ?? this.mediaUrl,
+      mediaWidth: mediaWidth ?? this.mediaWidth,
+      mediaHeight: mediaHeight ?? this.mediaHeight,
       editVersion: editVersion ?? this.editVersion,
       deletedForAllAt: deletedForAllAt ?? this.deletedForAllAt,
       reactions: reactions ?? this.reactions,
@@ -190,12 +202,30 @@ class ChatMessage {
           json['clientTempId']?.toString() ??
           json['clientMessageId']?.toString(),
       mediaAssetId: json['mediaAssetId']?.toString(),
+      mediaUrl:
+          json['mediaUrl']?.toString() ??
+          json['mediaSecureUrl']?.toString() ??
+          ((json['media'] is Map<String, dynamic>)
+              ? (json['media'] as Map<String, dynamic>)['secureUrl']?.toString()
+              : null),
+      mediaWidth:
+          _parseInt(json['mediaWidth']) ??
+          ((json['media'] is Map<String, dynamic>)
+              ? _parseInt((json['media'] as Map<String, dynamic>)['width'])
+              : null),
+      mediaHeight:
+          _parseInt(json['mediaHeight']) ??
+          ((json['media'] is Map<String, dynamic>)
+              ? _parseInt((json['media'] as Map<String, dynamic>)['height'])
+              : null),
       editVersion: _parseInt(json['editVersion']) ?? 0,
       createdAt: createdAt,
       deletedForAllAt: _parseDate(json['deletedForAllAt']),
       reactions: reactions,
       deliveryState: deliveryState,
       isOutgoing: isOutgoing,
+      replyToId:
+          json['replyToId']?.toString() ?? json['replyToMessageId']?.toString(),
       encryptedBody: null,
     );
   }
@@ -206,6 +236,7 @@ class ChatMessage {
     required String senderUserId,
     required String senderDeviceId,
     required String body,
+    String? replyToId,
   }) {
     return ChatMessage(
       id: tempId,
@@ -218,6 +249,7 @@ class ChatMessage {
       clientTempId: tempId,
       deliveryState: MessageDeliveryState.sending,
       isOutgoing: true,
+      replyToId: replyToId,
       encryptedBody: null,
     );
   }
@@ -600,6 +632,7 @@ class ChatService {
     String? tempId,
     String? clientMessageId,
     String? mediaAssetId,
+    String? replyToMessageId,
     DateTime? clientTimestamp,
   }) async {
     final deviceId = await _deviceIdStore.getOrCreate();
@@ -614,6 +647,7 @@ class ChatService {
         if (clientMessageId != null || tempId != null)
           'clientMessageId': clientMessageId ?? tempId,
         if (mediaAssetId != null) 'mediaAssetId': mediaAssetId,
+        if (replyToMessageId != null) 'replyToMessageId': replyToMessageId,
         if (clientTimestamp != null)
           'clientTimestamp': clientTimestamp.toIso8601String(),
       },

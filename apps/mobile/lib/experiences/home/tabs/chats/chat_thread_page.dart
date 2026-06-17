@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
@@ -92,6 +92,8 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   bool _isMuted = false;
   bool _isStarred = false;
   bool _uploadingAttachment = false;
+  bool _emojiPanelVisible = false;
+  ChatMessage? _replyingToMessage;
   final List<String> _recentEmojis = <String>[];
   List<String> _groupMemberIds = <String>[];
   final Set<String> _hiddenMessageIds = <String>{};
@@ -119,6 +121,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       );
     }
     _scrollController.addListener(_handleScroll);
+    _composerFocus.addListener(_handleComposerFocus);
     _loadRecentEmojis();
     _bootstrap();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -137,10 +140,16 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     _syncDraft(_editingMessage == null ? _controller.text.trim() : '');
     _realtime.disconnect();
     _scrollController.removeListener(_handleScroll);
+    _composerFocus.removeListener(_handleComposerFocus);
     _controller.dispose();
     _scrollController.dispose();
     _composerFocus.dispose();
     super.dispose();
+  }
+
+  void _handleComposerFocus() {
+    if (!_composerFocus.hasFocus || !_emojiPanelVisible || !mounted) return;
+    setState(() => _emojiPanelVisible = false);
   }
 
   Future<void> _bootstrap() async {
@@ -438,6 +447,8 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     final senderUserId = _userId ?? '';
     final senderDeviceId = _deviceId ?? await _deviceIdStore.getOrCreate();
     _deviceId ??= senderDeviceId;
+    final replyToMessage = _replyingToMessage;
+    final replyToId = replyToMessage?.id;
 
     final message = ChatMessage.localText(
       tempId: tempId,
@@ -445,10 +456,12 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       senderUserId: senderUserId,
       senderDeviceId: senderDeviceId,
       body: text,
+      replyToId: replyToId,
     );
 
     setState(() {
       _messages = [..._messages, message];
+      _replyingToMessage = null;
       _controller.clear();
     });
     _syncDraft('');
@@ -477,6 +490,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         conversationId: widget.chat.id,
         body: outboundBody,
         tempId: tempId,
+        replyToMessageId: replyToId,
         clientTimestamp: DateTime.now(),
       );
       if (sent != null) {
@@ -495,15 +509,11 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     final action = await showCupertinoModalPopup<String>(
       context: context,
       builder: (context) => CupertinoActionSheet(
-        title: const Text('Send attachment'),
+        title: const Text('Send photo'),
         actions: [
           CupertinoActionSheetAction(
             onPressed: () => Navigator.of(context).pop('image'),
             child: const Text('Photo'),
-          ),
-          CupertinoActionSheetAction(
-            onPressed: () => Navigator.of(context).pop('video'),
-            child: const Text('Video'),
           ),
         ],
         cancelButton: CupertinoActionSheetAction(
@@ -514,7 +524,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       ),
     );
     if (!mounted || action == null) return;
-    await _pickAndSendAttachment(isVideo: action == 'video');
+    await _pickAndSendAttachment(isVideo: false);
   }
 
   Future<void> _pickAndSendAttachment({required bool isVideo}) async {
@@ -607,6 +617,8 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     final senderUserId = _userId ?? '';
     final senderDeviceId = _deviceId ?? await _deviceIdStore.getOrCreate();
     _deviceId ??= senderDeviceId;
+    final replyToMessage = _replyingToMessage;
+    final replyToId = replyToMessage?.id;
 
     final message = ChatMessage(
       id: tempId,
@@ -620,12 +632,14 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       mediaAssetId: mediaAssetId,
       deliveryState: MessageDeliveryState.sending,
       isOutgoing: true,
+      replyToId: replyToId,
     );
 
     HapticFeedback.selectionClick();
     _stopTyping();
     setState(() {
       _messages = [..._messages, message];
+      _replyingToMessage = null;
       if (caption.isNotEmpty) {
         _controller.clear();
       }
@@ -661,6 +675,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         tempId: tempId,
         contentType: contentType,
         mediaAssetId: mediaAssetId,
+        replyToMessageId: replyToId,
         clientTimestamp: DateTime.now(),
       );
       if (sent != null) {
@@ -796,6 +811,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         tempId: tempId,
         contentType: message.type == ChatMessageType.media ? 'media' : 'text',
         mediaAssetId: message.mediaAssetId,
+        replyToMessageId: message.replyToId,
         clientTimestamp: DateTime.now(),
       );
       if (sent != null) {
@@ -985,12 +1001,47 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
     }
     setState(() {
       _editingMessage = message;
+      _replyingToMessage = null;
     });
     _controller.text = message.body;
     _controller.selection = TextSelection.fromPosition(
       TextPosition(offset: _controller.text.length),
     );
     _composerFocus.requestFocus();
+  }
+
+  void _startReply(ChatMessage message) {
+    if (message.isDeleted) return;
+    setState(() {
+      _editingMessage = null;
+      _replyingToMessage = message;
+    });
+    _composerFocus.requestFocus();
+  }
+
+  void _cancelReply() {
+    setState(() => _replyingToMessage = null);
+  }
+
+  String _replyPreview(ChatMessage message) {
+    if (message.isDeleted) return 'Message deleted';
+    if (message.type == ChatMessageType.media) {
+      final label = message.body.trim();
+      return label.isEmpty || _isFallbackMediaLabel(label) ? 'Photo' : label;
+    }
+    final body = message.body.trim();
+    return body.isEmpty ? 'Message' : body;
+  }
+
+  String? _replyPreviewForId(String? messageId) {
+    final id = messageId?.trim();
+    if (id == null || id.isEmpty) return null;
+    for (final message in _messages) {
+      if (message.id == id || message.clientTempId == id) {
+        return _replyPreview(message);
+      }
+    }
+    return 'Original message';
   }
 
   void _cancelEditing() {
@@ -1190,14 +1241,13 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
 
   void _showEmojiPicker() {
     HapticFeedback.selectionClick();
+    if (_emojiPanelVisible) {
+      setState(() => _emojiPanelVisible = false);
+      _composerFocus.requestFocus();
+      return;
+    }
     _composerFocus.unfocus();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) =>
-          _EmojiPickerSheet(recent: _recentEmojis, onSelect: _insertEmoji),
-    );
+    setState(() => _emojiPanelVisible = true);
   }
 
   void _insertEmoji(String emoji) {
@@ -1277,6 +1327,15 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                   },
                 ),
                 const SizedBox(height: 12),
+                if (!message.isDeleted)
+                  _SheetAction(
+                    icon: CupertinoIcons.reply,
+                    label: 'Reply',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _startReply(message);
+                    },
+                  ),
                 if (canRetry)
                   _SheetAction(
                     icon: CupertinoIcons.arrow_clockwise,
@@ -1345,6 +1404,16 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                       _reportMessage(message);
                     },
                   ),
+                if (!message.isDeleted)
+                  _SheetAction(
+                    icon: CupertinoIcons.trash,
+                    label: 'Delete for me',
+                    isDestructive: true,
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _deleteMessageForMe(message);
+                    },
+                  ),
                 if (canDelete)
                   _SheetAction(
                     icon: CupertinoIcons.trash,
@@ -1376,6 +1445,13 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       conversationId: widget.chat.id,
       messageId: message.id,
     );
+  }
+
+  void _deleteMessageForMe(ChatMessage message) {
+    HapticFeedback.selectionClick();
+    if (!mounted) return;
+    setState(() => _hiddenMessageIds.add(message.id));
+    _showThreadSnack('Message deleted for you');
   }
 
   Future<void> _pinMessage(ChatMessage message) async {
@@ -1517,6 +1593,22 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
         ),
         timeLabel: _formatTime(message.createdAt),
         isPinned: _pinnedMessageIds.contains(message.id),
+      ),
+    );
+  }
+
+  void _openMediaViewer(ChatMessage message) {
+    final url = message.mediaUrl?.trim() ?? '';
+    if (message.type != ChatMessageType.media || url.isEmpty) return;
+    HapticFeedback.selectionClick();
+    Navigator.of(context, rootNavigator: true).push(
+      PravaNavigator.route(
+        _MediaViewerPage(
+          imageUrl: url,
+          heroTag: 'chat-media-${message.id}',
+          title: _formatTime(message.createdAt),
+        ),
+        fullscreenDialog: true,
       ),
     );
   }
@@ -1720,7 +1812,11 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
       'seq': payload['seq'],
       'contentType': payload['contentType'],
       'body': payload['body'],
+      'replyToMessageId': payload['replyToMessageId'] ?? payload['replyToId'],
       'mediaAssetId': payload['mediaAssetId'],
+      'mediaUrl': payload['mediaUrl'] ?? payload['mediaSecureUrl'],
+      'mediaWidth': payload['mediaWidth'],
+      'mediaHeight': payload['mediaHeight'],
       'editVersion': payload['editVersion'],
       'deletedForAllAt': payload['deletedForAllAt'],
       'createdAt': payload['createdAt'],
@@ -2384,18 +2480,25 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                                         !_isSameBlock(message, next);
                                     final showAvatar =
                                         !message.isOutgoing && isLast;
+                                    final replyPreview =
+                                        message.replyToId == null
+                                        ? null
+                                        : _replyPreviewForId(message.replyToId);
                                     return _MessageBubble(
                                       message: message,
                                       isDark: isDark,
                                       primary: primary,
                                       secondary: secondary,
                                       timeLabel: _formatTime(message.createdAt),
+                                      replyPreview: replyPreview,
                                       showAvatar: showAvatar,
                                       initial: initial,
                                       isFirst: isFirst,
                                       isLast: isLast,
                                       onLongPress: () =>
                                           _showMessageActions(message),
+                                      onMediaTap: () =>
+                                          _openMediaViewer(message),
                                     );
                                 }
                               },
@@ -2406,7 +2509,9 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                     padding: EdgeInsets.only(
                       left: 12,
                       right: 12,
-                      bottom: MediaQuery.of(context).viewInsets.bottom + 8,
+                      bottom: (_emojiPanelVisible
+                          ? 8
+                          : MediaQuery.of(context).viewInsets.bottom + 8),
                       top: 4,
                     ),
                     child: Column(
@@ -2416,6 +2521,15 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                           _EditingBanner(
                             preview: _editingMessage!.body,
                             onCancel: _cancelEditing,
+                          ),
+                        if (_editingMessage == null &&
+                            _replyingToMessage != null)
+                          _ReplyBanner(
+                            title: _replyingToMessage!.isOutgoing
+                                ? 'Replying to yourself'
+                                : 'Replying to ${widget.chat.name}',
+                            preview: _replyPreview(_replyingToMessage!),
+                            onCancel: _cancelReply,
                           ),
                         _ComposerBar(
                           controller: _controller,
@@ -2427,6 +2541,24 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                           },
                           onChanged: _handleTypingChanged,
                           isUploading: _uploadingAttachment,
+                          isEmojiOpen: _emojiPanelVisible,
+                        ),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          child: _emojiPanelVisible
+                              ? Padding(
+                                  key: const ValueKey('emoji-panel'),
+                                  padding: const EdgeInsets.only(top: 10),
+                                  child: _EmojiPickerPanel(
+                                    recent: _recentEmojis,
+                                    onSelect: _insertEmoji,
+                                  ),
+                                )
+                              : const SizedBox.shrink(
+                                  key: ValueKey('emoji-panel-hidden'),
+                                ),
                         ),
                       ],
                     ),
@@ -3313,11 +3445,13 @@ class _MessageBubble extends StatelessWidget {
     required this.primary,
     required this.secondary,
     required this.timeLabel,
+    required this.replyPreview,
     required this.showAvatar,
     required this.initial,
     required this.isFirst,
     required this.isLast,
     required this.onLongPress,
+    required this.onMediaTap,
   });
 
   final ChatMessage message;
@@ -3325,11 +3459,13 @@ class _MessageBubble extends StatelessWidget {
   final Color primary;
   final Color secondary;
   final String timeLabel;
+  final String? replyPreview;
   final bool showAvatar;
   final String initial;
   final bool isFirst;
   final bool isLast;
   final VoidCallback onLongPress;
+  final VoidCallback onMediaTap;
 
   @override
   Widget build(BuildContext context) {
@@ -3383,10 +3519,42 @@ class _MessageBubble extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (replyPreview != null && !message.isDeleted) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: isOutgoing
+                    ? Colors.white.withValues(alpha: 0.16)
+                    : PravaColors.accentPrimary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border(
+                  left: BorderSide(
+                    color: isOutgoing
+                        ? Colors.white
+                        : PravaColors.accentPrimary,
+                    width: 3,
+                  ),
+                ),
+              ),
+              child: Text(
+                replyPreview!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: PravaTypography.caption.copyWith(
+                  color: isOutgoing ? Colors.white : secondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
           if (isMedia && !message.isDeleted)
             _MediaMessageContent(
               label: displayBody,
               color: isOutgoing ? Colors.white : primary,
+              imageUrl: message.mediaUrl,
+              heroTag: 'chat-media-${message.id}',
+              onTap: onMediaTap,
             )
           else
             Text(
@@ -3527,7 +3695,68 @@ class _MessageBubble extends StatelessWidget {
 }
 
 class _MediaMessageContent extends StatelessWidget {
-  const _MediaMessageContent({required this.label, required this.color});
+  const _MediaMessageContent({
+    required this.label,
+    required this.color,
+    required this.imageUrl,
+    required this.heroTag,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final String? imageUrl;
+  final String heroTag;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = imageUrl?.trim() ?? '';
+    final hasPreview = url.isNotEmpty;
+    final caption = label.trim();
+
+    if (hasPreview) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Hero(
+              tag: heroTag,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.network(
+                  url,
+                  width: 220,
+                  height: 180,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => _MediaFallback(
+                    label: caption.isEmpty ? 'Photo' : caption,
+                    color: color,
+                  ),
+                ),
+              ),
+            ),
+            if (caption.isNotEmpty && caption.toLowerCase() != 'photo') ...[
+              const SizedBox(height: 8),
+              Text(
+                caption,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: PravaTypography.bodyMedium.copyWith(color: color),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return _MediaFallback(label: label, color: color);
+  }
+}
+
+class _MediaFallback extends StatelessWidget {
+  const _MediaFallback({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -3556,6 +3785,65 @@ class _MediaMessageContent extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _MediaViewerPage extends StatelessWidget {
+  const _MediaViewerPage({
+    required this.imageUrl,
+    required this.heroTag,
+    required this.title,
+  });
+
+  final String imageUrl;
+  final String heroTag;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Center(
+              child: Hero(
+                tag: heroTag,
+                child: InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 4,
+                  child: Image.network(imageUrl, fit: BoxFit.contain),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              top: 8,
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(CupertinoIcons.xmark, color: Colors.white),
+                  ),
+                  Expanded(
+                    child: Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: PravaTypography.bodyMedium.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 48),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -3595,6 +3883,7 @@ class _ComposerBar extends StatelessWidget {
     required this.onSend,
     required this.onChanged,
     required this.isUploading,
+    required this.isEmojiOpen,
   });
 
   final TextEditingController controller;
@@ -3604,12 +3893,13 @@ class _ComposerBar extends StatelessWidget {
   final VoidCallback onSend;
   final ValueChanged<String> onChanged;
   final bool isUploading;
+  final bool isEmojiOpen;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface = isDark
-        ? Colors.black.withValues(alpha: 0.4)
+        ? Colors.black.withValues(alpha: 0.46)
         : Colors.white.withValues(alpha: 0.86);
     final border = isDark
         ? PravaColors.darkBorderSubtle
@@ -3618,125 +3908,161 @@ class _ComposerBar extends StatelessWidget {
         ? PravaColors.darkTextSecondary
         : PravaColors.lightTextSecondary;
 
-    return Row(
-      children: [
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  color: surface,
-                  borderRadius: BorderRadius.circular(26),
-                  border: Border.all(color: border),
-                ),
-                child: Row(
-                  children: [
-                    _ComposerIcon(icon: CupertinoIcons.smiley, onTap: onEmoji),
-                    _ComposerIcon(
-                      icon: CupertinoIcons.paperclip,
-                      onTap: isUploading ? () {} : onAttach,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 54),
+          padding: const EdgeInsets.fromLTRB(8, 5, 6, 5),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: isEmojiOpen
+                  ? PravaColors.accentPrimary.withValues(alpha: 0.45)
+                  : border,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, child) {
+              final hasText = value.text.trim().isNotEmpty;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _ComposerIcon(
+                    icon: isEmojiOpen
+                        ? CupertinoIcons.keyboard
+                        : CupertinoIcons.smiley,
+                    active: isEmojiOpen,
+                    onTap: onEmoji,
+                  ),
+                  Expanded(
+                    child: PravaInput(
+                      controller: controller,
+                      hint: 'Message',
+                      focusNode: focusNode,
+                      fieldType: PravaInputFieldType.chat,
+                      variant: PravaInputVariant.borderless,
+                      size: PravaInputSize.small,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => onSend(),
+                      onChanged: onChanged,
+                      maxLines: 4,
                     ),
-                    Expanded(
-                      child: PravaInput(
-                        controller: controller,
-                        hint: 'Message',
-                        focusNode: focusNode,
-                        fieldType: PravaInputFieldType.chat,
-                        variant: PravaInputVariant.borderless,
-                        size: PravaInputSize.small,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => onSend(),
-                        onChanged: onChanged,
-                        maxLines: 4,
-                      ),
-                    ),
-                    if (isUploading)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 10),
-                        child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: PravaColors.accentPrimary,
+                  ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 140),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    child: hasText
+                        ? const SizedBox.shrink(key: ValueKey('no-attach'))
+                        : _ComposerIcon(
+                            key: const ValueKey('attach'),
+                            icon: CupertinoIcons.photo_fill_on_rectangle_fill,
+                            onTap: isUploading ? () {} : onAttach,
                           ),
+                  ),
+                  if (isUploading)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 8, bottom: 11),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: PravaColors.accentPrimary,
                         ),
                       ),
-                  ],
-                ),
-              ),
-            ),
+                    ),
+                  _SendButton(
+                    enabled: hasText,
+                    secondary: secondary,
+                    onSend: onSend,
+                  ),
+                ],
+              );
+            },
           ),
         ),
-        const SizedBox(width: 10),
-        ValueListenableBuilder<TextEditingValue>(
-          valueListenable: controller,
-          builder: (context, value, child) {
-            final hasText = value.text.trim().isNotEmpty;
-            final buttonColor = hasText
-                ? PravaColors.accentPrimary
-                : (isDark ? Colors.white12 : Colors.black12);
-            return GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                if (hasText) {
-                  onSend();
-                }
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 120),
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: buttonColor,
-                  boxShadow: hasText
-                      ? [
-                          BoxShadow(
-                            color: PravaColors.accentPrimary.withValues(
-                              alpha: 0.28,
-                            ),
-                            blurRadius: 16,
-                            offset: const Offset(0, 8),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Icon(
-                  CupertinoIcons.paperplane_fill,
-                  color: hasText ? Colors.white : secondary,
-                  size: 18,
-                ),
-              ),
-            );
-          },
-        ),
-      ],
+      ),
     );
   }
 }
 
 class _ComposerIcon extends StatelessWidget {
-  const _ComposerIcon({required this.icon, required this.onTap});
+  const _ComposerIcon({
+    super.key,
+    required this.icon,
+    required this.onTap,
+    this.active = false,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = active
+        ? PravaColors.accentPrimary
+        : isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
     return IconButton(
-      icon: Icon(
-        icon,
-        size: 18,
-        color: isDark
-            ? PravaColors.darkTextSecondary
-            : PravaColors.lightTextSecondary,
-      ),
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.all(8),
+      constraints: const BoxConstraints(minWidth: 38, minHeight: 42),
+      icon: Icon(icon, size: active ? 22 : 20, color: color),
       onPressed: onTap,
+    );
+  }
+}
+
+class _SendButton extends StatelessWidget {
+  const _SendButton({
+    required this.enabled,
+    required this.secondary,
+    required this.onSend,
+  });
+
+  final bool enabled;
+  final Color secondary;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        if (enabled) onSend();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        width: 42,
+        height: 42,
+        margin: const EdgeInsets.only(left: 2),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: enabled
+              ? PravaColors.accentPrimary
+              : secondary.withValues(alpha: 0.14),
+        ),
+        child: Icon(
+          CupertinoIcons.paperplane_fill,
+          color: enabled ? Colors.white : secondary,
+          size: 18,
+        ),
+      ),
     );
   }
 }
@@ -3834,6 +4160,86 @@ class _EditingBanner extends StatelessWidget {
   }
 }
 
+class _ReplyBanner extends StatelessWidget {
+  const _ReplyBanner({
+    required this.title,
+    required this.preview,
+    required this.onCancel,
+  });
+
+  final String title;
+  final String preview;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark
+        ? Colors.white10
+        : Colors.black.withValues(alpha: 0.06);
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final secondary = isDark
+        ? PravaColors.darkTextSecondary
+        : PravaColors.lightTextSecondary;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        border: const Border(
+          left: BorderSide(color: PravaColors.accentPrimary, width: 3),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            CupertinoIcons.reply,
+            size: 16,
+            color: PravaColors.accentPrimary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.caption.copyWith(
+                    color: primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  preview,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.caption.copyWith(color: secondary),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(
+              CupertinoIcons.xmark_circle_fill,
+              size: 18,
+              color: secondary,
+            ),
+            onPressed: onCancel,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ReactionPicker extends StatelessWidget {
   const _ReactionPicker({required this.onSelect});
 
@@ -3866,17 +4272,17 @@ class _ReactionPicker extends StatelessWidget {
   }
 }
 
-class _EmojiPickerSheet extends StatefulWidget {
-  const _EmojiPickerSheet({required this.recent, required this.onSelect});
+class _EmojiPickerPanel extends StatefulWidget {
+  const _EmojiPickerPanel({required this.recent, required this.onSelect});
 
   final List<String> recent;
   final ValueChanged<String> onSelect;
 
   @override
-  State<_EmojiPickerSheet> createState() => _EmojiPickerSheetState();
+  State<_EmojiPickerPanel> createState() => _EmojiPickerPanelState();
 }
 
-class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
+class _EmojiPickerPanelState extends State<_EmojiPickerPanel> {
   late final List<String> _recent = List<String>.from(widget.recent);
   int _selected = 0;
 
@@ -3914,86 +4320,96 @@ class _EmojiPickerSheetState extends State<_EmojiPickerSheet> {
     final categories = _categories;
     final selected = categories[_selected];
 
-    return SafeArea(
-      top: false,
-      child: Container(
-        height: min(MediaQuery.of(context).size.height * 0.56, 430),
-        decoration: BoxDecoration(
-          color: surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: border)),
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: secondary.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-            SizedBox(
-              height: 52,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                itemCount: categories.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 4),
-                itemBuilder: (context, index) {
-                  final category = categories[index];
-                  final active = index == _selected;
-                  return IconButton(
-                    tooltip: category.label,
-                    onPressed: () => setState(() => _selected = index),
-                    icon: Icon(
-                      category.icon,
-                      color: active ? PravaColors.accentPrimary : secondary,
-                    ),
-                  );
-                },
-              ),
-            ),
-            Divider(height: 1, color: border),
-            Expanded(
-              child: selected.emojis.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Recently used emojis appear here',
-                        style: PravaTypography.bodyMedium.copyWith(
-                          color: secondary,
-                        ),
+    return Container(
+      height: min(MediaQuery.of(context).size.height * 0.38, 330),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 50,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              itemCount: categories.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 2),
+              itemBuilder: (context, index) {
+                final category = categories[index];
+                final active = index == _selected;
+                return Tooltip(
+                  message: category.label,
+                  child: InkWell(
+                    onTap: () => setState(() => _selected = index),
+                    borderRadius: BorderRadius.circular(14),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 140),
+                      width: 42,
+                      decoration: BoxDecoration(
+                        color: active
+                            ? PravaColors.accentPrimary.withValues(alpha: 0.14)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                    )
-                  : GridView.builder(
-                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 22),
-                      physics: const BouncingScrollPhysics(),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 8,
-                            mainAxisSpacing: 8,
-                            crossAxisSpacing: 8,
-                          ),
-                      itemCount: selected.emojis.length,
-                      itemBuilder: (context, index) {
-                        final emoji = selected.emojis[index];
-                        return InkWell(
-                          onTap: () => _select(emoji),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Center(
-                            child: Text(
-                              emoji,
-                              style: PravaTypography.emojiReactionLarge
-                                  .copyWith(color: primary),
+                      child: Icon(
+                        category.icon,
+                        size: 22,
+                        color: active ? PravaColors.accentPrimary : secondary,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Divider(height: 1, color: border),
+          Expanded(
+            child: selected.emojis.isEmpty
+                ? Center(
+                    child: Text(
+                      'Recently used emojis appear here',
+                      style: PravaTypography.bodyMedium.copyWith(
+                        color: secondary,
+                      ),
+                    ),
+                  )
+                : GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+                    physics: const BouncingScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 8,
+                          mainAxisSpacing: 4,
+                          crossAxisSpacing: 4,
+                        ),
+                    itemCount: selected.emojis.length,
+                    itemBuilder: (context, index) {
+                      final emoji = selected.emojis[index];
+                      return InkWell(
+                        onTap: () => _select(emoji),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Center(
+                          child: Text(
+                            emoji,
+                            style: PravaTypography.emojiReactionLarge.copyWith(
+                              color: primary,
                             ),
                           ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -4011,780 +4427,1168 @@ class _EmojiCategory {
   final List<String> emojis;
 }
 
-const _emojiCategories = <_EmojiCategory>[
-  _EmojiCategory(
-    label: 'Smileys',
-    icon: Icons.emoji_emotions_outlined,
-    emojis: [
-      '😀',
-      '😃',
-      '😄',
-      '😁',
-      '😆',
-      '😅',
-      '😂',
-      '🤣',
-      '😊',
-      '😇',
-      '🙂',
-      '🙃',
-      '😉',
-      '😌',
-      '😍',
-      '🥰',
-      '😘',
-      '😗',
-      '😙',
-      '😚',
-      '😋',
-      '😛',
-      '😝',
-      '😜',
-      '🤪',
-      '🤨',
-      '🧐',
-      '🤓',
-      '😎',
-      '🥳',
-      '😏',
-      '😒',
-      '😞',
-      '😔',
-      '😟',
-      '😕',
-      '🙁',
-      '☹️',
-      '😣',
-      '😖',
-      '😫',
-      '😩',
-      '🥺',
-      '😢',
-      '😭',
-      '😤',
-      '😠',
-      '😡',
-      '🤬',
-      '🤯',
-      '😳',
-      '🥵',
-      '🥶',
-      '😱',
-      '😨',
-      '😰',
-      '😥',
-      '😓',
-      '🤗',
-      '🤔',
-      '🫡',
-      '🤭',
-      '🫢',
-      '🫣',
-      '🤫',
-      '🤥',
-      '😶',
-      '😐',
-      '😑',
-      '😬',
-      '🙄',
-      '😯',
-      '😦',
-      '😧',
-      '😮',
-      '😲',
-      '🥱',
-      '😴',
-      '🤤',
-      '😪',
-      '😵',
-      '🤐',
-      '🥴',
-      '🤢',
-      '🤮',
-      '🤧',
-      '😷',
-      '🤒',
-      '🤕',
-      '🤑',
-      '🤠',
-      '😈',
-      '👿',
-      '👻',
-      '💀',
-      '☠️',
-      '💩',
-      '🤡',
-      '👹',
-      '👺',
-      '❤️',
-      '🧡',
-      '💛',
-      '💚',
-      '💙',
-      '💜',
-      '🖤',
-      '🤍',
-      '🤎',
-      '💔',
-      '❣️',
-      '💕',
-      '💞',
-      '💓',
-      '💗',
-      '💖',
-      '💘',
-      '💝',
-      '💟',
-    ],
-  ),
-  _EmojiCategory(
-    label: 'People',
-    icon: Icons.people_outline,
-    emojis: [
-      '👍',
-      '👎',
-      '👌',
-      '🤌',
-      '🤏',
-      '✌️',
-      '🤞',
-      '🫰',
-      '🤟',
-      '🤘',
-      '🤙',
-      '👈',
-      '👉',
-      '👆',
-      '👇',
-      '☝️',
-      '✋',
-      '🤚',
-      '🖐️',
-      '🖖',
-      '👋',
-      '🤝',
-      '👏',
-      '🙌',
-      '🫶',
-      '👐',
-      '🤲',
-      '🙏',
-      '✍️',
-      '💅',
-      '🤳',
-      '💪',
-      '🦾',
-      '🦵',
-      '🦶',
-      '👂',
-      '🦻',
-      '👃',
-      '🧠',
-      '🫀',
-      '🫁',
-      '🦷',
-      '👀',
-      '👁️',
-      '👅',
-      '👄',
-      '👶',
-      '🧒',
-      '👦',
-      '👧',
-      '🧑',
-      '👱',
-      '👨',
-      '🧔',
-      '👩',
-      '🧓',
-      '👴',
-      '👵',
-      '🙍',
-      '🙎',
-      '🙅',
-      '🙆',
-      '💁',
-      '🙋',
-      '🧏',
-      '🙇',
-      '🤦',
-      '🤷',
-      '👮',
-      '🕵️',
-      '💂',
-      '🥷',
-      '👷',
-      '🫅',
-      '🤴',
-      '👸',
-      '👳',
-      '👲',
-      '🧕',
-      '🤵',
-      '👰',
-      '🤰',
-      '🫃',
-      '🫄',
-      '🤱',
-      '👼',
-      '🎅',
-      '🧑‍🎄',
-    ],
-  ),
-  _EmojiCategory(
-    label: 'Nature',
-    icon: Icons.eco_outlined,
-    emojis: [
-      '🐶',
-      '🐱',
-      '🐭',
-      '🐹',
-      '🐰',
-      '🦊',
-      '🐻',
-      '🐼',
-      '🐻‍❄️',
-      '🐨',
-      '🐯',
-      '🦁',
-      '🐮',
-      '🐷',
-      '🐸',
-      '🐵',
-      '🙈',
-      '🙉',
-      '🙊',
-      '🐒',
-      '🐔',
-      '🐧',
-      '🐦',
-      '🐤',
-      '🦆',
-      '🦅',
-      '🦉',
-      '🦇',
-      '🐺',
-      '🐗',
-      '🐴',
-      '🦄',
-      '🐝',
-      '🪱',
-      '🐛',
-      '🦋',
-      '🐌',
-      '🐞',
-      '🐜',
-      '🪰',
-      '🪲',
-      '🪳',
-      '🦟',
-      '🦗',
-      '🕷️',
-      '🦂',
-      '🐢',
-      '🐍',
-      '🦎',
-      '🦖',
-      '🦕',
-      '🐙',
-      '🦑',
-      '🦐',
-      '🦞',
-      '🦀',
-      '🐡',
-      '🐠',
-      '🐟',
-      '🐬',
-      '🐳',
-      '🐋',
-      '🦈',
-      '🐊',
-      '🌵',
-      '🎄',
-      '🌲',
-      '🌳',
-      '🌴',
-      '🪵',
-      '🌱',
-      '🌿',
-      '☘️',
-      '🍀',
-      '🎍',
-      '🪴',
-      '🎋',
-      '🍃',
-      '🍂',
-      '🍁',
-      '🍄',
-      '🐚',
-      '🪨',
-      '🌾',
-      '💐',
-      '🌷',
-      '🌹',
-      '🥀',
-      '🌺',
-      '🌸',
-      '🌼',
-      '🌻',
-      '🌞',
-      '🌝',
-      '🌛',
-      '🌜',
-    ],
-  ),
-  _EmojiCategory(
-    label: 'Food',
-    icon: Icons.restaurant_outlined,
-    emojis: [
-      '🍏',
-      '🍎',
-      '🍐',
-      '🍊',
-      '🍋',
-      '🍌',
-      '🍉',
-      '🍇',
-      '🍓',
-      '🫐',
-      '🍈',
-      '🍒',
-      '🍑',
-      '🥭',
-      '🍍',
-      '🥥',
-      '🥝',
-      '🍅',
-      '🍆',
-      '🥑',
-      '🥦',
-      '🥬',
-      '🥒',
-      '🌶️',
-      '🫑',
-      '🌽',
-      '🥕',
-      '🫒',
-      '🧄',
-      '🧅',
-      '🥔',
-      '🍠',
-      '🥐',
-      '🥯',
-      '🍞',
-      '🥖',
-      '🥨',
-      '🧀',
-      '🥚',
-      '🍳',
-      '🧈',
-      '🥞',
-      '🧇',
-      '🥓',
-      '🥩',
-      '🍗',
-      '🍖',
-      '🌭',
-      '🍔',
-      '🍟',
-      '🍕',
-      '🫓',
-      '🥪',
-      '🥙',
-      '🧆',
-      '🌮',
-      '🌯',
-      '🫔',
-      '🥗',
-      '🥘',
-      '🫕',
-      '🍝',
-      '🍜',
-      '🍲',
-      '🍛',
-      '🍣',
-      '🍱',
-      '🥟',
-      '🦪',
-      '🍤',
-      '🍙',
-      '🍚',
-      '🍘',
-      '🍥',
-      '🥠',
-      '🥮',
-      '🍢',
-      '🍡',
-      '🍧',
-      '🍨',
-      '🍦',
-      '🥧',
-      '🧁',
-      '🍰',
-      '🎂',
-      '🍮',
-      '🍭',
-      '🍬',
-      '🍫',
-      '🍿',
-      '🍩',
-      '🍪',
-      '🥛',
-      '☕',
-      '🫖',
-      '🍵',
-    ],
-  ),
-  _EmojiCategory(
-    label: 'Travel',
-    icon: Icons.flight_takeoff,
-    emojis: [
-      '🚗',
-      '🚕',
-      '🚙',
-      '🚌',
-      '🚎',
-      '🏎️',
-      '🚓',
-      '🚑',
-      '🚒',
-      '🚐',
-      '🛻',
-      '🚚',
-      '🚛',
-      '🚜',
-      '🛵',
-      '🏍️',
-      '🛺',
-      '🚲',
-      '🛴',
-      '🛹',
-      '🛼',
-      '🚆',
-      '🚇',
-      '🚊',
-      '🚉',
-      '✈️',
-      '🛫',
-      '🛬',
-      '🛩️',
-      '💺',
-      '🚁',
-      '🚀',
-      '🛸',
-      '🚢',
-      '⛵',
-      '🚤',
-      '🛥️',
-      '🛳️',
-      '⛴️',
-      '⚓',
-      '⛽',
-      '🚧',
-      '🚦',
-      '🚥',
-      '🗺️',
-      '🗿',
-      '🗽',
-      '🗼',
-      '🏰',
-      '🏯',
-      '🏟️',
-      '🎡',
-      '🎢',
-      '🎠',
-      '⛲',
-      '⛱️',
-      '🏖️',
-      '🏝️',
-      '🏜️',
-      '🌋',
-      '⛰️',
-      '🏔️',
-      '🗻',
-      '🏕️',
-      '🏠',
-      '🏡',
-      '🏘️',
-      '🏚️',
-      '🏗️',
-      '🏭',
-      '🏢',
-      '🏬',
-      '🏣',
-      '🏤',
-      '🏥',
-      '🏦',
-      '🏨',
-      '🏪',
-      '🏫',
-      '🏩',
-    ],
-  ),
-  _EmojiCategory(
-    label: 'Activities',
-    icon: Icons.sports_basketball_outlined,
-    emojis: [
-      '⚽',
-      '🏀',
-      '🏈',
-      '⚾',
-      '🥎',
-      '🎾',
-      '🏐',
-      '🏉',
-      '🥏',
-      '🎱',
-      '🪀',
-      '🏓',
-      '🏸',
-      '🏒',
-      '🏑',
-      '🥍',
-      '🏏',
-      '🪃',
-      '🥅',
-      '⛳',
-      '🪁',
-      '🏹',
-      '🎣',
-      '🤿',
-      '🥊',
-      '🥋',
-      '🎽',
-      '🛹',
-      '🛼',
-      '🛷',
-      '⛸️',
-      '🥌',
-      '🎿',
-      '⛷️',
-      '🏂',
-      '🪂',
-      '🏋️',
-      '🤼',
-      '🤸',
-      '⛹️',
-      '🤺',
-      '🤾',
-      '🏌️',
-      '🏇',
-      '🧘',
-      '🏄',
-      '🏊',
-      '🤽',
-      '🚣',
-      '🧗',
-      '🚵',
-      '🚴',
-      '🎯',
-      '🎮',
-      '🎲',
-      '♟️',
-      '🎭',
-      '🎨',
-      '🧩',
-      '🎪',
-      '🎤',
-      '🎧',
-      '🎼',
-      '🎹',
-      '🥁',
-      '🪘',
-      '🎷',
-      '🎺',
-      '🪗',
-      '🎸',
-      '🪕',
-      '🎻',
-      '🎬',
-      '🏆',
-      '🥇',
-      '🥈',
-      '🥉',
-      '🏅',
-      '🎖️',
-      '🎗️',
-    ],
-  ),
-  _EmojiCategory(
-    label: 'Objects',
-    icon: Icons.lightbulb_outline,
-    emojis: [
-      '⌚',
-      '📱',
-      '📲',
-      '💻',
-      '⌨️',
-      '🖥️',
-      '🖨️',
-      '🖱️',
-      '🖲️',
-      '🕹️',
-      '🗜️',
-      '💽',
-      '💾',
-      '💿',
-      '📀',
-      '📼',
-      '📷',
-      '📸',
-      '📹',
-      '🎥',
-      '📽️',
-      '🎞️',
-      '📞',
-      '☎️',
-      '📟',
-      '📠',
-      '📺',
-      '📻',
-      '🎙️',
-      '🎚️',
-      '🎛️',
-      '🧭',
-      '⏱️',
-      '⏲️',
-      '⏰',
-      '🕰️',
-      '⌛',
-      '⏳',
-      '📡',
-      '🔋',
-      '🪫',
-      '🔌',
-      '💡',
-      '🔦',
-      '🕯️',
-      '🪔',
-      '🧯',
-      '🛢️',
-      '💸',
-      '💵',
-      '💴',
-      '💶',
-      '💷',
-      '🪙',
-      '💰',
-      '💳',
-      '💎',
-      '⚖️',
-      '🪜',
-      '🧰',
-      '🪛',
-      '🔧',
-      '🔨',
-      '⚒️',
-      '🛠️',
-      '⛏️',
-      '🪚',
-      '🔩',
-      '⚙️',
-      '🪤',
-      '🧱',
-      '⛓️',
-      '🧲',
-      '🔫',
-      '💣',
-      '🧨',
-      '🪓',
-      '🔪',
-      '🗡️',
-      '🛡️',
-      '🚬',
-      '⚰️',
-      '🪦',
-      '⚱️',
-      '🏺',
-      '🔮',
-      '📿',
-      '🧿',
-    ],
-  ),
-  _EmojiCategory(
-    label: 'Symbols',
-    icon: Icons.emoji_symbols_outlined,
-    emojis: [
-      '✅',
-      '☑️',
-      '✔️',
-      '❌',
-      '❎',
-      '➕',
-      '➖',
-      '➗',
-      '✖️',
-      '♾️',
-      '‼️',
-      '⁉️',
-      '❓',
-      '❔',
-      '❕',
-      '❗',
-      '〰️',
-      '💱',
-      '💲',
-      '⚕️',
-      '♻️',
-      '⚜️',
-      '🔱',
-      '📛',
-      '🔰',
-      '⭕',
-      '🟢',
-      '🟡',
-      '🟠',
-      '🔴',
-      '🟣',
-      '🔵',
-      '⚫',
-      '⚪',
-      '🟤',
-      '⬛',
-      '⬜',
-      '◼️',
-      '◻️',
-      '◾',
-      '◽',
-      '▪️',
-      '▫️',
-      '🔶',
-      '🔷',
-      '🔸',
-      '🔹',
-      '🔺',
-      '🔻',
-      '💠',
-      '🔘',
-      '🔳',
-      '🔲',
-      '🏁',
-      '🚩',
-      '🎌',
-      '🏴',
-      '🏳️',
-      '🏳️‍🌈',
-      '🏳️‍⚧️',
-      '🇮🇳',
-      '🇺🇸',
-      '🇬🇧',
-      '🇯🇵',
-      '0️⃣',
-      '1️⃣',
-      '2️⃣',
-      '3️⃣',
-      '4️⃣',
-      '5️⃣',
-      '6️⃣',
-      '7️⃣',
-      '8️⃣',
-      '9️⃣',
-      '🔟',
-      '#️⃣',
-      '*️⃣',
-    ],
-  ),
-];
+List<_EmojiCategory> _buildEmojiCategories() {
+  return [
+    _EmojiCategory(
+      label: 'Smileys',
+      icon: Icons.emoji_emotions_outlined,
+      emojis: [
+        ..._emojiCodepoints([
+          0x1F600,
+          0x1F603,
+          0x1F604,
+          0x1F601,
+          0x1F606,
+          0x1F605,
+          0x1F602,
+          0x1F923,
+          0x1F642,
+          0x1F643,
+          0x1FAE0,
+          0x1F609,
+          0x1F60A,
+          0x1F607,
+          0x1F970,
+          0x1F60D,
+          0x1F929,
+          0x1F618,
+          0x1F617,
+          0x263A,
+          0x1F61A,
+          0x1F619,
+          0x1F972,
+          0x1F60B,
+          0x1F61B,
+          0x1F61C,
+          0x1F92A,
+          0x1F61D,
+          0x1F911,
+          0x1F917,
+          0x1F92D,
+          0x1FAE2,
+          0x1FAE3,
+          0x1F92B,
+          0x1F914,
+          0x1FAE1,
+          0x1F910,
+          0x1F928,
+          0x1F610,
+          0x1F611,
+          0x1F636,
+          0x1FAE5,
+          0x1F60F,
+          0x1F612,
+          0x1F644,
+          0x1F62C,
+          0x1F62E,
+          0x1F925,
+          0x1FAE8,
+          0x1F60C,
+          0x1F614,
+          0x1F62A,
+          0x1F924,
+          0x1F634,
+          0x1F637,
+          0x1F912,
+          0x1F915,
+          0x1F922,
+          0x1F92E,
+          0x1F927,
+          0x1F975,
+          0x1F976,
+          0x1F974,
+          0x1F635,
+          0x1F92F,
+          0x1F920,
+          0x1F973,
+          0x1F978,
+          0x1F60E,
+          0x1F913,
+          0x1F9D0,
+          0x1F615,
+          0x1FAE4,
+          0x1F61F,
+          0x1F641,
+          0x2639,
+          0x1F62E,
+          0x1F62F,
+          0x1F632,
+          0x1F633,
+          0x1F97A,
+          0x1F979,
+          0x1F626,
+          0x1F627,
+          0x1F628,
+          0x1F630,
+          0x1F625,
+          0x1F622,
+          0x1F62D,
+          0x1F631,
+          0x1F616,
+          0x1F623,
+          0x1F61E,
+          0x1F613,
+          0x1F629,
+          0x1F62B,
+          0x1F971,
+          0x1F624,
+          0x1F621,
+          0x1F620,
+          0x1F92C,
+          0x1F608,
+          0x1F47F,
+          0x1F480,
+          0x2620,
+          0x1F4A9,
+          0x1F921,
+          0x1F47B,
+          0x1F47D,
+          0x1F47E,
+          0x1F916,
+        ]),
+        ..._emojiSequences([
+          [0x2764, 0xFE0F],
+          [0x1F9E1],
+          [0x1F49B],
+          [0x1F49A],
+          [0x1F499],
+          [0x1F49C],
+          [0x1F90E],
+          [0x1F5A4],
+          [0x1F90D],
+          [0x1F494],
+          [0x2764, 0xFE0F, 0x200D, 0x1F525],
+          [0x2764, 0xFE0F, 0x200D, 0x1FA79],
+          [0x1F495],
+          [0x1F49E],
+          [0x1F493],
+          [0x1F497],
+          [0x1F496],
+          [0x1F498],
+          [0x1F49D],
+          [0x1F49F],
+        ]),
+      ],
+    ),
+    _EmojiCategory(
+      label: 'People',
+      icon: Icons.back_hand_outlined,
+      emojis: [
+        ..._emojiCodepoints([
+          0x1F44B,
+          0x1F91A,
+          0x1F590,
+          0x270B,
+          0x1F596,
+          0x1FAF1,
+          0x1FAF2,
+          0x1FAF3,
+          0x1FAF4,
+          0x1FAF7,
+          0x1FAF8,
+          0x1F44C,
+          0x1F90C,
+          0x1F90F,
+          0x270C,
+          0x1F91E,
+          0x1FAF0,
+          0x1F91F,
+          0x1F918,
+          0x1F919,
+          0x1F448,
+          0x1F449,
+          0x1F446,
+          0x1F595,
+          0x1F447,
+          0x261D,
+          0x1FAF5,
+          0x1F44D,
+          0x1F44E,
+          0x270A,
+          0x1F44A,
+          0x1F91B,
+          0x1F91C,
+          0x1F44F,
+          0x1F64C,
+          0x1FAF6,
+          0x1F450,
+          0x1F932,
+          0x1F91D,
+          0x1F64F,
+          0x270D,
+          0x1F485,
+          0x1F933,
+          0x1F4AA,
+          0x1F9BE,
+          0x1F9BF,
+          0x1F9B5,
+          0x1F9B6,
+          0x1F442,
+          0x1F9BB,
+          0x1F443,
+          0x1F9E0,
+          0x1FAC0,
+          0x1FAC1,
+          0x1F9B7,
+          0x1F9B4,
+          0x1F440,
+          0x1F441,
+          0x1F445,
+          0x1F444,
+          0x1F476,
+          0x1F9D2,
+          0x1F466,
+          0x1F467,
+          0x1F9D1,
+          0x1F468,
+          0x1F469,
+          0x1F9D4,
+          0x1F471,
+          0x1F9D3,
+          0x1F474,
+          0x1F475,
+          0x1F64D,
+          0x1F64E,
+          0x1F645,
+          0x1F646,
+          0x1F481,
+          0x1F64B,
+          0x1F9CF,
+          0x1F647,
+          0x1F926,
+          0x1F937,
+          0x1F575,
+          0x1F46E,
+          0x1F477,
+          0x1F482,
+          0x1F977,
+          0x1F9D5,
+          0x1F472,
+          0x1F473,
+          0x1F9D5,
+          0x1F935,
+          0x1F470,
+          0x1F930,
+          0x1FAC3,
+          0x1FAC4,
+          0x1F931,
+          0x1F47C,
+          0x1F385,
+          0x1F936,
+          0x1F9B8,
+          0x1F9B9,
+          0x1F9D9,
+          0x1F9DA,
+          0x1F9DB,
+          0x1F9DC,
+          0x1F9DD,
+          0x1F9DE,
+          0x1F9DF,
+          0x1F486,
+          0x1F487,
+          0x1F6B6,
+          0x1F9CD,
+          0x1F9CE,
+          0x1F3C3,
+          0x1F483,
+          0x1F57A,
+          0x1F46F,
+          0x1F9D6,
+          0x1F9D7,
+          0x1F9D8,
+          0x1F6CC,
+        ]),
+        ..._emojiSequences([
+          [0x1F574, 0xFE0F],
+          [0x1F6B6, 0x200D, 0x2640, 0xFE0F],
+          [0x1F6B6, 0x200D, 0x2642, 0xFE0F],
+          [0x1F3C3, 0x200D, 0x2640, 0xFE0F],
+          [0x1F3C3, 0x200D, 0x2642, 0xFE0F],
+          [0x1F46B],
+          [0x1F46C],
+          [0x1F46D],
+          [0x1F48F],
+          [0x1F491],
+          [0x1F46A],
+        ]),
+      ],
+    ),
+    _EmojiCategory(
+      label: 'Animals',
+      icon: Icons.pets_outlined,
+      emojis: _emojiCodepoints([
+        0x1F435,
+        0x1F412,
+        0x1F98D,
+        0x1F9A7,
+        0x1F436,
+        0x1F415,
+        0x1F9AE,
+        0x1F429,
+        0x1F43A,
+        0x1F98A,
+        0x1F99D,
+        0x1F431,
+        0x1F408,
+        0x1F981,
+        0x1F42F,
+        0x1F405,
+        0x1F406,
+        0x1F434,
+        0x1FACE,
+        0x1F40E,
+        0x1F984,
+        0x1F993,
+        0x1F98C,
+        0x1F9AC,
+        0x1F42E,
+        0x1F402,
+        0x1F403,
+        0x1F404,
+        0x1F437,
+        0x1F416,
+        0x1F417,
+        0x1F43D,
+        0x1F40F,
+        0x1F411,
+        0x1F410,
+        0x1F42A,
+        0x1F42B,
+        0x1F999,
+        0x1F992,
+        0x1F418,
+        0x1F9A3,
+        0x1F98F,
+        0x1F99B,
+        0x1F42D,
+        0x1F401,
+        0x1F400,
+        0x1F439,
+        0x1F430,
+        0x1F407,
+        0x1F43F,
+        0x1F9AB,
+        0x1F994,
+        0x1F987,
+        0x1F43B,
+        0x1F428,
+        0x1F43C,
+        0x1F9A5,
+        0x1F9A6,
+        0x1F9A8,
+        0x1F998,
+        0x1F9A1,
+        0x1F43E,
+        0x1F983,
+        0x1F414,
+        0x1F413,
+        0x1F423,
+        0x1F424,
+        0x1F425,
+        0x1F426,
+        0x1F427,
+        0x1F54A,
+        0x1F985,
+        0x1F986,
+        0x1F9A2,
+        0x1F989,
+        0x1F9A4,
+        0x1FAB6,
+        0x1F9A9,
+        0x1F99A,
+        0x1F99C,
+        0x1F438,
+        0x1F40A,
+        0x1F422,
+        0x1F98E,
+        0x1F40D,
+        0x1F432,
+        0x1F409,
+        0x1F995,
+        0x1F996,
+        0x1F433,
+        0x1F40B,
+        0x1F42C,
+        0x1F9AD,
+        0x1F41F,
+        0x1F420,
+        0x1F421,
+        0x1F988,
+        0x1F419,
+        0x1F41A,
+        0x1FAB8,
+        0x1F40C,
+        0x1F98B,
+        0x1F41B,
+        0x1F41C,
+        0x1F41D,
+        0x1FAB2,
+        0x1F41E,
+        0x1F997,
+        0x1FAB3,
+        0x1F577,
+        0x1F578,
+        0x1F982,
+        0x1F99F,
+        0x1F9A0,
+        0x1F490,
+        0x1F338,
+        0x1F4AE,
+        0x1FAB7,
+        0x1F3F5,
+        0x1F339,
+        0x1F940,
+        0x1F33A,
+        0x1F33B,
+        0x1F33C,
+        0x1F337,
+        0x1F331,
+        0x1FAB4,
+        0x1F332,
+        0x1F333,
+        0x1F334,
+        0x1F335,
+        0x1F33E,
+        0x1F33F,
+        0x2618,
+        0x1F340,
+        0x1F341,
+        0x1F342,
+        0x1F343,
+        0x1FAB9,
+      ]),
+    ),
+    _EmojiCategory(
+      label: 'Food',
+      icon: Icons.restaurant_outlined,
+      emojis: _emojiCodepoints([
+        0x1F347,
+        0x1F348,
+        0x1F349,
+        0x1F34A,
+        0x1F34B,
+        0x1F34C,
+        0x1F34D,
+        0x1F96D,
+        0x1F34E,
+        0x1F34F,
+        0x1F350,
+        0x1F351,
+        0x1F352,
+        0x1F353,
+        0x1FAD0,
+        0x1F95D,
+        0x1F345,
+        0x1FAD2,
+        0x1F965,
+        0x1F951,
+        0x1F346,
+        0x1F954,
+        0x1F955,
+        0x1F33D,
+        0x1F336,
+        0x1FAD1,
+        0x1F952,
+        0x1F96C,
+        0x1F966,
+        0x1F9C4,
+        0x1F9C5,
+        0x1F344,
+        0x1F95C,
+        0x1FAD8,
+        0x1F330,
+        0x1F35E,
+        0x1F950,
+        0x1F956,
+        0x1FAD3,
+        0x1F968,
+        0x1F96F,
+        0x1F95E,
+        0x1F9C7,
+        0x1F9C0,
+        0x1F356,
+        0x1F357,
+        0x1F969,
+        0x1F953,
+        0x1F354,
+        0x1F35F,
+        0x1F355,
+        0x1F32D,
+        0x1F96A,
+        0x1F32E,
+        0x1F32F,
+        0x1FAD4,
+        0x1F959,
+        0x1F9C6,
+        0x1F95A,
+        0x1F373,
+        0x1F958,
+        0x1F372,
+        0x1FAD5,
+        0x1F963,
+        0x1F957,
+        0x1F37F,
+        0x1F9C8,
+        0x1F9C2,
+        0x1F96B,
+        0x1F371,
+        0x1F358,
+        0x1F359,
+        0x1F35A,
+        0x1F35B,
+        0x1F35C,
+        0x1F35D,
+        0x1F360,
+        0x1F362,
+        0x1F363,
+        0x1F364,
+        0x1F365,
+        0x1F96E,
+        0x1F361,
+        0x1F95F,
+        0x1F960,
+        0x1F961,
+        0x1F980,
+        0x1F99E,
+        0x1F990,
+        0x1F991,
+        0x1F9AA,
+        0x1F366,
+        0x1F367,
+        0x1F368,
+        0x1F369,
+        0x1F36A,
+        0x1F382,
+        0x1F370,
+        0x1F9C1,
+        0x1F967,
+        0x1F36B,
+        0x1F36C,
+        0x1F36D,
+        0x1F36E,
+        0x1F36F,
+        0x1F37C,
+        0x1F95B,
+        0x2615,
+        0x1FAD6,
+        0x1F375,
+        0x1F376,
+        0x1F37E,
+        0x1F377,
+        0x1F378,
+        0x1F379,
+        0x1F37A,
+        0x1F37B,
+        0x1F942,
+        0x1F943,
+        0x1FAD7,
+        0x1F964,
+        0x1F9CB,
+        0x1F9C3,
+        0x1F9C9,
+        0x1F9CA,
+        0x1F962,
+        0x1F37D,
+        0x1F374,
+        0x1F944,
+        0x1F52A,
+        0x1FAD9,
+      ]),
+    ),
+    _EmojiCategory(
+      label: 'Activity',
+      icon: Icons.sports_soccer_outlined,
+      emojis: _emojiCodepoints([
+        0x1F383,
+        0x1F384,
+        0x1F386,
+        0x1F387,
+        0x1F9E8,
+        0x2728,
+        0x1F388,
+        0x1F389,
+        0x1F38A,
+        0x1F38B,
+        0x1F38D,
+        0x1F38E,
+        0x1F38F,
+        0x1F390,
+        0x1F391,
+        0x1F9E7,
+        0x1F380,
+        0x1F381,
+        0x1F397,
+        0x1F39F,
+        0x1F3AB,
+        0x1F396,
+        0x1F3C6,
+        0x1F3C5,
+        0x1F947,
+        0x1F948,
+        0x1F949,
+        0x26BD,
+        0x26BE,
+        0x1F94E,
+        0x1F3C0,
+        0x1F3D0,
+        0x1F3C8,
+        0x1F3C9,
+        0x1F3BE,
+        0x1F94F,
+        0x1F3B3,
+        0x1F3CF,
+        0x1F3D1,
+        0x1F3D2,
+        0x1F94D,
+        0x1F3D3,
+        0x1F3F8,
+        0x1F94A,
+        0x1F94B,
+        0x1F945,
+        0x26F3,
+        0x26F8,
+        0x1F3A3,
+        0x1F93F,
+        0x1F3BD,
+        0x1F3BF,
+        0x1F6F7,
+        0x1F94C,
+        0x1F3AF,
+        0x1FA80,
+        0x1FA81,
+        0x1F52B,
+        0x1FA83,
+        0x1FA84,
+        0x1F3B1,
+        0x1F52E,
+        0x1FAAC,
+        0x1F3AE,
+        0x1F579,
+        0x1F3B0,
+        0x1F3B2,
+        0x1F9E9,
+        0x1F9F8,
+        0x1FA85,
+        0x1FA86,
+        0x1F0CF,
+        0x1F004,
+        0x1F3B4,
+        0x1F3AD,
+        0x1F5BC,
+        0x1F3A8,
+        0x1F9F5,
+        0x1FAA1,
+        0x1F9F6,
+        0x1F3BC,
+        0x1F3A4,
+        0x1F3A7,
+        0x1F3B7,
+        0x1FA97,
+        0x1F3B8,
+        0x1F3B9,
+        0x1F3BA,
+        0x1F3BB,
+        0x1FA95,
+        0x1F941,
+        0x1FA98,
+        0x1F4F1,
+        0x1F4F2,
+        0x1F4BB,
+        0x2328,
+        0x1F5A5,
+      ]),
+    ),
+    _EmojiCategory(
+      label: 'Travel',
+      icon: Icons.directions_car_outlined,
+      emojis: _emojiCodepoints([
+        0x1F30D,
+        0x1F30E,
+        0x1F30F,
+        0x1F310,
+        0x1F5FA,
+        0x1F5FE,
+        0x1F9ED,
+        0x1F3D4,
+        0x26F0,
+        0x1F30B,
+        0x1F5FB,
+        0x1F3D5,
+        0x1F3D6,
+        0x1F3DC,
+        0x1F3DD,
+        0x1F3DE,
+        0x1F3DF,
+        0x1F3DB,
+        0x1F3D7,
+        0x1F9F1,
+        0x1FAA8,
+        0x1FAB5,
+        0x1F6D6,
+        0x1F3D8,
+        0x1F3DA,
+        0x1F3E0,
+        0x1F3E1,
+        0x1F3E2,
+        0x1F3E3,
+        0x1F3E4,
+        0x1F3E5,
+        0x1F3E6,
+        0x1F3E8,
+        0x1F3E9,
+        0x1F3EA,
+        0x1F3EB,
+        0x1F3EC,
+        0x1F3ED,
+        0x1F3EF,
+        0x1F3F0,
+        0x1F492,
+        0x1F5FC,
+        0x1F5FD,
+        0x26EA,
+        0x1F54C,
+        0x1F6D5,
+        0x1F54D,
+        0x26E9,
+        0x1F54B,
+        0x26F2,
+        0x26FA,
+        0x1F301,
+        0x1F303,
+        0x1F3D9,
+        0x1F304,
+        0x1F305,
+        0x1F306,
+        0x1F307,
+        0x1F309,
+        0x2668,
+        0x1F3A0,
+        0x1F6DD,
+        0x1F3A1,
+        0x1F3A2,
+        0x1F488,
+        0x1F3AA,
+        0x1F682,
+        0x1F683,
+        0x1F684,
+        0x1F685,
+        0x1F686,
+        0x1F687,
+        0x1F688,
+        0x1F689,
+        0x1F68A,
+        0x1F69D,
+        0x1F69E,
+        0x1F68B,
+        0x1F68C,
+        0x1F68D,
+        0x1F68E,
+        0x1F690,
+        0x1F691,
+        0x1F692,
+        0x1F693,
+        0x1F694,
+        0x1F695,
+        0x1F696,
+        0x1F697,
+        0x1F698,
+        0x1F699,
+        0x1F6FB,
+        0x1F69A,
+        0x1F69B,
+        0x1F69C,
+        0x1F3CE,
+        0x1F3CD,
+        0x1F6F5,
+        0x1F9BD,
+        0x1F9BC,
+        0x1F6FA,
+        0x1F6B2,
+        0x1F6F4,
+        0x1F6F9,
+        0x1F6FC,
+        0x1F68F,
+        0x1F6E3,
+        0x1F6E4,
+        0x1F6E2,
+        0x26FD,
+        0x1F6DE,
+        0x1F6A8,
+        0x1F6A5,
+        0x1F6A6,
+        0x1F6D1,
+        0x1F6A7,
+        0x2693,
+        0x1F6DF,
+        0x26F5,
+        0x1F6F6,
+        0x1F6A4,
+        0x1F6F3,
+        0x26F4,
+        0x1F6E5,
+        0x1F6A2,
+        0x2708,
+        0x1F6E9,
+        0x1F6EB,
+        0x1F6EC,
+        0x1FA82,
+        0x1F4BA,
+        0x1F681,
+        0x1F69F,
+        0x1F6A0,
+        0x1F6A1,
+        0x1F6F0,
+        0x1F680,
+        0x1F6F8,
+      ]),
+    ),
+    _EmojiCategory(
+      label: 'Objects',
+      icon: Icons.lightbulb_outline,
+      emojis: _emojiCodepoints([
+        0x231A,
+        0x1F4F1,
+        0x1F4F2,
+        0x1F4BB,
+        0x2328,
+        0x1F5A5,
+        0x1F5A8,
+        0x1F5B1,
+        0x1F5B2,
+        0x1F579,
+        0x1F5DC,
+        0x1F4BD,
+        0x1F4BE,
+        0x1F4BF,
+        0x1F4C0,
+        0x1F4FC,
+        0x1F4F7,
+        0x1F4F8,
+        0x1F4F9,
+        0x1F3A5,
+        0x1F4FD,
+        0x1F39E,
+        0x1F4DE,
+        0x260E,
+        0x1F4DF,
+        0x1F4E0,
+        0x1F4FA,
+        0x1F4FB,
+        0x1F399,
+        0x1F39A,
+        0x1F39B,
+        0x1F9ED,
+        0x23F1,
+        0x23F2,
+        0x23F0,
+        0x1F570,
+        0x231B,
+        0x23F3,
+        0x1F4E1,
+        0x1F50B,
+        0x1FAAB,
+        0x1F50C,
+        0x1F4A1,
+        0x1F526,
+        0x1F56F,
+        0x1FA94,
+        0x1F9EF,
+        0x1F6E2,
+        0x1F4B8,
+        0x1F4B5,
+        0x1F4B4,
+        0x1F4B6,
+        0x1F4B7,
+        0x1FA99,
+        0x1F4B0,
+        0x1F4B3,
+        0x1FAAA,
+        0x1F48E,
+        0x2696,
+        0x1FA9C,
+        0x1F9F0,
+        0x1FA9B,
+        0x1F527,
+        0x1FA9A,
+        0x1F528,
+        0x2692,
+        0x1F6E0,
+        0x26CF,
+        0x1FA9D,
+        0x2699,
+        0x1FA9E,
+        0x1F9F1,
+        0x26D3,
+        0x1FA9F,
+        0x1F9F2,
+        0x1F52B,
+        0x1F4A3,
+        0x1F9E8,
+        0x1FA93,
+        0x1F52A,
+        0x1F5E1,
+        0x2694,
+        0x1F6E1,
+        0x1F6AC,
+        0x26B0,
+        0x1FAA6,
+        0x26B1,
+        0x1F3FA,
+        0x1F52E,
+        0x1F4FF,
+        0x1FAAC,
+        0x1F488,
+        0x2697,
+        0x1F52D,
+        0x1F52C,
+        0x1F573,
+        0x1FA79,
+        0x1FA7A,
+        0x1FA7B,
+        0x1FA7C,
+        0x1FA7D,
+        0x1F48A,
+        0x1F489,
+        0x1FA78,
+        0x1FA80,
+        0x1FA81,
+        0x1F9EC,
+        0x1F9EB,
+        0x1F9EA,
+        0x1F321,
+        0x1F9F9,
+        0x1FAA0,
+        0x1F9FA,
+        0x1F9FB,
+        0x1FAA3,
+        0x1F9FC,
+        0x1FAA5,
+        0x1F9FD,
+        0x1F9F4,
+        0x1F6CE,
+        0x1F511,
+        0x1F5DD,
+        0x1F6AA,
+        0x1FA91,
+        0x1FA9F,
+        0x1F6CF,
+        0x1F6CB,
+        0x1FA91,
+        0x1F6BD,
+        0x1FAA0,
+        0x1F6BF,
+        0x1F6C1,
+        0x1FAA4,
+        0x1FA92,
+      ]),
+    ),
+    _EmojiCategory(
+      label: 'Symbols',
+      icon: Icons.emoji_symbols_outlined,
+      emojis: [
+        ..._emojiSequences([
+          [0x2764, 0xFE0F],
+          [0x1F9E1],
+          [0x1F49B],
+          [0x1F49A],
+          [0x1F499],
+          [0x1F49C],
+          [0x1F90E],
+          [0x1F5A4],
+          [0x1F90D],
+          [0x1F4AF],
+          [0x1F4A2],
+          [0x1F4A5],
+          [0x1F4AB],
+          [0x1F4A6],
+          [0x1F4A8],
+          [0x1F573, 0xFE0F],
+          [0x1F4AC],
+          [0x1F5E8, 0xFE0F],
+          [0x1F5EF, 0xFE0F],
+          [0x1F4AD],
+          [0x1F4A4],
+          [0x267B, 0xFE0F],
+          [0x2705],
+          [0x2611, 0xFE0F],
+          [0x2714, 0xFE0F],
+          [0x274C],
+          [0x274E],
+          [0x2795],
+          [0x2796],
+          [0x2797],
+          [0x27B0],
+          [0x27BF],
+          [0x3030, 0xFE0F],
+          [0x303D, 0xFE0F],
+          [0x2733, 0xFE0F],
+          [0x2734, 0xFE0F],
+          [0x2747, 0xFE0F],
+          [0x203C, 0xFE0F],
+          [0x2049, 0xFE0F],
+          [0x2753],
+          [0x2754],
+          [0x2755],
+          [0x2757],
+          [0x00A9, 0xFE0F],
+          [0x00AE, 0xFE0F],
+          [0x2122, 0xFE0F],
+        ]),
+        ..._emojiCodepoints([
+          0x1F6D0,
+          0x269B,
+          0x1F549,
+          0x262F,
+          0x271D,
+          0x2626,
+          0x262A,
+          0x262E,
+          0x1F54E,
+          0x1F52F,
+          0x2648,
+          0x2649,
+          0x264A,
+          0x264B,
+          0x264C,
+          0x264D,
+          0x264E,
+          0x264F,
+          0x2650,
+          0x2651,
+          0x2652,
+          0x2653,
+          0x26CE,
+          0x1F500,
+          0x1F501,
+          0x1F502,
+          0x25B6,
+          0x23E9,
+          0x23ED,
+          0x23EF,
+          0x25C0,
+          0x23EA,
+          0x23EE,
+          0x1F53C,
+          0x23EB,
+          0x1F53D,
+          0x23EC,
+          0x23F8,
+          0x23F9,
+          0x23FA,
+          0x23CF,
+          0x1F3A6,
+          0x1F505,
+          0x1F506,
+          0x1F4F6,
+          0x1F4F3,
+          0x1F4F4,
+          0x2640,
+          0x2642,
+          0x26A7,
+          0x2716,
+          0x1F7F0,
+          0x267E,
+          0x1F6D7,
+          0x26A0,
+          0x1F6B8,
+          0x26D4,
+          0x1F6AB,
+          0x1F6B3,
+          0x1F6AD,
+          0x1F6AF,
+          0x1F6B1,
+          0x1F6B7,
+          0x1F4F5,
+          0x1F51E,
+          0x1F4DB,
+          0x1F530,
+          0x2B55,
+          0x1F4A0,
+          0x1F535,
+          0x1F534,
+          0x1F7E0,
+          0x1F7E1,
+          0x1F7E2,
+          0x1F7E3,
+          0x1F7E4,
+          0x26AB,
+          0x26AA,
+          0x1F7E5,
+          0x1F7E7,
+          0x1F7E8,
+          0x1F7E9,
+          0x1F7E6,
+          0x1F7EA,
+          0x1F7EB,
+          0x2B1B,
+          0x2B1C,
+        ]),
+      ],
+    ),
+    _EmojiCategory(
+      label: 'Flags',
+      icon: Icons.flag_outlined,
+      emojis: _emojiSequences([
+        [0x1F3C1],
+        [0x1F6A9],
+        [0x1F38C],
+        [0x1F3F4],
+        [0x1F3F3, 0xFE0F],
+        [0x1F3F3, 0xFE0F, 0x200D, 0x1F308],
+        [0x1F3F3, 0xFE0F, 0x200D, 0x26A7, 0xFE0F],
+        [0x1F1EE, 0x1F1F3],
+        [0x1F1FA, 0x1F1F8],
+        [0x1F1EC, 0x1F1E7],
+        [0x1F1E6, 0x1F1EA],
+        [0x1F1E6, 0x1F1EB],
+        [0x1F1E6, 0x1F1F1],
+        [0x1F1E6, 0x1F1F2],
+        [0x1F1E6, 0x1F1F7],
+        [0x1F1E6, 0x1F1FA],
+        [0x1F1E7, 0x1F1E9],
+        [0x1F1E7, 0x1F1EA],
+        [0x1F1E7, 0x1F1F7],
+        [0x1F1E8, 0x1F1E6],
+        [0x1F1E8, 0x1F1ED],
+        [0x1F1E8, 0x1F1F3],
+        [0x1F1E9, 0x1F1EA],
+        [0x1F1E9, 0x1F1F0],
+        [0x1F1EA, 0x1F1EC],
+        [0x1F1EA, 0x1F1F8],
+        [0x1F1EB, 0x1F1F7],
+        [0x1F1ED, 0x1F1F0],
+        [0x1F1EE, 0x1F1E9],
+        [0x1F1EE, 0x1F1EA],
+        [0x1F1EE, 0x1F1F1],
+        [0x1F1EE, 0x1F1F9],
+        [0x1F1EF, 0x1F1F5],
+        [0x1F1F0, 0x1F1F7],
+        [0x1F1F2, 0x1F1FD],
+        [0x1F1F3, 0x1F1F1],
+        [0x1F1F3, 0x1F1F5],
+        [0x1F1F5, 0x1F1F0],
+        [0x1F1F5, 0x1F1ED],
+        [0x1F1F7, 0x1F1FA],
+        [0x1F1F8, 0x1F1E6],
+        [0x1F1F8, 0x1F1EC],
+        [0x1F1F9, 0x1F1ED],
+        [0x1F1F9, 0x1F1F7],
+        [0x1F1FA, 0x1F1E6],
+        [0x1F1FF, 0x1F1E6],
+      ]),
+    ),
+  ];
+}
+
+List<String> _emojiCodepoints(List<int> codepoints) {
+  return codepoints.map((codepoint) => String.fromCharCode(codepoint)).toList();
+}
+
+List<String> _emojiSequences(List<List<int>> sequences) {
+  return sequences.map(String.fromCharCodes).toList();
+}
+
+final _emojiCategories = _buildEmojiCategories();
 
 class _SheetAction extends StatelessWidget {
   const _SheetAction({

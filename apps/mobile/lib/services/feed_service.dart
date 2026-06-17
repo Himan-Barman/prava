@@ -247,6 +247,8 @@ class FeedPost {
     required this.candidateSources,
     required this.liked,
     required this.followed,
+    required this.visibility,
+    required this.sensitiveLabel,
     required this.mentions,
     required this.hashtags,
     required this.author,
@@ -267,6 +269,8 @@ class FeedPost {
   final List<String> candidateSources;
   bool liked;
   bool followed;
+  final String visibility;
+  final String sensitiveLabel;
   final List<String> mentions;
   final List<String> hashtags;
   final FeedAuthor author;
@@ -321,6 +325,8 @@ class FeedPost {
           .toList(),
       liked: json['liked'] == true,
       followed: json['followed'] == true,
+      visibility: json['visibility']?.toString() ?? 'public',
+      sensitiveLabel: json['sensitiveLabel']?.toString() ?? '',
       mentions: (json['mentions'] as List<dynamic>? ?? [])
           .map((m) => m.toString())
           .toList(),
@@ -632,8 +638,21 @@ class FeedService {
     );
   }
 
-  Future<FeedPost> createPost(String body) async {
-    final data = await _client.post('/feed', auth: true, body: {'body': body});
+  Future<FeedPost> createPost(
+    String body, {
+    String visibility = 'public',
+    String sensitiveLabel = '',
+  }) async {
+    final data = await _client.post(
+      '/feed',
+      auth: true,
+      body: <String, dynamic>{
+        'body': body,
+        'visibility': visibility,
+        if (sensitiveLabel.trim().isNotEmpty)
+          'sensitiveLabel': sensitiveLabel.trim(),
+      },
+    );
     return FeedPost.fromJson(data);
   }
 
