@@ -30,6 +30,32 @@ class SettingsState {
     required this.themeIndex,
     required this.textScale,
     required this.languageLabel,
+    required this.whoCanMessage,
+    required this.whoCanAddToGroups,
+    required this.defaultFeedMode,
+    required this.personalizationLevel,
+    required this.contentSafetyLevel,
+    required this.displayDensity,
+    required this.fontSize,
+    required this.mediaQuality,
+    required this.quietHours,
+    required this.showRecommendedPosts,
+    required this.showTrendingPosts,
+    required this.showFriendsFirst,
+    required this.highContrast,
+    required this.boldText,
+    required this.reduceTransparency,
+    required this.largerTouchTargets,
+    required this.screenReaderEnhancedLabels,
+    required this.disableAutoplay,
+    required this.aiPersonalizedFeed,
+    required this.aiFriendSuggestions,
+    required this.aiPostRecommendations,
+    required this.aiSmartReplies,
+    required this.creatorMode,
+    required this.professionalMode,
+    required this.publicContactButton,
+    required this.showCreatorBadge,
   });
 
   final bool privateAccount;
@@ -57,6 +83,32 @@ class SettingsState {
   final int themeIndex;
   final double textScale;
   final String languageLabel;
+  final String whoCanMessage;
+  final String whoCanAddToGroups;
+  final String defaultFeedMode;
+  final String personalizationLevel;
+  final String contentSafetyLevel;
+  final String displayDensity;
+  final String fontSize;
+  final String mediaQuality;
+  final bool quietHours;
+  final bool showRecommendedPosts;
+  final bool showTrendingPosts;
+  final bool showFriendsFirst;
+  final bool highContrast;
+  final bool boldText;
+  final bool reduceTransparency;
+  final bool largerTouchTargets;
+  final bool screenReaderEnhancedLabels;
+  final bool disableAutoplay;
+  final bool aiPersonalizedFeed;
+  final bool aiFriendSuggestions;
+  final bool aiPostRecommendations;
+  final bool aiSmartReplies;
+  final bool creatorMode;
+  final bool professionalMode;
+  final bool publicContactButton;
+  final bool showCreatorBadge;
 
   factory SettingsState.defaults() {
     return SettingsState(
@@ -85,6 +137,32 @@ class SettingsState {
       themeIndex: 0,
       textScale: 1.0,
       languageLabel: 'English',
+      whoCanMessage: 'everyone',
+      whoCanAddToGroups: 'friends',
+      defaultFeedMode: 'forYou',
+      personalizationLevel: 'balanced',
+      contentSafetyLevel: 'balanced',
+      displayDensity: 'comfortable',
+      fontSize: 'default',
+      mediaQuality: 'auto',
+      quietHours: false,
+      showRecommendedPosts: true,
+      showTrendingPosts: true,
+      showFriendsFirst: false,
+      highContrast: false,
+      boldText: false,
+      reduceTransparency: false,
+      largerTouchTargets: false,
+      screenReaderEnhancedLabels: true,
+      disableAutoplay: false,
+      aiPersonalizedFeed: true,
+      aiFriendSuggestions: true,
+      aiPostRecommendations: true,
+      aiSmartReplies: false,
+      creatorMode: false,
+      professionalMode: false,
+      publicContactButton: false,
+      showCreatorBadge: false,
     );
   }
 
@@ -165,6 +243,73 @@ class SettingsState {
                 defaults.textScale,
       languageLabel:
           json['languageLabel']?.toString() ?? defaults.languageLabel,
+      whoCanMessage:
+          json['whoCanMessage']?.toString() ?? defaults.whoCanMessage,
+      whoCanAddToGroups:
+          json['whoCanAddToGroups']?.toString() ?? defaults.whoCanAddToGroups,
+      defaultFeedMode:
+          json['defaultFeedMode']?.toString() ?? defaults.defaultFeedMode,
+      personalizationLevel:
+          json['personalizationLevel']?.toString() ??
+          defaults.personalizationLevel,
+      contentSafetyLevel:
+          json['contentSafetyLevel']?.toString() ?? defaults.contentSafetyLevel,
+      displayDensity:
+          json['displayDensity']?.toString() ?? defaults.displayDensity,
+      fontSize: json['fontSize']?.toString() ?? defaults.fontSize,
+      mediaQuality: json['mediaQuality']?.toString() ?? defaults.mediaQuality,
+      quietHours: json['quietHours'] is bool
+          ? json['quietHours']
+          : defaults.quietHours,
+      showRecommendedPosts: json['showRecommendedPosts'] is bool
+          ? json['showRecommendedPosts']
+          : defaults.showRecommendedPosts,
+      showTrendingPosts: json['showTrendingPosts'] is bool
+          ? json['showTrendingPosts']
+          : defaults.showTrendingPosts,
+      showFriendsFirst: json['showFriendsFirst'] is bool
+          ? json['showFriendsFirst']
+          : defaults.showFriendsFirst,
+      highContrast: json['highContrast'] is bool
+          ? json['highContrast']
+          : defaults.highContrast,
+      boldText: json['boldText'] is bool ? json['boldText'] : defaults.boldText,
+      reduceTransparency: json['reduceTransparency'] is bool
+          ? json['reduceTransparency']
+          : defaults.reduceTransparency,
+      largerTouchTargets: json['largerTouchTargets'] is bool
+          ? json['largerTouchTargets']
+          : defaults.largerTouchTargets,
+      screenReaderEnhancedLabels: json['screenReaderEnhancedLabels'] is bool
+          ? json['screenReaderEnhancedLabels']
+          : defaults.screenReaderEnhancedLabels,
+      disableAutoplay: json['disableAutoplay'] is bool
+          ? json['disableAutoplay']
+          : defaults.disableAutoplay,
+      aiPersonalizedFeed: json['aiPersonalizedFeed'] is bool
+          ? json['aiPersonalizedFeed']
+          : defaults.aiPersonalizedFeed,
+      aiFriendSuggestions: json['aiFriendSuggestions'] is bool
+          ? json['aiFriendSuggestions']
+          : defaults.aiFriendSuggestions,
+      aiPostRecommendations: json['aiPostRecommendations'] is bool
+          ? json['aiPostRecommendations']
+          : defaults.aiPostRecommendations,
+      aiSmartReplies: json['aiSmartReplies'] is bool
+          ? json['aiSmartReplies']
+          : defaults.aiSmartReplies,
+      creatorMode: json['creatorMode'] is bool
+          ? json['creatorMode']
+          : defaults.creatorMode,
+      professionalMode: json['professionalMode'] is bool
+          ? json['professionalMode']
+          : defaults.professionalMode,
+      publicContactButton: json['publicContactButton'] is bool
+          ? json['publicContactButton']
+          : defaults.publicContactButton,
+      showCreatorBadge: json['showCreatorBadge'] is bool
+          ? json['showCreatorBadge']
+          : defaults.showCreatorBadge,
     );
   }
 
@@ -194,6 +339,32 @@ class SettingsState {
     int? themeIndex,
     double? textScale,
     String? languageLabel,
+    String? whoCanMessage,
+    String? whoCanAddToGroups,
+    String? defaultFeedMode,
+    String? personalizationLevel,
+    String? contentSafetyLevel,
+    String? displayDensity,
+    String? fontSize,
+    String? mediaQuality,
+    bool? quietHours,
+    bool? showRecommendedPosts,
+    bool? showTrendingPosts,
+    bool? showFriendsFirst,
+    bool? highContrast,
+    bool? boldText,
+    bool? reduceTransparency,
+    bool? largerTouchTargets,
+    bool? screenReaderEnhancedLabels,
+    bool? disableAutoplay,
+    bool? aiPersonalizedFeed,
+    bool? aiFriendSuggestions,
+    bool? aiPostRecommendations,
+    bool? aiSmartReplies,
+    bool? creatorMode,
+    bool? professionalMode,
+    bool? publicContactButton,
+    bool? showCreatorBadge,
   }) {
     return SettingsState(
       privateAccount: privateAccount ?? this.privateAccount,
@@ -221,6 +392,34 @@ class SettingsState {
       themeIndex: themeIndex ?? this.themeIndex,
       textScale: textScale ?? this.textScale,
       languageLabel: languageLabel ?? this.languageLabel,
+      whoCanMessage: whoCanMessage ?? this.whoCanMessage,
+      whoCanAddToGroups: whoCanAddToGroups ?? this.whoCanAddToGroups,
+      defaultFeedMode: defaultFeedMode ?? this.defaultFeedMode,
+      personalizationLevel: personalizationLevel ?? this.personalizationLevel,
+      contentSafetyLevel: contentSafetyLevel ?? this.contentSafetyLevel,
+      displayDensity: displayDensity ?? this.displayDensity,
+      fontSize: fontSize ?? this.fontSize,
+      mediaQuality: mediaQuality ?? this.mediaQuality,
+      quietHours: quietHours ?? this.quietHours,
+      showRecommendedPosts: showRecommendedPosts ?? this.showRecommendedPosts,
+      showTrendingPosts: showTrendingPosts ?? this.showTrendingPosts,
+      showFriendsFirst: showFriendsFirst ?? this.showFriendsFirst,
+      highContrast: highContrast ?? this.highContrast,
+      boldText: boldText ?? this.boldText,
+      reduceTransparency: reduceTransparency ?? this.reduceTransparency,
+      largerTouchTargets: largerTouchTargets ?? this.largerTouchTargets,
+      screenReaderEnhancedLabels:
+          screenReaderEnhancedLabels ?? this.screenReaderEnhancedLabels,
+      disableAutoplay: disableAutoplay ?? this.disableAutoplay,
+      aiPersonalizedFeed: aiPersonalizedFeed ?? this.aiPersonalizedFeed,
+      aiFriendSuggestions: aiFriendSuggestions ?? this.aiFriendSuggestions,
+      aiPostRecommendations:
+          aiPostRecommendations ?? this.aiPostRecommendations,
+      aiSmartReplies: aiSmartReplies ?? this.aiSmartReplies,
+      creatorMode: creatorMode ?? this.creatorMode,
+      professionalMode: professionalMode ?? this.professionalMode,
+      publicContactButton: publicContactButton ?? this.publicContactButton,
+      showCreatorBadge: showCreatorBadge ?? this.showCreatorBadge,
     );
   }
 
@@ -251,6 +450,32 @@ class SettingsState {
       'themeIndex': themeIndex,
       'textScale': textScale,
       'languageLabel': languageLabel,
+      'whoCanMessage': whoCanMessage,
+      'whoCanAddToGroups': whoCanAddToGroups,
+      'defaultFeedMode': defaultFeedMode,
+      'personalizationLevel': personalizationLevel,
+      'contentSafetyLevel': contentSafetyLevel,
+      'displayDensity': displayDensity,
+      'fontSize': fontSize,
+      'mediaQuality': mediaQuality,
+      'quietHours': quietHours,
+      'showRecommendedPosts': showRecommendedPosts,
+      'showTrendingPosts': showTrendingPosts,
+      'showFriendsFirst': showFriendsFirst,
+      'highContrast': highContrast,
+      'boldText': boldText,
+      'reduceTransparency': reduceTransparency,
+      'largerTouchTargets': largerTouchTargets,
+      'screenReaderEnhancedLabels': screenReaderEnhancedLabels,
+      'disableAutoplay': disableAutoplay,
+      'aiPersonalizedFeed': aiPersonalizedFeed,
+      'aiFriendSuggestions': aiFriendSuggestions,
+      'aiPostRecommendations': aiPostRecommendations,
+      'aiSmartReplies': aiSmartReplies,
+      'creatorMode': creatorMode,
+      'professionalMode': professionalMode,
+      'publicContactButton': publicContactButton,
+      'showCreatorBadge': showCreatorBadge,
     };
   }
 }
@@ -285,8 +510,12 @@ class SettingsService {
   }
 
   Future<SettingsState> fetchRemote() async {
-    final data = await _client.get('/users/me/settings', auth: true);
+    final data = await _client.get('/settings', auth: true);
     final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    final legacy = payload['legacy'];
+    if (legacy is Map<String, dynamic>) {
+      return SettingsState.fromJson(legacy);
+    }
     final settings = payload['settings'];
     if (settings is Map<String, dynamic>) {
       return SettingsState.fromJson(settings);
@@ -295,12 +524,16 @@ class SettingsService {
   }
 
   Future<SettingsState> saveRemote(SettingsState state) async {
-    final data = await _client.put(
-      '/users/me/settings',
+    final data = await _client.patch(
+      '/settings',
       auth: true,
       body: state.toJson(),
     );
     final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    final legacy = payload['legacy'];
+    if (legacy is Map<String, dynamic>) {
+      return SettingsState.fromJson(legacy);
+    }
     final settings = payload['settings'];
     if (settings is Map<String, dynamic>) {
       return SettingsState.fromJson(settings);

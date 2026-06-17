@@ -121,6 +121,26 @@ export async function runDatabaseFoundationMigrations(pool: pg.Pool): Promise<vo
       WHERE read_at IS NULL;
   `);
 
+  await createTableIfMissing(pool, "account_deletion_requests", `
+    CREATE TABLE account_deletion_requests (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      scheduled_delete_at TIMESTAMPTZ NOT NULL,
+      cancelled_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ,
+      reason TEXT
+    )
+  `);
+  await pool.query(`
+    ALTER TABLE account_deletion_requests ADD COLUMN IF NOT EXISTS scheduled_delete_at TIMESTAMPTZ;
+    ALTER TABLE account_deletion_requests ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+    ALTER TABLE account_deletion_requests ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+    CREATE INDEX IF NOT EXISTS idx_account_deletion_requests_due
+      ON account_deletion_requests (scheduled_delete_at)
+      WHERE cancelled_at IS NULL AND completed_at IS NULL
+  `);
+
   await backfillPrimaryUuidColumns(pool);
   await remapPrimaryUuidReferences(pool);
 
@@ -203,19 +223,6 @@ export async function runDatabaseFoundationMigrations(pool: pg.Pool): Promise<vo
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_user_consents_latest_key
       ON user_consents (user_id, consent_key, policy_version);
-
-    CREATE TABLE IF NOT EXISTS account_deletion_requests (
-      id UUID PRIMARY KEY,
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      scheduled_delete_at TIMESTAMPTZ NOT NULL,
-      cancelled_at TIMESTAMPTZ,
-      completed_at TIMESTAMPTZ,
-      reason TEXT
-    );
-    CREATE INDEX IF NOT EXISTS idx_account_deletion_requests_due
-      ON account_deletion_requests (scheduled_delete_at)
-      WHERE cancelled_at IS NULL AND completed_at IS NULL;
 
     CREATE TABLE IF NOT EXISTS user_credentials (
       user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

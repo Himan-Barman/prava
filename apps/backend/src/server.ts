@@ -25,6 +25,7 @@ import mediaService from "./services/media/index.js";
 import notificationService from "./services/notification/index.js";
 import { closeRealtimeHub, initRealtimeHub } from "./services/realtime/hub.js";
 import realtimeService from "./services/realtime/index.js";
+import settingsService from "./services/settings/index.js";
 import supportService from "./services/support/index.js";
 import userService from "./services/user/index.js";
 
@@ -201,6 +202,7 @@ function registerRoutes(): void {
   app.register(chatService, { prefix: "/api/conversations" });
   app.register(notificationService, { prefix: "/api/notifications" });
   app.register(supportService, { prefix: "/api/support" });
+  app.register(settingsService);
   app.register(cryptoService, { prefix: "/api/crypto" });
   app.register(mediaService, { prefix: "/api/media" });
   app.register(apiV1Service, { prefix: "/api/v1" });

@@ -141,6 +141,7 @@ before(async () => {
   const realtimeService = (await import("../src/services/realtime/index.js")).default;
   const userService = (await import("../src/services/user/index.js")).default;
   const authService = (await import("../src/services/auth/index.js")).default;
+  const settingsService = (await import("../src/services/settings/index.js")).default;
 
   app = Fastify({ logger: false });
   await app.register(websocket, {
@@ -152,6 +153,7 @@ before(async () => {
   app.register(authService, { prefix: "/api/auth" });
   app.register(chatService, { prefix: "/api/conversations" });
   app.register(userService, { prefix: "/api/users" });
+  app.register(settingsService);
 
   await app.listen({ host: "127.0.0.1", port: 0 });
   const address = app.server.address() as AddressInfo;
@@ -607,6 +609,94 @@ test("chat routes: dm create, send message, read + delivery + sync", async () =>
   );
   assert.equal(unblockA.status, 200, JSON.stringify(unblockA.data));
   assert.equal(unblockA.data.blocked, false);
+});
+
+test("settings routes expose grouped settings, mobile legacy bridge, search, and audit", async () => {
+  const initial = await httpJson<{
+    legacy: { activityStatus: boolean; themeIndex: number };
+    privacy: { showOnlineStatus: boolean };
+    appearance: { themeMode: string };
+    allowed_values: Record<string, unknown>;
+  }>(baseUrl, "/api/settings", { token: userAToken });
+  assert.equal(initial.status, 200);
+  assert.equal(initial.data.legacy.activityStatus, true);
+  assert.ok(initial.data.allowed_values);
+
+  const mobileBridgeUpdate = await httpJson<{
+    legacy: { inAppHaptics: boolean; quietHours: boolean };
+    notifications: { vibrationEnabled: boolean; quietHoursEnabled: boolean };
+  }>(baseUrl, "/api/settings", {
+    method: "PATCH",
+    token: userAToken,
+    body: {
+      inAppHaptics: false,
+      quietHours: true,
+    },
+  });
+  assert.equal(mobileBridgeUpdate.status, 200, JSON.stringify(mobileBridgeUpdate.data));
+  assert.equal(mobileBridgeUpdate.data.legacy.inAppHaptics, false);
+  assert.equal(mobileBridgeUpdate.data.legacy.quietHours, true);
+  assert.equal(mobileBridgeUpdate.data.notifications.vibrationEnabled, false);
+  assert.equal(mobileBridgeUpdate.data.notifications.quietHoursEnabled, true);
+
+  const privacyUpdate = await httpJson<{
+    legacy: {
+      activityStatus: boolean;
+      readReceipts: boolean;
+      sensitiveContent: boolean;
+    };
+    privacy: {
+      showOnlineStatus: boolean;
+      readReceiptsEnabled: boolean;
+      sensitiveContentFilter: boolean;
+    };
+  }>(baseUrl, "/api/settings/privacy", {
+    method: "PATCH",
+    token: userAToken,
+    body: {
+      showOnlineStatus: false,
+      readReceiptsEnabled: false,
+      sensitiveContentFilter: true,
+    },
+  });
+  assert.equal(privacyUpdate.status, 200, JSON.stringify(privacyUpdate.data));
+  assert.equal(privacyUpdate.data.legacy.activityStatus, false);
+  assert.equal(privacyUpdate.data.legacy.readReceipts, false);
+  assert.equal(privacyUpdate.data.privacy.showOnlineStatus, false);
+  assert.equal(privacyUpdate.data.privacy.readReceiptsEnabled, false);
+
+  const appearanceUpdate = await httpJson<{
+    legacy: { themeIndex: number; fontSize: string };
+    appearance: { themeMode: string; fontSize: string };
+  }>(baseUrl, "/api/settings/appearance", {
+    method: "PATCH",
+    token: userAToken,
+    body: {
+      themeMode: "dark",
+      fontSize: "large",
+    },
+  });
+  assert.equal(appearanceUpdate.status, 200, JSON.stringify(appearanceUpdate.data));
+  assert.equal(appearanceUpdate.data.legacy.themeIndex, 2);
+  assert.equal(appearanceUpdate.data.appearance.themeMode, "dark");
+  assert.equal(appearanceUpdate.data.appearance.fontSize, "large");
+
+  const search = await httpJson<{ items: Array<{ category: string }> }>(
+    baseUrl,
+    "/api/settings/search?q=privacy",
+    { token: userAToken }
+  );
+  assert.equal(search.status, 200);
+  assert.ok(search.data.items.some((item) => item.category === "privacy"));
+
+  const audit = await httpJson<{ items: Array<{ category: string; key: string }> }>(
+    baseUrl,
+    "/api/settings/audit",
+    { token: userAToken }
+  );
+  assert.equal(audit.status, 200);
+  assert.ok(audit.data.items.some((item) => item.category === "privacy"));
+  assert.ok(audit.data.items.some((item) => item.category === "appearance"));
 });
 
 test("profile routes enforce private visibility and support profile actions", async () => {

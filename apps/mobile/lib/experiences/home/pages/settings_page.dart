@@ -57,13 +57,21 @@ the product evolves.
 
 enum _SettingsCategory {
   account,
+  profileVisibility,
   privacy,
   security,
   notifications,
-  display,
-  data,
+  chats,
+  feed,
+  friends,
+  appearance,
+  accessibility,
+  dataStorage,
+  ai,
+  creator,
   support,
-  actions,
+  legal,
+  danger,
 }
 
 class SettingsPage extends StatefulWidget {
@@ -76,15 +84,22 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   final AccountService _accountService = AccountService();
   final AuthService _authService = AuthService();
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   SettingsController? _settingsController;
 
   String _versionLabel = 'Prava';
   SettingsState _settings = SettingsState.defaults();
+  AccountInfo? _accountInfo;
+  bool _accountLoading = true;
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _loadPackageInfo();
+    _loadAccountInfo();
+    _searchController.addListener(_handleSearchChanged);
   }
 
   @override
@@ -102,6 +117,9 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void dispose() {
     _settingsController?.removeListener(_handleSettingsUpdate);
+    _searchController.removeListener(_handleSearchChanged);
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -117,6 +135,26 @@ class _SettingsPageState extends State<SettingsPage> {
     final controller = _settingsController;
     if (controller == null || !mounted) return;
     setState(() => _settings = controller.state);
+  }
+
+  Future<void> _loadAccountInfo() async {
+    try {
+      final account = await _accountService.fetchAccountInfo();
+      if (!mounted) return;
+      setState(() {
+        _accountInfo = account;
+        _accountLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _accountLoading = false);
+    }
+  }
+
+  void _handleSearchChanged() {
+    final nextQuery = _searchController.text;
+    if (nextQuery == _searchQuery) return;
+    setState(() => _searchQuery = nextQuery);
   }
 
   Future<void> _confirmLogout() async {
@@ -209,6 +247,48 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  List<_SettingsSearchEntry> _filteredSearchEntries() {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return const [];
+    return _categoryOrder
+        .map(
+          (category) => _SettingsSearchEntry(
+            category: category,
+            meta: _SettingsCategoryMeta.from(category),
+            keywords: _keywordsForCategory(category),
+          ),
+        )
+        .where((entry) => entry.matches(query))
+        .toList(growable: false);
+  }
+
+  int _profileCompletion() {
+    final account = _accountInfo;
+    if (account == null) return 0;
+    final values = [
+      account.displayName,
+      account.username,
+      account.email,
+      account.avatarUrl,
+      account.bio,
+      account.location,
+      account.website,
+      account.phoneNumber,
+    ];
+    final completed = values.where((value) => value.trim().isNotEmpty).length;
+    return ((completed / values.length) * 100).round().clamp(0, 100);
+  }
+
+  String _accountTypeLabel() {
+    if (_settings.creatorMode || _accountInfo?.aiCreator == true) {
+      return 'Creator account';
+    }
+    if (_settings.professionalMode) return 'Professional account';
+    final category = _accountInfo?.category.trim();
+    if (category != null && category.isNotEmpty) return category;
+    return 'Personal account';
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -221,6 +301,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final border = isDark
         ? PravaColors.darkBorderSubtle
         : PravaColors.lightBorderSubtle;
+    final searchResults = _filteredSearchEntries();
+    final isSearching = _searchQuery.trim().isNotEmpty;
 
     return Scaffold(
       body: Stack(
@@ -232,7 +314,10 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
-                  child: _SettingsTopBar(primary: primary),
+                  child: _SettingsTopBar(
+                    primary: primary,
+                    onSearchTap: () => _searchFocusNode.requestFocus(),
+                  ),
                 ),
                 Expanded(
                   child: CustomScrollView(
@@ -241,24 +326,96 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     slivers: [
                       SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
-                        sliver: SliverList.separated(
-                          itemCount: _categoryOrder.length,
-                          separatorBuilder: (_, __) =>
-                              Divider(height: 1, color: border),
-                          itemBuilder: (context, index) {
-                            final category = _categoryOrder[index];
-                            final meta = _SettingsCategoryMeta.from(category);
-                            return _SettingsCategoryTile(
-                              meta: meta,
-                              primary: primary,
-                              secondary: secondary,
-                              trailing: _categoryTrailing(category, _settings),
-                              onTap: () => _openCategory(category),
-                            );
-                          },
+                        padding: const EdgeInsets.fromLTRB(18, 4, 18, 14),
+                        sliver: SliverToBoxAdapter(
+                          child: _SettingsSearchBar(
+                            controller: _searchController,
+                            focusNode: _searchFocusNode,
+                            primary: primary,
+                            secondary: secondary,
+                            border: border,
+                            isDark: isDark,
+                          ),
                         ),
                       ),
+                      if (isSearching)
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(18, 0, 18, 28),
+                          sliver: SliverToBoxAdapter(
+                            child: _SettingsSearchResults(
+                              results: searchResults,
+                              query: _searchQuery.trim(),
+                              primary: primary,
+                              secondary: secondary,
+                              border: border,
+                              onOpenCategory: _openCategory,
+                            ),
+                          ),
+                        )
+                      else ...[
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+                          sliver: SliverToBoxAdapter(
+                            child: _SettingsAccountCard(
+                              account: _accountInfo,
+                              loading: _accountLoading,
+                              completion: _profileCompletion(),
+                              accountType: _accountTypeLabel(),
+                              primary: primary,
+                              secondary: secondary,
+                              border: border,
+                              isDark: isDark,
+                              onManage: () =>
+                                  _openCategory(_SettingsCategory.account),
+                            ),
+                          ),
+                        ),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+                          sliver: SliverToBoxAdapter(
+                            child: _SettingsQuickControls(
+                              primary: primary,
+                              secondary: secondary,
+                              border: border,
+                              onOpenCategory: _openCategory,
+                            ),
+                          ),
+                        ),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+                          sliver: SliverToBoxAdapter(
+                            child: Text(
+                              'Settings groups',
+                              style: PravaTypography.bodySmall.copyWith(
+                                color: secondary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(18, 0, 18, 28),
+                          sliver: SliverList.separated(
+                            itemCount: _categoryOrder.length,
+                            separatorBuilder: (_, __) =>
+                                Divider(height: 1, color: border),
+                            itemBuilder: (context, index) {
+                              final category = _categoryOrder[index];
+                              final meta = _SettingsCategoryMeta.from(category);
+                              return _SettingsCategoryTile(
+                                meta: meta,
+                                primary: primary,
+                                secondary: secondary,
+                                trailing: _categoryTrailing(
+                                  category,
+                                  _settings,
+                                ),
+                                onTap: () => _openCategory(category),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -449,6 +606,59 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
     }
   }
 
+  void _showOptionSheet({
+    required String title,
+    required List<String> options,
+    required String selected,
+    required ValueChanged<String> onSelected,
+    required bool isDark,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _SettingsSheet(
+          title: title,
+          isDark: isDark,
+          child: Column(
+            children: [
+              for (final option in options)
+                _SheetOption(
+                  label: _labelForOption(option),
+                  selected: option == selected,
+                  onTap: () {
+                    onSelected(option);
+                    Navigator.of(context).pop();
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _labelForOption(String value) {
+    switch (value) {
+      case 'forYou':
+        return 'For You';
+      case 'closeFriends':
+        return 'Close friends';
+      case 'onlyMe':
+        return 'Only me';
+      case 'premiumDark':
+        return 'Premium dark';
+      case 'extraLarge':
+        return 'Extra large';
+      case 'data_storage':
+        return 'Data storage';
+      default:
+        if (value.isEmpty) return value;
+        return '${value.substring(0, 1).toUpperCase()}${value.substring(1)}';
+    }
+  }
+
   void _clearCache() {
     HapticFeedback.selectionClick();
     setState(() => _cacheSizeLabel = '0 MB');
@@ -525,6 +735,67 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 subtitle: 'Search and change your username',
                 onTap: () =>
                     PravaNavigator.push(context, const HandleLinksPage()),
+                color: primary,
+                secondary: secondary,
+              ),
+            ],
+          ),
+        ];
+      case _SettingsCategory.profileVisibility:
+        return [
+          _SettingsSection(
+            title: 'Profile visibility',
+            subtitle: 'Control who can see profile content.',
+            border: border,
+            children: [
+              _SettingsToggleTile(
+                icon: CupertinoIcons.lock_fill,
+                title: 'Private account',
+                subtitle: 'Approve new followers before they see posts',
+                value: _settings.privateAccount,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(privateAccount: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsTile(
+                icon: CupertinoIcons.eye,
+                title: 'Preview profile as',
+                subtitle: 'Public, follower, friend, close friend',
+                onTap: () => PravaToast.show(
+                  context,
+                  message: 'Use profile command center to preview visibility',
+                  type: PravaToastType.info,
+                ),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsTile(
+                icon: CupertinoIcons.link,
+                title: 'Profile sharing',
+                subtitle: 'Copy links and future QR controls',
+                onTap: () =>
+                    PravaNavigator.push(context, const HandleLinksPage()),
+                color: primary,
+                secondary: secondary,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _SettingsSection(
+            title: 'Field visibility',
+            subtitle: 'Bio, location, website, followers, friends.',
+            border: border,
+            children: [
+              _SettingsTile(
+                icon: CupertinoIcons.person_crop_rectangle,
+                title: 'Detailed visibility controls',
+                subtitle: 'Posts, replies, media, about, and lists',
+                onTap: () => PravaToast.show(
+                  context,
+                  message: 'Profile visibility is enforced by the backend',
+                  type: PravaToastType.success,
+                ),
                 color: primary,
                 secondary: secondary,
               ),
@@ -800,7 +1071,190 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
             ],
           ),
         ];
-      case _SettingsCategory.display:
+      case _SettingsCategory.chats:
+        return [
+          _SettingsSection(
+            title: 'Message privacy',
+            subtitle: 'Control who can reach you.',
+            border: border,
+            children: [
+              _SettingsTile(
+                icon: CupertinoIcons.chat_bubble_2_fill,
+                title: 'Who can message me',
+                subtitle: _labelForOption(_settings.whoCanMessage),
+                onTap: () => _showOptionSheet(
+                  title: 'Who can message me',
+                  options: const ['everyone', 'followers', 'friends', 'nobody'],
+                  selected: _settings.whoCanMessage,
+                  isDark: isDark,
+                  onSelected: (value) =>
+                      _update(_settings.copyWith(whoCanMessage: value)),
+                ),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.check_mark_circled,
+                title: 'Read receipts',
+                subtitle: 'Show when messages are read',
+                value: _settings.readReceipts,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(readReceipts: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.text_bubble,
+                title: 'Message previews',
+                subtitle: 'Show message text in notifications',
+                value: _settings.messagePreview,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(messagePreview: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _SettingsSection(
+            title: 'Group chats',
+            subtitle: 'Manage group invites and defaults.',
+            border: border,
+            children: [
+              _SettingsTile(
+                icon: CupertinoIcons.person_3_fill,
+                title: 'Who can add me to groups',
+                subtitle: _labelForOption(_settings.whoCanAddToGroups),
+                onTap: () => _showOptionSheet(
+                  title: 'Group invites',
+                  options: const ['everyone', 'friends', 'nobody'],
+                  selected: _settings.whoCanAddToGroups,
+                  isDark: isDark,
+                  onSelected: (value) =>
+                      _update(_settings.copyWith(whoCanAddToGroups: value)),
+                ),
+                color: primary,
+                secondary: secondary,
+              ),
+            ],
+          ),
+        ];
+      case _SettingsCategory.feed:
+        return [
+          _SettingsSection(
+            title: 'Feed mode',
+            subtitle: 'Choose your default feed experience.',
+            border: border,
+            children: [
+              _SettingsTile(
+                icon: CupertinoIcons.rectangle_stack_fill,
+                title: 'Default feed',
+                subtitle: _labelForOption(_settings.defaultFeedMode),
+                onTap: () => _showOptionSheet(
+                  title: 'Default feed',
+                  options: const [
+                    'forYou',
+                    'following',
+                    'friends',
+                    'latest',
+                    'trending',
+                  ],
+                  selected: _settings.defaultFeedMode,
+                  isDark: isDark,
+                  onSelected: (value) =>
+                      _update(_settings.copyWith(defaultFeedMode: value)),
+                ),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsTile(
+                icon: CupertinoIcons.slider_horizontal_3,
+                title: 'Personalization level',
+                subtitle: _labelForOption(_settings.personalizationLevel),
+                onTap: () => _showOptionSheet(
+                  title: 'Personalization',
+                  options: const ['low', 'balanced', 'high'],
+                  selected: _settings.personalizationLevel,
+                  isDark: isDark,
+                  onSelected: (value) =>
+                      _update(_settings.copyWith(personalizationLevel: value)),
+                ),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.sparkles,
+                title: 'Recommended posts',
+                subtitle: 'Use activity for For You ranking',
+                value: _settings.showRecommendedPosts,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(showRecommendedPosts: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.flame,
+                title: 'Trending posts',
+                subtitle: 'Show trending content modules',
+                value: _settings.showTrendingPosts,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(showTrendingPosts: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.person_2_fill,
+                title: 'Friends first',
+                subtitle: 'Prioritize friends in recommendations',
+                value: _settings.showFriendsFirst,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(showFriendsFirst: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+            ],
+          ),
+        ];
+      case _SettingsCategory.friends:
+        return [
+          _SettingsSection(
+            title: 'Social graph',
+            subtitle: 'Friend requests and close circles.',
+            border: border,
+            children: [
+              _SettingsToggleTile(
+                icon: CupertinoIcons.person_2_fill,
+                title: 'People you may know',
+                subtitle: 'Use signals to suggest friends',
+                value: _settings.aiFriendSuggestions,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(aiFriendSuggestions: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.star_fill,
+                title: 'Friends-first activity',
+                subtitle: 'Prioritize mutual friend activity',
+                value: _settings.showFriendsFirst,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(showFriendsFirst: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsTile(
+                icon: CupertinoIcons.person_badge_minus,
+                title: 'Blocked accounts',
+                subtitle: 'Manage blocked profiles',
+                onTap: () =>
+                    PravaNavigator.push(context, const BlockedAccountsPage()),
+                color: primary,
+                secondary: secondary,
+              ),
+            ],
+          ),
+        ];
+      case _SettingsCategory.appearance:
         return [
           _SettingsSection(
             title: 'Appearance',
@@ -817,9 +1271,31 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
               ),
               _SettingsTile(
                 icon: CupertinoIcons.textformat_size,
-                title: 'Text size',
-                subtitle: 'Scale ${_settings.textScale.toStringAsFixed(2)}x',
-                onTap: () => _showTextSizeSheet(isDark),
+                title: 'Font size',
+                subtitle: _labelForOption(_settings.fontSize),
+                onTap: () => _showOptionSheet(
+                  title: 'Font size',
+                  options: const ['small', 'default', 'large', 'extraLarge'],
+                  selected: _settings.fontSize,
+                  isDark: isDark,
+                  onSelected: (value) =>
+                      _update(_settings.copyWith(fontSize: value)),
+                ),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsTile(
+                icon: CupertinoIcons.rectangle_grid_1x2,
+                title: 'Display density',
+                subtitle: _labelForOption(_settings.displayDensity),
+                onTap: () => _showOptionSheet(
+                  title: 'Display density',
+                  options: const ['compact', 'comfortable', 'spacious'],
+                  selected: _settings.displayDensity,
+                  isDark: isDark,
+                  onSelected: (value) =>
+                      _update(_settings.copyWith(displayDensity: value)),
+                ),
                 color: primary,
                 secondary: secondary,
               ),
@@ -862,7 +1338,66 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
             ],
           ),
         ];
-      case _SettingsCategory.data:
+      case _SettingsCategory.accessibility:
+        return [
+          _SettingsSection(
+            title: 'Readable interface',
+            subtitle: 'Text, contrast, and screen reader support.',
+            border: border,
+            children: [
+              _SettingsTile(
+                icon: CupertinoIcons.textformat_size,
+                title: 'Text size',
+                subtitle: 'Scale ${_settings.textScale.toStringAsFixed(2)}x',
+                onTap: () => _showTextSizeSheet(isDark),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.circle_lefthalf_fill,
+                title: 'High contrast',
+                subtitle: 'Increase contrast across surfaces',
+                value: _settings.highContrast,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(highContrast: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.bold,
+                title: 'Bold text',
+                subtitle: 'Use heavier text for labels',
+                value: _settings.boldText,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(boldText: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.hand_draw,
+                title: 'Larger touch targets',
+                subtitle: 'Make controls easier to tap',
+                value: _settings.largerTouchTargets,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(largerTouchTargets: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.speaker_2_fill,
+                title: 'Enhanced screen reader labels',
+                subtitle: 'More descriptive accessibility labels',
+                value: _settings.screenReaderEnhancedLabels,
+                onChanged: (value) => _update(
+                  _settings.copyWith(screenReaderEnhancedLabels: value),
+                ),
+                color: primary,
+                secondary: secondary,
+              ),
+            ],
+          ),
+        ];
+      case _SettingsCategory.dataStorage:
         return [
           _SettingsSection(
             title: 'Network and storage',
@@ -890,6 +1425,21 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 secondary: secondary,
               ),
               _SettingsTile(
+                icon: CupertinoIcons.photo,
+                title: 'Media quality',
+                subtitle: _labelForOption(_settings.mediaQuality),
+                onTap: () => _showOptionSheet(
+                  title: 'Media quality',
+                  options: const ['auto', 'low', 'standard', 'high'],
+                  selected: _settings.mediaQuality,
+                  isDark: isDark,
+                  onSelected: (value) =>
+                      _update(_settings.copyWith(mediaQuality: value)),
+                ),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsTile(
                 icon: CupertinoIcons.folder,
                 title: 'Cache size',
                 subtitle: _cacheSizeLabel,
@@ -911,6 +1461,106 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 subtitle: 'Export a copy of your data',
                 onTap: () =>
                     PravaNavigator.push(context, const DataExportPage()),
+                color: primary,
+                secondary: secondary,
+              ),
+            ],
+          ),
+        ];
+      case _SettingsCategory.ai:
+        return [
+          _SettingsSection(
+            title: 'AI personalization',
+            subtitle: 'Control recommendation intelligence.',
+            border: border,
+            children: [
+              _SettingsToggleTile(
+                icon: CupertinoIcons.sparkles,
+                title: 'Personalized feed',
+                subtitle: 'Use activity to improve For You',
+                value: _settings.aiPersonalizedFeed,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(aiPersonalizedFeed: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.person_2_fill,
+                title: 'AI friend suggestions',
+                subtitle: 'Suggest relevant people',
+                value: _settings.aiFriendSuggestions,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(aiFriendSuggestions: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.rectangle_stack,
+                title: 'AI post recommendations',
+                subtitle: 'Tune ranking with AI signals',
+                value: _settings.aiPostRecommendations,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(aiPostRecommendations: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.chat_bubble_text,
+                title: 'Smart replies',
+                subtitle: 'Future AI reply suggestions',
+                value: _settings.aiSmartReplies,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(aiSmartReplies: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+            ],
+          ),
+        ];
+      case _SettingsCategory.creator:
+        return [
+          _SettingsSection(
+            title: 'Creator mode',
+            subtitle: 'Professional profile and analytics controls.',
+            border: border,
+            children: [
+              _SettingsToggleTile(
+                icon: CupertinoIcons.chart_bar_alt_fill,
+                title: 'Creator account',
+                subtitle: 'Enable creator tools and profile surfaces',
+                value: _settings.creatorMode,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(creatorMode: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.briefcase_fill,
+                title: 'Professional mode',
+                subtitle: 'Business-oriented profile options',
+                value: _settings.professionalMode,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(professionalMode: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.envelope_fill,
+                title: 'Public contact button',
+                subtitle: 'Show contact CTA on profile',
+                value: _settings.publicContactButton,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(publicContactButton: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsToggleTile(
+                icon: CupertinoIcons.checkmark_seal_fill,
+                title: 'Creator badge',
+                subtitle: 'Show creator badge publicly',
+                value: _settings.showCreatorBadge,
+                onChanged: (value) =>
+                    _update(_settings.copyWith(showCreatorBadge: value)),
                 color: primary,
                 secondary: secondary,
               ),
@@ -965,10 +1615,12 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+        ];
+      case _SettingsCategory.legal:
+        return [
           _SettingsSection(
             title: 'Legal',
-            subtitle: 'Policies and version.',
+            subtitle: 'Policies, licenses, and app version.',
             border: border,
             children: [
               _SettingsTile(
@@ -1010,7 +1662,7 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
             ],
           ),
         ];
-      case _SettingsCategory.actions:
+      case _SettingsCategory.danger:
         return [
           _SettingsSection(
             title: 'Session',
@@ -1052,37 +1704,239 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
 
 const _categoryOrder = [
   _SettingsCategory.account,
+  _SettingsCategory.profileVisibility,
   _SettingsCategory.privacy,
   _SettingsCategory.security,
   _SettingsCategory.notifications,
-  _SettingsCategory.display,
-  _SettingsCategory.data,
+  _SettingsCategory.chats,
+  _SettingsCategory.feed,
+  _SettingsCategory.friends,
+  _SettingsCategory.appearance,
+  _SettingsCategory.accessibility,
+  _SettingsCategory.dataStorage,
+  _SettingsCategory.ai,
+  _SettingsCategory.creator,
   _SettingsCategory.support,
-  _SettingsCategory.actions,
+  _SettingsCategory.legal,
+  _SettingsCategory.danger,
 ];
 
 String _categoryTrailing(_SettingsCategory category, SettingsState settings) {
   switch (category) {
     case _SettingsCategory.account:
       return 'Profile';
+    case _SettingsCategory.profileVisibility:
+      return settings.privateAccount ? 'Private' : 'Public';
     case _SettingsCategory.privacy:
       return settings.privateAccount ? 'Private' : 'Public';
     case _SettingsCategory.security:
       return settings.twoFactor || settings.appLock ? 'Protected' : 'Standard';
     case _SettingsCategory.notifications:
       return settings.pushNotifications ? 'On' : 'Off';
-    case _SettingsCategory.display:
+    case _SettingsCategory.chats:
+      return settings.whoCanMessage;
+    case _SettingsCategory.feed:
+      return settings.personalizationLevel;
+    case _SettingsCategory.friends:
+      return settings.showFriendsFirst ? 'Priority' : 'Standard';
+    case _SettingsCategory.appearance:
       return settings.themeIndex == 2
           ? 'Dark'
           : settings.themeIndex == 1
           ? 'Light'
           : 'System';
-    case _SettingsCategory.data:
+    case _SettingsCategory.accessibility:
+      return settings.reduceMotion || settings.highContrast
+          ? 'Custom'
+          : 'Default';
+    case _SettingsCategory.dataStorage:
       return settings.dataSaver ? 'Saver' : 'Normal';
+    case _SettingsCategory.ai:
+      return settings.aiPersonalizedFeed ? 'On' : 'Off';
+    case _SettingsCategory.creator:
+      return settings.creatorMode ? 'Creator' : 'Personal';
     case _SettingsCategory.support:
       return 'Help';
-    case _SettingsCategory.actions:
+    case _SettingsCategory.legal:
+      return 'About';
+    case _SettingsCategory.danger:
       return 'Session';
+  }
+}
+
+List<String> _keywordsForCategory(_SettingsCategory category) {
+  switch (category) {
+    case _SettingsCategory.account:
+      return const [
+        'personal',
+        'information',
+        'username',
+        'email',
+        'phone',
+        'password',
+        'verification',
+        'account type',
+      ];
+    case _SettingsCategory.profileVisibility:
+      return const [
+        'profile',
+        'visibility',
+        'public',
+        'private',
+        'bio',
+        'followers',
+        'preview',
+        'sharing',
+      ];
+    case _SettingsCategory.privacy:
+      return const [
+        'privacy',
+        'blocked',
+        'muted',
+        'activity',
+        'read receipts',
+        'mentions',
+        'tags',
+        'sensitive',
+      ];
+    case _SettingsCategory.security:
+      return const [
+        'security',
+        'password',
+        'two factor',
+        '2fa',
+        'login',
+        'devices',
+        'sessions',
+        'biometric',
+      ];
+    case _SettingsCategory.notifications:
+      return const [
+        'notifications',
+        'push',
+        'email',
+        'sound',
+        'haptics',
+        'quiet hours',
+        'badge',
+      ];
+    case _SettingsCategory.chats:
+      return const [
+        'chats',
+        'messages',
+        'requests',
+        'group',
+        'read receipts',
+        'preview',
+        'typing',
+      ];
+    case _SettingsCategory.feed:
+      return const [
+        'feed',
+        'for you',
+        'following',
+        'ranking',
+        'recommendations',
+        'topics',
+        'muted words',
+      ];
+    case _SettingsCategory.friends:
+      return const [
+        'friends',
+        'followers',
+        'requests',
+        'close friends',
+        'suggestions',
+        'social graph',
+      ];
+    case _SettingsCategory.appearance:
+      return const [
+        'appearance',
+        'theme',
+        'dark',
+        'light',
+        'font',
+        'density',
+        'language',
+        'motion',
+      ];
+    case _SettingsCategory.accessibility:
+      return const [
+        'accessibility',
+        'text size',
+        'contrast',
+        'bold',
+        'motion',
+        'screen reader',
+        'touch',
+      ];
+    case _SettingsCategory.dataStorage:
+      return const [
+        'data',
+        'storage',
+        'cache',
+        'download',
+        'export',
+        'media quality',
+        'data saver',
+      ];
+    case _SettingsCategory.ai:
+      return const [
+        'ai',
+        'personalization',
+        'recommendations',
+        'smart replies',
+        'suggestions',
+      ];
+    case _SettingsCategory.creator:
+      return const ['creator', 'professional', 'analytics', 'badge', 'contact'];
+    case _SettingsCategory.support:
+      return const [
+        'help',
+        'support',
+        'report',
+        'feedback',
+        'ticket',
+        'problem',
+      ];
+    case _SettingsCategory.legal:
+      return const [
+        'legal',
+        'about',
+        'privacy policy',
+        'terms',
+        'licenses',
+        'version',
+      ];
+    case _SettingsCategory.danger:
+      return const [
+        'danger',
+        'logout',
+        'delete',
+        'deactivate',
+        'remove account',
+      ];
+  }
+}
+
+class _SettingsSearchEntry {
+  const _SettingsSearchEntry({
+    required this.category,
+    required this.meta,
+    required this.keywords,
+  });
+
+  final _SettingsCategory category;
+  final _SettingsCategoryMeta meta;
+  final List<String> keywords;
+
+  bool matches(String query) {
+    final haystack = [
+      meta.title,
+      meta.subtitle,
+      ...keywords,
+    ].join(' ').toLowerCase();
+    return haystack.contains(query);
   }
 }
 
@@ -1108,6 +1962,13 @@ class _SettingsCategoryMeta {
           icon: CupertinoIcons.person_crop_circle,
           accent: Color(0xFF5B8CFF),
         );
+      case _SettingsCategory.profileVisibility:
+        return const _SettingsCategoryMeta(
+          title: 'Profile and visibility',
+          subtitle: 'Profile privacy, fields, and preview',
+          icon: CupertinoIcons.eye_fill,
+          accent: Color(0xFF4D96FF),
+        );
       case _SettingsCategory.privacy:
         return const _SettingsCategoryMeta(
           title: 'Privacy and safety',
@@ -1129,31 +1990,80 @@ class _SettingsCategoryMeta {
           icon: CupertinoIcons.bell_fill,
           accent: Color(0xFFFFB703),
         );
-      case _SettingsCategory.display:
+      case _SettingsCategory.chats:
         return const _SettingsCategoryMeta(
-          title: 'Display and accessibility',
-          subtitle: 'Theme, text, and motion',
+          title: 'Chats and messages',
+          subtitle: 'Message privacy, groups, and receipts',
+          icon: CupertinoIcons.chat_bubble_2_fill,
+          accent: Color(0xFF6C63FF),
+        );
+      case _SettingsCategory.feed:
+        return const _SettingsCategoryMeta(
+          title: 'Feed and content',
+          subtitle: 'Ranking, topics, and personalization',
+          icon: CupertinoIcons.square_list_fill,
+          accent: Color(0xFFFF6B6B),
+        );
+      case _SettingsCategory.friends:
+        return const _SettingsCategoryMeta(
+          title: 'Friends and social graph',
+          subtitle: 'Requests, close friends, suggestions',
+          icon: CupertinoIcons.person_2_fill,
+          accent: Color(0xFF00B894),
+        );
+      case _SettingsCategory.appearance:
+        return const _SettingsCategoryMeta(
+          title: 'Appearance',
+          subtitle: 'Theme, accent, density, and motion',
           icon: CupertinoIcons.circle_lefthalf_fill,
           accent: Color(0xFF3CCB7F),
         );
-      case _SettingsCategory.data:
+      case _SettingsCategory.accessibility:
+        return const _SettingsCategoryMeta(
+          title: 'Accessibility',
+          subtitle: 'Text, contrast, motion, touch targets',
+          icon: CupertinoIcons.textformat_size,
+          accent: Color(0xFF9B5DE5),
+        );
+      case _SettingsCategory.dataStorage:
         return const _SettingsCategoryMeta(
           title: 'Data and storage',
           subtitle: 'Network, cache, and export',
           icon: CupertinoIcons.tray_fill,
           accent: Color(0xFF00A6FB),
         );
+      case _SettingsCategory.ai:
+        return const _SettingsCategoryMeta(
+          title: 'AI and personalization',
+          subtitle: 'Recommendations and smart features',
+          icon: CupertinoIcons.sparkles,
+          accent: Color(0xFF64D2FF),
+        );
+      case _SettingsCategory.creator:
+        return const _SettingsCategoryMeta(
+          title: 'Creator and professional',
+          subtitle: 'Creator mode, badge, analytics',
+          icon: CupertinoIcons.chart_bar_alt_fill,
+          accent: Color(0xFFFF8FAB),
+        );
       case _SettingsCategory.support:
         return const _SettingsCategoryMeta(
-          title: 'Support and legal',
-          subtitle: 'Help, feedback, and policies',
+          title: 'Help and support',
+          subtitle: 'Help center, reports, support tickets',
           icon: CupertinoIcons.question_circle_fill,
           accent: Color(0xFFEF476F),
         );
-      case _SettingsCategory.actions:
+      case _SettingsCategory.legal:
         return const _SettingsCategoryMeta(
-          title: 'Account actions',
-          subtitle: 'Log out or delete account',
+          title: 'Legal and about',
+          subtitle: 'Policies, licenses, version',
+          icon: CupertinoIcons.doc_text_fill,
+          accent: Color(0xFF8E8E93),
+        );
+      case _SettingsCategory.danger:
+        return const _SettingsCategoryMeta(
+          title: 'Danger zone',
+          subtitle: 'Logout, deactivate, delete',
           icon: CupertinoIcons.square_arrow_right_fill,
           accent: PravaColors.error,
         );
@@ -1162,17 +2072,439 @@ class _SettingsCategoryMeta {
 }
 
 class _SettingsTopBar extends StatelessWidget {
-  const _SettingsTopBar({required this.primary});
+  const _SettingsTopBar({required this.primary, required this.onSearchTap});
 
   final Color primary;
+  final VoidCallback onSearchTap;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      'Settings',
-      style: PravaTypography.titleLarge.copyWith(
-        color: primary,
-        fontWeight: FontWeight.w800,
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Settings',
+            style: PravaTypography.titleLarge.copyWith(
+              color: primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        IconButton(
+          onPressed: onSearchTap,
+          icon: Icon(CupertinoIcons.search, color: primary, size: 26),
+          tooltip: 'Search settings',
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsSearchBar extends StatelessWidget {
+  const _SettingsSearchBar({
+    required this.controller,
+    required this.focusNode,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.isDark,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = isDark
+        ? PravaColors.darkBgElevated
+        : PravaColors.lightBgElevated;
+    return Container(
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border),
+      ),
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        style: PravaTypography.bodyMedium.copyWith(color: primary),
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: 'Search settings',
+          hintStyle: PravaTypography.bodyMedium.copyWith(color: secondary),
+          border: InputBorder.none,
+          prefixIcon: Icon(CupertinoIcons.search, color: secondary, size: 22),
+          suffixIcon: controller.text.isEmpty
+              ? null
+              : IconButton(
+                  onPressed: controller.clear,
+                  icon: Icon(
+                    CupertinoIcons.xmark_circle_fill,
+                    color: secondary,
+                  ),
+                  tooltip: 'Clear search',
+                ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 14,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsSearchResults extends StatelessWidget {
+  const _SettingsSearchResults({
+    required this.results,
+    required this.query,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.onOpenCategory,
+  });
+
+  final List<_SettingsSearchEntry> results;
+  final String query;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final ValueChanged<_SettingsCategory> onOpenCategory;
+
+  @override
+  Widget build(BuildContext context) {
+    if (results.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 18),
+        child: Column(
+          children: [
+            Icon(CupertinoIcons.search, color: secondary, size: 30),
+            const SizedBox(height: 10),
+            Text(
+              'No settings found for "$query"',
+              textAlign: TextAlign.center,
+              style: PravaTypography.bodyMedium.copyWith(
+                color: primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Try privacy, password, blocked, feed, or delete.',
+              textAlign: TextAlign.center,
+              style: PravaTypography.caption.copyWith(color: secondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Results',
+          style: PravaTypography.bodySmall.copyWith(
+            color: secondary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border.all(color: border),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < results.length; i++) ...[
+                _SettingsCategoryTile(
+                  meta: results[i].meta,
+                  primary: primary,
+                  secondary: secondary,
+                  trailing: 'Open',
+                  onTap: () => onOpenCategory(results[i].category),
+                ),
+                if (i != results.length - 1) Divider(height: 1, color: border),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsAccountCard extends StatelessWidget {
+  const _SettingsAccountCard({
+    required this.account,
+    required this.loading,
+    required this.completion,
+    required this.accountType,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.isDark,
+    required this.onManage,
+  });
+
+  final AccountInfo? account;
+  final bool loading;
+  final int completion;
+  final String accountType;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final bool isDark;
+  final VoidCallback onManage;
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = isDark
+        ? PravaColors.darkBgElevated
+        : PravaColors.lightBgElevated;
+    final name =
+        (account?.displayName.trim().isNotEmpty == true
+                ? account!.displayName
+                : account?.username ?? 'Prava account')
+            .trim();
+    final username = account?.username.trim() ?? '';
+    final avatar = account?.avatarUrl.trim() ?? '';
+    final initial = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'P';
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: fill,
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 29,
+              backgroundColor: PravaColors.accentPrimary.withValues(
+                alpha: 0.16,
+              ),
+              backgroundImage: avatar.isEmpty ? null : NetworkImage(avatar),
+              child: avatar.isEmpty
+                  ? Text(
+                      initial,
+                      style: PravaTypography.titleMedium.copyWith(
+                        color: PravaColors.accentPrimary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: loading
+                  ? LinearProgressIndicator(
+                      minHeight: 3,
+                      color: PravaColors.accentPrimary,
+                      backgroundColor: border,
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: PravaTypography.bodyMedium.copyWith(
+                                  color: primary,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            if (account?.isVerified == true) ...[
+                              const SizedBox(width: 5),
+                              const Icon(
+                                CupertinoIcons.checkmark_seal_fill,
+                                color: PravaColors.accentPrimary,
+                                size: 17,
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          username.isEmpty ? accountType : '@$username',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: PravaTypography.caption.copyWith(
+                            color: secondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            minHeight: 5,
+                            value: completion / 100,
+                            color: PravaColors.accentPrimary,
+                            backgroundColor: border,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Text(
+                          '$completion% complete · $accountType',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: PravaTypography.caption.copyWith(
+                            color: secondary,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+            const SizedBox(width: 10),
+            TextButton(onPressed: onManage, child: const Text('Manage')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsQuickControls extends StatelessWidget {
+  const _SettingsQuickControls({
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.onOpenCategory,
+  });
+
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final ValueChanged<_SettingsCategory> onOpenCategory;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Quick controls',
+          style: PravaTypography.bodySmall.copyWith(
+            color: secondary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        GridView.count(
+          crossAxisCount: 2,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 2.65,
+          physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: true,
+          children: [
+            _QuickControlCard(
+              title: 'Privacy Checkup',
+              icon: CupertinoIcons.lock_shield,
+              primary: primary,
+              secondary: secondary,
+              border: border,
+              onTap: () => onOpenCategory(_SettingsCategory.privacy),
+            ),
+            _QuickControlCard(
+              title: 'Security Checkup',
+              icon: CupertinoIcons.shield_lefthalf_fill,
+              primary: primary,
+              secondary: secondary,
+              border: border,
+              onTap: () => onOpenCategory(_SettingsCategory.security),
+            ),
+            _QuickControlCard(
+              title: 'Notifications',
+              icon: CupertinoIcons.bell_fill,
+              primary: primary,
+              secondary: secondary,
+              border: border,
+              onTap: () => onOpenCategory(_SettingsCategory.notifications),
+            ),
+            _QuickControlCard(
+              title: 'Appearance',
+              icon: CupertinoIcons.circle_lefthalf_fill,
+              primary: primary,
+              secondary: secondary,
+              border: border,
+              onTap: () => onOpenCategory(_SettingsCategory.appearance),
+            ),
+            _QuickControlCard(
+              title: 'Data & Storage',
+              icon: CupertinoIcons.tray_fill,
+              primary: primary,
+              secondary: secondary,
+              border: border,
+              onTap: () => onOpenCategory(_SettingsCategory.dataStorage),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickControlCard extends StatelessWidget {
+  const _QuickControlCard({
+    required this.title,
+    required this.icon,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.onTap,
+  });
+
+  final String title;
+  final IconData icon;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: border),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(icon, color: PravaColors.accentPrimary, size: 21),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.bodySmall.copyWith(
+                    color: primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

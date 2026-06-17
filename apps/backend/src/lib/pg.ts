@@ -242,6 +242,262 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS profile_visibility_settings (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      account_privacy TEXT NOT NULL DEFAULT 'public',
+      posts_visibility TEXT NOT NULL DEFAULT 'everyone',
+      replies_visibility TEXT NOT NULL DEFAULT 'everyone',
+      media_visibility TEXT NOT NULL DEFAULT 'everyone',
+      highlights_visibility TEXT NOT NULL DEFAULT 'everyone',
+      about_visibility TEXT NOT NULL DEFAULT 'everyone',
+      bio_visibility TEXT NOT NULL DEFAULT 'everyone',
+      location_visibility TEXT NOT NULL DEFAULT 'friends',
+      website_visibility TEXT NOT NULL DEFAULT 'everyone',
+      birthday_visibility TEXT NOT NULL DEFAULT 'onlyMe',
+      followers_list_visibility TEXT NOT NULL DEFAULT 'everyone',
+      following_list_visibility TEXT NOT NULL DEFAULT 'everyone',
+      friends_list_visibility TEXT NOT NULL DEFAULT 'friends',
+      mutual_friends_visibility TEXT NOT NULL DEFAULT 'friends',
+      profile_sharing_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      search_engine_visibility BOOLEAN NOT NULL DEFAULT FALSE,
+      accent_color TEXT NOT NULL DEFAULT '',
+      profile_theme TEXT NOT NULL DEFAULT 'default',
+      cover_style TEXT NOT NULL DEFAULT 'standard',
+      badge_visibility TEXT NOT NULL DEFAULT 'everyone',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS privacy_settings (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      show_online_status BOOLEAN NOT NULL DEFAULT TRUE,
+      show_last_active BOOLEAN NOT NULL DEFAULT TRUE,
+      read_receipts_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      typing_indicator_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      activity_status_visibility TEXT NOT NULL DEFAULT 'friends',
+      allow_find_by_username BOOLEAN NOT NULL DEFAULT TRUE,
+      allow_find_by_email BOOLEAN NOT NULL DEFAULT FALSE,
+      allow_find_by_phone BOOLEAN NOT NULL DEFAULT FALSE,
+      suggest_profile_to_others BOOLEAN NOT NULL DEFAULT TRUE,
+      contact_sync_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      allow_mentions_from TEXT NOT NULL DEFAULT 'everyone',
+      allow_tags_from TEXT NOT NULL DEFAULT 'everyone',
+      review_tags_before_showing BOOLEAN NOT NULL DEFAULT FALSE,
+      allow_reposts BOOLEAN NOT NULL DEFAULT TRUE,
+      allow_quote_posts BOOLEAN NOT NULL DEFAULT TRUE,
+      who_can_message TEXT NOT NULL DEFAULT 'everyone',
+      message_requests_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      filter_unknown_senders BOOLEAN NOT NULL DEFAULT FALSE,
+      hide_message_preview BOOLEAN NOT NULL DEFAULT FALSE,
+      sensitive_content_filter BOOLEAN NOT NULL DEFAULT TRUE,
+      blur_sensitive_media BOOLEAN NOT NULL DEFAULT TRUE,
+      offensive_words_filter BOOLEAN NOT NULL DEFAULT TRUE,
+      content_safety_level TEXT NOT NULL DEFAULT 'balanced',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS notification_settings (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      push_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      sms_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      likes_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      comments_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      replies_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      reposts_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      quote_posts_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      mentions_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      tags_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      follows_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      follow_requests_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      friend_requests_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      friend_accepts_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      direct_messages_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      message_requests_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      group_messages_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      recommendations_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      trending_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      security_alerts_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      quiet_hours_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      quiet_hours_start TEXT NOT NULL DEFAULT '22:00',
+      quiet_hours_end TEXT NOT NULL DEFAULT '07:00',
+      allow_important_alerts BOOLEAN NOT NULL DEFAULT TRUE,
+      allow_message_exceptions BOOLEAN NOT NULL DEFAULT TRUE,
+      notification_preview_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      sound_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      vibration_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      badge_count_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      lock_screen_preview_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_settings (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      who_can_message TEXT NOT NULL DEFAULT 'everyone',
+      message_requests_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      filter_unknown_senders BOOLEAN NOT NULL DEFAULT FALSE,
+      read_receipts_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      typing_indicators_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      online_status_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      show_last_seen BOOLEAN NOT NULL DEFAULT TRUE,
+      who_can_add_to_groups TEXT NOT NULL DEFAULT 'friends',
+      group_invite_approval_required BOOLEAN NOT NULL DEFAULT TRUE,
+      allow_group_mentions BOOLEAN NOT NULL DEFAULT TRUE,
+      group_notification_defaults TEXT NOT NULL DEFAULT 'all',
+      chat_theme TEXT NOT NULL DEFAULT 'system',
+      bubble_density TEXT NOT NULL DEFAULT 'comfortable',
+      font_size TEXT NOT NULL DEFAULT 'default',
+      timestamp_display TEXT NOT NULL DEFAULT 'compact',
+      auto_download_images BOOLEAN NOT NULL DEFAULT TRUE,
+      auto_download_videos BOOLEAN NOT NULL DEFAULT TRUE,
+      auto_download_voice_notes BOOLEAN NOT NULL DEFAULT TRUE,
+      data_saver_media BOOLEAN NOT NULL DEFAULT FALSE,
+      enter_key_sends BOOLEAN NOT NULL DEFAULT FALSE,
+      send_button_always_visible BOOLEAN NOT NULL DEFAULT TRUE,
+      link_previews_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      default_reaction TEXT NOT NULL DEFAULT 'like',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS appearance_settings (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      theme_mode TEXT NOT NULL DEFAULT 'system',
+      accent_color TEXT NOT NULL DEFAULT 'pravaBlue',
+      display_density TEXT NOT NULL DEFAULT 'comfortable',
+      font_size TEXT NOT NULL DEFAULT 'default',
+      bold_text BOOLEAN NOT NULL DEFAULT FALSE,
+      reduce_animations BOOLEAN NOT NULL DEFAULT FALSE,
+      blur_effects_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      haptic_feedback_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      premium_motion_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS accessibility_settings (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      text_size TEXT NOT NULL DEFAULT 'default',
+      high_contrast BOOLEAN NOT NULL DEFAULT FALSE,
+      bold_text BOOLEAN NOT NULL DEFAULT FALSE,
+      reduce_motion BOOLEAN NOT NULL DEFAULT FALSE,
+      reduce_transparency BOOLEAN NOT NULL DEFAULT FALSE,
+      larger_touch_targets BOOLEAN NOT NULL DEFAULT FALSE,
+      screen_reader_enhanced_labels BOOLEAN NOT NULL DEFAULT TRUE,
+      disable_autoplay BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_personalization_settings (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      personalized_feed_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      ai_friend_suggestions_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      ai_post_recommendations_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      ai_smart_replies_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      ai_profile_summary_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      ai_safety_filtering_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      use_activity_for_ai BOOLEAN NOT NULL DEFAULT TRUE,
+      use_posts_for_recommendations BOOLEAN NOT NULL DEFAULT TRUE,
+      use_likes_for_recommendations BOOLEAN NOT NULL DEFAULT TRUE,
+      use_chats_for_ai BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS creator_settings (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      creator_mode_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      creator_category TEXT NOT NULL DEFAULT '',
+      professional_account_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      public_contact_button_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      public_email TEXT NOT NULL DEFAULT '',
+      show_creator_badge BOOLEAN NOT NULL DEFAULT FALSE,
+      analytics_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      monetization_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS security_settings (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      login_alerts_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      suspicious_login_protection_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      trusted_devices_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      recovery_email_set BOOLEAN NOT NULL DEFAULT FALSE,
+      recovery_phone_set BOOLEAN NOT NULL DEFAULT FALSE,
+      app_lock_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      biometrics_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS data_storage_settings (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      data_saver_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      auto_download_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      auto_play_videos BOOLEAN NOT NULL DEFAULT TRUE,
+      media_quality TEXT NOT NULL DEFAULT 'auto',
+      clear_cache_metadata_at TIMESTAMPTZ DEFAULT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS friend_settings (
+      user_id         TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+      allow_friend_requests_from TEXT NOT NULL DEFAULT 'everyone',
+      show_mutual_friend_activity BOOLEAN NOT NULL DEFAULT TRUE,
+      people_you_may_know BOOLEAN NOT NULL DEFAULT TRUE,
+      close_friends_notifications BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS setting_audit_logs (
+      id              TEXT PRIMARY KEY,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      setting_category TEXT NOT NULL,
+      setting_key     TEXT NOT NULL DEFAULT '',
+      old_value       JSONB NOT NULL DEFAULT 'null',
+      new_value       JSONB NOT NULL DEFAULT 'null',
+      changed_by      TEXT NOT NULL DEFAULT '',
+      ip_address      TEXT NOT NULL DEFAULT '',
+      user_agent      TEXT NOT NULL DEFAULT '',
+      reason          TEXT NOT NULL DEFAULT '',
+      sensitivity_level TEXT NOT NULL DEFAULT 'normal',
+      changed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_setting_audit_user_changed ON setting_audit_logs (user_id, changed_at DESC);
+
+    CREATE TABLE IF NOT EXISTS account_deletion_requests (
+      request_id      TEXT PRIMARY KEY,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      request_type    TEXT NOT NULL DEFAULT 'delete',
+      status          TEXT NOT NULL DEFAULT 'pending',
+      reason          TEXT NOT NULL DEFAULT '',
+      recovery_until  TIMESTAMPTZ DEFAULT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      canceled_at     TIMESTAMPTZ DEFAULT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_account_deletion_user_status ON account_deletion_requests (user_id, status, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS support_tickets (
+      ticket_id       TEXT PRIMARY KEY,
+      user_id         TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      issue_type      TEXT NOT NULL DEFAULT 'help',
+      description     TEXT NOT NULL DEFAULT '',
+      include_logs    BOOLEAN NOT NULL DEFAULT FALSE,
+      status          TEXT NOT NULL DEFAULT 'open',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_support_tickets_user_created ON support_tickets (user_id, created_at DESC);
+
     -- FEED & CONTENT
     CREATE TABLE IF NOT EXISTS posts (
       post_id         TEXT PRIMARY KEY,
@@ -1026,14 +1282,13 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
   // (may have been created by older migration without it)
   await p.query(`
     CREATE TABLE IF NOT EXISTS notification_preferences (
-      user_id UUID NOT NULL,
-      channel VARCHAR(24) NOT NULL,
-      notification_type VARCHAR(64) NOT NULL,
-      enabled BOOLEAN NOT NULL DEFAULT true,
+      user_id UUID,
+      channel VARCHAR(24),
+      notification_type VARCHAR(64),
+      enabled BOOLEAN,
       quiet_hours_start TIME,
       quiet_hours_end TIME,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      PRIMARY KEY (user_id, channel, notification_type)
+      updated_at TIMESTAMPTZ
     );
     ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS notification_type VARCHAR(64);
     ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS preference_category TEXT;
@@ -1043,6 +1298,8 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS quiet_hours_enabled BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC';
     ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_preferences_user_channel_type
+      ON notification_preferences (user_id, channel, notification_type);
 
     ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS public_device_id TEXT;
     ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS push_provider TEXT NOT NULL DEFAULT 'fcm';
@@ -1050,12 +1307,6 @@ export async function runMigrations(p: pg.Pool): Promise<void> {
     ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS token_refreshed_at TIMESTAMPTZ;
     ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ;
 
-    CREATE TABLE IF NOT EXISTS outbox_events (
-      id BIGSERIAL PRIMARY KEY,
-      event_type TEXT NOT NULL,
-      payload JSONB NOT NULL DEFAULT '{}',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
     ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS locked_at TIMESTAMPTZ;
     ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS locked_by TEXT;
     ALTER TABLE outbox_events ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ;
