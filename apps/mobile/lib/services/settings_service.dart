@@ -3,6 +3,72 @@ import 'dart:convert';
 import '../core/network/api_client.dart';
 import '../core/storage/secure_store.dart';
 
+class SettingsCheckupResult {
+  SettingsCheckupResult({required this.score, required this.recommendations});
+
+  final int score;
+  final List<String> recommendations;
+
+  factory SettingsCheckupResult.fromJson(Map<String, dynamic> json) {
+    final rawRecommendations = json['recommendations'];
+    return SettingsCheckupResult(
+      score: json['score'] is num ? (json['score'] as num).round() : 0,
+      recommendations: rawRecommendations is List
+          ? rawRecommendations
+                .map((item) => item?.toString().trim() ?? '')
+                .where((item) => item.isNotEmpty)
+                .toList(growable: false)
+          : const [],
+    );
+  }
+}
+
+class SettingsAuditEntry {
+  SettingsAuditEntry({
+    required this.category,
+    required this.key,
+    required this.sensitivity,
+    required this.changedAt,
+  });
+
+  final String category;
+  final String key;
+  final String sensitivity;
+  final DateTime? changedAt;
+
+  factory SettingsAuditEntry.fromJson(Map<String, dynamic> json) {
+    return SettingsAuditEntry(
+      category: json['category']?.toString() ?? '',
+      key: json['key']?.toString() ?? '',
+      sensitivity: json['sensitivity']?.toString() ?? 'normal',
+      changedAt: DateTime.tryParse(json['changedAt']?.toString() ?? ''),
+    );
+  }
+}
+
+class SettingsAccountActionResult {
+  SettingsAccountActionResult({
+    required this.pending,
+    required this.requestId,
+    this.recoveryUntil,
+  });
+
+  final bool pending;
+  final String requestId;
+  final DateTime? recoveryUntil;
+
+  factory SettingsAccountActionResult.fromJson(Map<String, dynamic> json) {
+    return SettingsAccountActionResult(
+      pending:
+          json['pending'] == true ||
+          json['deletionRequested'] == true ||
+          json['deactivated'] == false,
+      requestId: json['requestId']?.toString() ?? '',
+      recoveryUntil: DateTime.tryParse(json['recoveryUntil']?.toString() ?? ''),
+    );
+  }
+}
+
 class SettingsState {
   SettingsState({
     required this.privateAccount,
@@ -511,16 +577,7 @@ class SettingsService {
 
   Future<SettingsState> fetchRemote() async {
     final data = await _client.get('/settings', auth: true);
-    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
-    final legacy = payload['legacy'];
-    if (legacy is Map<String, dynamic>) {
-      return SettingsState.fromJson(legacy);
-    }
-    final settings = payload['settings'];
-    if (settings is Map<String, dynamic>) {
-      return SettingsState.fromJson(settings);
-    }
-    return SettingsState.fromJson(payload);
+    return _stateFromPayload(data);
   }
 
   Future<SettingsState> saveRemote(SettingsState state) async {
@@ -529,6 +586,92 @@ class SettingsService {
       auth: true,
       body: state.toJson(),
     );
+    return _stateFromPayload(data);
+  }
+
+  Future<SettingsState> resetFeedPersonalization() async {
+    final data = await _client.post(
+      '/settings/reset-feed-personalization',
+      auth: true,
+    );
+    return _stateFromPayload(data);
+  }
+
+  Future<void> clearSearchHistory() async {
+    await _client.post('/settings/clear-search-history', auth: true);
+    await _store.setSearchHistoryJson('[]');
+  }
+
+  Future<void> clearCacheMetadata() async {
+    await _client.post('/settings/clear-cache-metadata', auth: true);
+  }
+
+  Future<void> logoutAllSessions() async {
+    await _client.post('/sessions/logout-all', auth: true);
+  }
+
+  Future<SettingsCheckupResult> runPrivacyCheckup() async {
+    final data = await _client.post('/settings/privacy-checkup', auth: true);
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    return SettingsCheckupResult.fromJson(payload);
+  }
+
+  Future<SettingsCheckupResult> runSecurityCheckup() async {
+    final data = await _client.post('/settings/security-checkup', auth: true);
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    return SettingsCheckupResult.fromJson(payload);
+  }
+
+  Future<List<SettingsAuditEntry>> fetchAudit() async {
+    final data = await _client.get('/settings/audit', auth: true);
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    final items = payload['items'];
+    if (items is! List) return const [];
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(SettingsAuditEntry.fromJson)
+        .toList(growable: false);
+  }
+
+  Future<SettingsAccountActionResult> deactivateAccount({
+    required String password,
+    String? reason,
+  }) async {
+    final data = await _client.post(
+      '/account/deactivate',
+      auth: true,
+      body: {
+        'password': password,
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      },
+    );
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    return SettingsAccountActionResult.fromJson(payload);
+  }
+
+  Future<SettingsAccountActionResult> requestAccountDeletion({
+    required String password,
+    required String confirmation,
+    String? reason,
+  }) async {
+    final data = await _client.post(
+      '/account/delete-request',
+      auth: true,
+      body: {
+        'password': password,
+        'confirmation': confirmation,
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      },
+    );
+    final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    return SettingsAccountActionResult.fromJson(payload);
+  }
+
+  Future<void> cancelAccountDeletion() async {
+    await _client.post('/account/delete-cancel', auth: true);
+  }
+
+  SettingsState _stateFromPayload(dynamic data) {
     final payload = data is Map<String, dynamic> ? data : <String, dynamic>{};
     final legacy = payload['legacy'];
     if (legacy is Map<String, dynamic>) {
@@ -536,7 +679,18 @@ class SettingsService {
     }
     final settings = payload['settings'];
     if (settings is Map<String, dynamic>) {
+      final nestedLegacy = settings['legacy'];
+      if (nestedLegacy is Map<String, dynamic>) {
+        return SettingsState.fromJson(nestedLegacy);
+      }
       return SettingsState.fromJson(settings);
+    }
+    final bundle = payload['bundle'];
+    if (bundle is Map<String, dynamic>) {
+      final bundleLegacy = bundle['legacy'];
+      if (bundleLegacy is Map<String, dynamic>) {
+        return SettingsState.fromJson(bundleLegacy);
+      }
     }
     return SettingsState.fromJson(payload);
   }

@@ -75,6 +75,88 @@ class SettingsController extends ChangeNotifier {
     });
   }
 
+  Future<void> updateNow(SettingsState next) async {
+    _saveTimer?.cancel();
+    _revision += 1;
+    final revisionSnapshot = _revision;
+    final previous = _state;
+    _state = next;
+    notifyListeners();
+    await _service.saveLocal(next);
+
+    try {
+      final saved = await _service.saveRemote(next);
+      if (revisionSnapshot == _revision) {
+        _state = saved;
+        await _service.saveLocal(saved);
+        notifyListeners();
+      }
+    } catch (_) {
+      if (revisionSnapshot == _revision) {
+        _state = previous;
+        await _service.saveLocal(previous);
+        notifyListeners();
+      }
+      rethrow;
+    }
+  }
+
+  Future<SettingsCheckupResult> runPrivacyCheckup() {
+    return _service.runPrivacyCheckup();
+  }
+
+  Future<SettingsCheckupResult> runSecurityCheckup() {
+    return _service.runSecurityCheckup();
+  }
+
+  Future<void> resetFeedPersonalization() async {
+    final next = await _service.resetFeedPersonalization();
+    _saveTimer?.cancel();
+    _revision += 1;
+    _state = next;
+    await _service.saveLocal(next);
+    notifyListeners();
+  }
+
+  Future<void> clearSearchHistory() {
+    return _service.clearSearchHistory();
+  }
+
+  Future<void> clearCacheMetadata() {
+    return _service.clearCacheMetadata();
+  }
+
+  Future<void> logoutAllSessions() {
+    return _service.logoutAllSessions();
+  }
+
+  Future<SettingsAccountActionResult> deactivateAccount({
+    required String password,
+    String? reason,
+  }) {
+    return _service.deactivateAccount(password: password, reason: reason);
+  }
+
+  Future<SettingsAccountActionResult> requestAccountDeletion({
+    required String password,
+    required String confirmation,
+    String? reason,
+  }) {
+    return _service.requestAccountDeletion(
+      password: password,
+      confirmation: confirmation,
+      reason: reason,
+    );
+  }
+
+  Future<void> cancelAccountDeletion() {
+    return _service.cancelAccountDeletion();
+  }
+
+  Future<List<SettingsAuditEntry>> fetchAudit() {
+    return _service.fetchAudit();
+  }
+
   @override
   void dispose() {
     _saveTimer?.cancel();

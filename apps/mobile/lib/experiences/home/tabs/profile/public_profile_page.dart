@@ -371,7 +371,31 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 
   String _formatJoined(DateTime? value) {
     if (value == null) return '';
-    return 'Joined ${value.year}';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return 'Joined ${months[value.month - 1]} ${value.year}';
+  }
+
+  bool _showVerifiedBadge(PublicProfileUser user) {
+    if (!user.isVerified) return false;
+    final type = user.verificationType.toLowerCase();
+    return type.isEmpty ||
+        type == 'verified' ||
+        type.contains('mobile') ||
+        type.contains('phone') ||
+        type.contains('otp');
   }
 
   String _formatRelativeTime(DateTime value) {
@@ -552,11 +576,12 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
               username: user.username,
               initials: _initials(displayName),
               avatarUrl: user.avatarUrl,
-              coverUrl: user.coverUrl,
-              verified: user.isVerified,
+              verified: _showVerifiedBadge(user),
               relationship: _relationshipLabel(),
               bio: user.bio,
               bioVisible: visibility.canSee('bio'),
+              location: user.location,
+              locationVisible: visibility.canSee('location'),
               posts: _shownStat(visibility, 'posts', summary.stats.posts),
               followers: _shownStat(
                 visibility,
@@ -633,7 +658,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                 ),
               ),
             )
-          else if (_contentTab == _PublicProfileContentTab.all) ...[
+          else if (_contentTab == _PublicProfileContentTab.about) ...[
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
@@ -842,11 +867,12 @@ class _PublicProfileHero extends StatelessWidget {
     required this.username,
     required this.initials,
     required this.avatarUrl,
-    required this.coverUrl,
     required this.verified,
     required this.relationship,
     required this.bio,
     required this.bioVisible,
+    required this.location,
+    required this.locationVisible,
     required this.posts,
     required this.followers,
     required this.following,
@@ -873,11 +899,12 @@ class _PublicProfileHero extends StatelessWidget {
   final String username;
   final String initials;
   final String avatarUrl;
-  final String coverUrl;
   final bool verified;
   final String relationship;
   final String bio;
   final bool bioVisible;
+  final String location;
+  final bool locationVisible;
   final String posts;
   final String followers;
   final String following;
@@ -902,27 +929,34 @@ class _PublicProfileHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
-    final surface = tokens.backgroundCanvas;
-
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ProfileCoverBanner(
-            coverUrl: coverUrl,
-            initials: initials,
-            border: border,
-          ),
-          const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _PublicProfileAvatar(
-                initials: initials,
-                url: avatarUrl,
-                size: 92,
-                borderColor: surface,
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      tokens.brandPrimary.withValues(alpha: 0.46),
+                      tokens.backgroundSurface,
+                      tokens.brandContainer.withValues(alpha: 0.72),
+                    ],
+                  ),
+                ),
+                child: _PublicProfileAvatar(
+                  initials: initials,
+                  url: avatarUrl,
+                  size: 96,
+                  borderColor: tokens.backgroundCanvas,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -939,75 +973,65 @@ class _PublicProfileHero extends StatelessWidget {
                             style: PravaTypography.titleLarge.copyWith(
                               color: primary,
                               letterSpacing: 0,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
                         ),
                         if (verified) ...[
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 7),
                           Icon(
                             CupertinoIcons.check_mark_circled_solid,
                             color: tokens.brandPrimary,
-                            size: 17,
+                            size: 21,
                           ),
                         ],
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      username.isEmpty ? '' : '@$username',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: PravaTypography.bodyMedium.copyWith(
+                    if (username.trim().isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        '@$username',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PravaTypography.bodyMedium.copyWith(
+                          color: secondary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                    if (!bioVisible || bio.trim().isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      if (!bioVisible)
+                        _InlinePrivateLine(
+                          label: 'Bio hidden by privacy',
+                          color: secondary,
+                        )
+                      else
+                        Text(
+                          bio.trim(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: PravaTypography.bodyMedium.copyWith(
+                            color: primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ],
+                    if (locationVisible && location.trim().isNotEmpty) ...[
+                      const SizedBox(height: 7),
+                      _PublicMetaPill(
+                        icon: CupertinoIcons.location_solid,
+                        label: location.trim(),
                         color: secondary,
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    _RelationshipPill(label: relationship, color: secondary),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        _PublicProfileCount(
-                          label: 'posts',
-                          value: posts,
-                          primary: primary,
-                          onTap: onPostsTap,
-                        ),
-                        _PublicProfileCount(
-                          label: 'followers',
-                          value: followers,
-                          primary: primary,
-                          onTap: onFollowersTap,
-                        ),
-                        _PublicProfileCount(
-                          label: 'following',
-                          value: following,
-                          primary: primary,
-                          onTap: onFollowingTap,
-                        ),
-                      ],
-                    ),
+                    ],
                   ],
                 ),
               ),
             ],
           ),
-          if (!bioVisible || bio.trim().isNotEmpty) ...[
-            const SizedBox(height: 14),
-            if (!bioVisible)
-              _InlinePrivateLine(
-                label: 'Bio hidden by privacy',
-                color: secondary,
-              )
-            else
-              Text(
-                bio.trim(),
-                style: PravaTypography.bodyMedium.copyWith(
-                  color: primary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-          ],
+          const SizedBox(height: 12),
+          _RelationshipPill(label: relationship, color: secondary),
           if (mutualFriends.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
@@ -1025,6 +1049,18 @@ class _PublicProfileHero extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 18),
+          _PublicProfileStatsRow(
+            posts: posts,
+            followers: followers,
+            following: following,
+            primary: primary,
+            secondary: secondary,
+            border: border,
+            onPostsTap: onPostsTap,
+            onFollowersTap: onFollowersTap,
+            onFollowingTap: onFollowingTap,
+          ),
+          const SizedBox(height: 22),
           _RelationActions(
             isFriend: isFriend,
             following: followingUser,
@@ -1041,6 +1077,111 @@ class _PublicProfileHero extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PublicMetaPill extends StatelessWidget {
+  const _PublicMetaPill({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 17),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: PravaTypography.bodySmall.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PublicProfileStatsRow extends StatelessWidget {
+  const _PublicProfileStatsRow({
+    required this.posts,
+    required this.followers,
+    required this.following,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.onPostsTap,
+    required this.onFollowersTap,
+    required this.onFollowingTap,
+  });
+
+  final String posts;
+  final String followers;
+  final String following;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final VoidCallback onPostsTap;
+  final VoidCallback onFollowersTap;
+  final VoidCallback onFollowingTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _PublicProfileCount(
+          label: 'Posts',
+          value: posts,
+          primary: primary,
+          secondary: secondary,
+          onTap: onPostsTap,
+        ),
+        _PublicStatDivider(border: border),
+        _PublicProfileCount(
+          label: 'Followers',
+          value: followers,
+          primary: primary,
+          secondary: secondary,
+          onTap: onFollowersTap,
+        ),
+        _PublicStatDivider(border: border),
+        _PublicProfileCount(
+          label: 'Following',
+          value: following,
+          primary: primary,
+          secondary: secondary,
+          onTap: onFollowingTap,
+        ),
+      ],
+    );
+  }
+}
+
+class _PublicStatDivider extends StatelessWidget {
+  const _PublicStatDivider({required this.border});
+
+  final Color border;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 34,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      color: border.withValues(alpha: 0.72),
     );
   }
 }
@@ -1598,76 +1739,6 @@ class _PublicActionButton extends StatelessWidget {
   }
 }
 
-class _ProfileCoverBanner extends StatelessWidget {
-  const _ProfileCoverBanner({
-    required this.coverUrl,
-    required this.initials,
-    required this.border,
-  });
-
-  final String coverUrl;
-  final String initials;
-  final Color border;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    return Semantics(
-      label: 'Profile cover photo',
-      image: true,
-      child: Container(
-        height: 132,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: border),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              tokens.brandPrimary.withValues(alpha: 0.34),
-              tokens.backgroundSurfaceSubtle,
-              tokens.brandContainer.withValues(alpha: 0.78),
-            ],
-          ),
-          image: coverUrl.trim().isEmpty
-              ? null
-              : DecorationImage(
-                  image: NetworkImage(coverUrl),
-                  fit: BoxFit.cover,
-                ),
-        ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.transparent,
-                tokens.backgroundCanvas.withValues(alpha: 0.54),
-              ],
-            ),
-          ),
-          child: Align(
-            alignment: Alignment.bottomRight,
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Text(
-                initials,
-                style: PravaTypography.displaySmall.copyWith(
-                  color: tokens.textInverse.withValues(alpha: 0.86),
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _PublicProfileAvatar extends StatelessWidget {
   const _PublicProfileAvatar({
     required this.initials,
@@ -1717,12 +1788,14 @@ class _PublicProfileCount extends StatelessWidget {
     required this.label,
     required this.value,
     required this.primary,
+    required this.secondary,
     required this.onTap,
   });
 
   final String label;
   final String value;
   final Color primary;
+  final Color secondary;
   final VoidCallback onTap;
 
   @override
@@ -1731,24 +1804,29 @@ class _PublicProfileCount extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Text.rich(
-          TextSpan(
-            children: [
-              TextSpan(
-                text: value,
-                style: PravaTypography.bodyMedium.copyWith(
-                  color: primary,
-                  fontWeight: FontWeight.w800,
-                ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.titleSmall.copyWith(
+                color: primary,
+                letterSpacing: 0,
+                fontWeight: FontWeight.w900,
               ),
-              TextSpan(
-                text: ' $label',
-                style: PravaTypography.bodyMedium.copyWith(color: primary),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.bodySmall.copyWith(
+                color: secondary,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );

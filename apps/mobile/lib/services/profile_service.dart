@@ -19,6 +19,7 @@ class ProfileUser {
     required this.phoneCountryCode,
     required this.phoneNumber,
     required this.isVerified,
+    required this.verificationType,
     required this.createdAt,
   });
 
@@ -37,6 +38,7 @@ class ProfileUser {
   final String phoneCountryCode;
   final String phoneNumber;
   final bool isVerified;
+  final String verificationType;
   final DateTime? createdAt;
 
   factory ProfileUser.fromJson(Map<String, dynamic> json) {
@@ -56,6 +58,7 @@ class ProfileUser {
       phoneCountryCode: json['phoneCountryCode']?.toString() ?? '',
       phoneNumber: json['phoneNumber']?.toString() ?? '',
       isVerified: json['isVerified'] == true,
+      verificationType: json['verificationType']?.toString() ?? '',
       createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
     );
   }
@@ -197,6 +200,11 @@ class ProfileOwnerTools {
     required this.postReach,
     required this.newFollowers,
     required this.engagement,
+    required this.totalPosts,
+    required this.totalLikes,
+    required this.totalComments,
+    required this.totalShares,
+    required this.totalReads,
     required this.shortcuts,
     required this.previewModes,
   });
@@ -210,6 +218,11 @@ class ProfileOwnerTools {
   final int postReach;
   final int newFollowers;
   final int engagement;
+  final int totalPosts;
+  final int totalLikes;
+  final int totalComments;
+  final int totalShares;
+  final int totalReads;
   final List<ProfileOwnerShortcut> shortcuts;
   final List<String> previewModes;
 
@@ -240,6 +253,11 @@ class ProfileOwnerTools {
       postReach: _intValue(analytics['postReach']),
       newFollowers: _intValue(analytics['newFollowers']),
       engagement: _intValue(analytics['engagement']),
+      totalPosts: _intValue(analytics['totalPosts']),
+      totalLikes: _intValue(analytics['totalLikes']),
+      totalComments: _intValue(analytics['totalComments']),
+      totalShares: _intValue(analytics['totalShares']),
+      totalReads: _intValue(analytics['totalReads']),
       shortcuts: (data['shortcuts'] as List<dynamic>? ?? [])
           .whereType<Map<String, dynamic>>()
           .map(ProfileOwnerShortcut.fromJson)

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../core/network/api_exception.dart';
 import '../../../navigation/prava_navigator.dart';
 import '../../../services/account_service.dart';
 import '../../../services/auth_service.dart';
@@ -24,6 +25,8 @@ import 'language_page.dart';
 import 'legal_page.dart';
 import 'muted_words_page.dart';
 import 'security_center_page.dart';
+import 'settings_activity_page.dart';
+import 'settings_checkup_page.dart';
 import 'settings_detail_shell.dart';
 
 const _privacyPolicyContent = '''
@@ -72,6 +75,18 @@ enum _SettingsCategory {
   support,
   legal,
   danger,
+}
+
+class _PasswordActionPayload {
+  const _PasswordActionPayload({
+    required this.password,
+    this.confirmation,
+    this.reason,
+  });
+
+  final String password;
+  final String? confirmation;
+  final String? reason;
 }
 
 class SettingsPage extends StatefulWidget {
@@ -158,24 +173,10 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _confirmLogout() async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Log out?'),
-          content: const Text('You will be signed out of Prava.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Log out'),
-            ),
-          ],
-        );
-      },
+    final result = await _showPlainConfirmation(
+      title: 'Log out?',
+      message: 'You will be signed out of Prava on this device.',
+      actionLabel: 'Log out',
     );
 
     if (result != true || !mounted) return;
@@ -190,15 +191,18 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _confirmDeleteAccount() async {
-    final result = await showDialog<bool>(
+  Future<bool?> _showPlainConfirmation({
+    required String title,
+    required String message,
+    required String actionLabel,
+    bool destructive = false,
+  }) {
+    return showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Delete account?'),
-          content: const Text(
-            'This permanently deletes your account and data.',
-          ),
+          title: Text(title),
+          content: Text(message),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -206,16 +210,145 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Delete'),
+              child: Text(
+                actionLabel,
+                style: destructive
+                    ? PravaTypography.buttonMedium.copyWith(
+                        color: PravaColors.error,
+                      )
+                    : null,
+              ),
             ),
           ],
         );
       },
     );
+  }
 
+  Future<_PasswordActionPayload?> _showPasswordActionDialog({
+    required String title,
+    required String message,
+    required String actionLabel,
+    bool requireDeleteConfirmation = false,
+    bool includeReason = false,
+  }) async {
+    final passwordController = TextEditingController();
+    final confirmationController = TextEditingController();
+    final reasonController = TextEditingController();
+    var obscurePassword = true;
+    try {
+      return showDialog<_PasswordActionPayload>(
+        context: context,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              final password = passwordController.text.trim();
+              final confirmation = confirmationController.text.trim();
+              final canSubmit =
+                  password.isNotEmpty &&
+                  (!requireDeleteConfirmation || confirmation.isNotEmpty);
+              return AlertDialog(
+                title: Text(title),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(message),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: obscurePassword,
+                        onChanged: (_) => setDialogState(() {}),
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          suffixIcon: IconButton(
+                            onPressed: () => setDialogState(
+                              () => obscurePassword = !obscurePassword,
+                            ),
+                            icon: Icon(
+                              obscurePassword
+                                  ? CupertinoIcons.eye
+                                  : CupertinoIcons.eye_slash,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (requireDeleteConfirmation) ...[
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: confirmationController,
+                          onChanged: (_) => setDialogState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Type DELETE to confirm',
+                          ),
+                        ),
+                      ],
+                      if (includeReason) ...[
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: reasonController,
+                          maxLines: 3,
+                          decoration: const InputDecoration(
+                            labelText: 'Reason optional',
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: canSubmit
+                        ? () => Navigator.of(context).pop(
+                            _PasswordActionPayload(
+                              password: passwordController.text.trim(),
+                              confirmation: confirmationController.text.trim(),
+                              reason: reasonController.text.trim(),
+                            ),
+                          )
+                        : null,
+                    child: Text(
+                      actionLabel,
+                      style: PravaTypography.buttonMedium.copyWith(
+                        color: PravaColors.error,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      passwordController.dispose();
+      confirmationController.dispose();
+      reasonController.dispose();
+    }
+  }
+
+  String _errorMessage(Object error, String fallback) {
+    if (error is ApiException && error.message.trim().isNotEmpty) {
+      return error.message;
+    }
+    return fallback;
+  }
+
+  Future<void> _confirmLogoutAllSessions() async {
+    final result = await _showPlainConfirmation(
+      title: 'Log out everywhere?',
+      message: 'All active Prava sessions will be signed out.',
+      actionLabel: 'Log out everywhere',
+      destructive: true,
+    );
     if (result != true) return;
     try {
-      await _accountService.deleteAccount();
+      await _settingsController?.logoutAllSessions();
       if (!mounted) return;
       await _authService.logout();
       if (!mounted) return;
@@ -224,11 +357,86 @@ class _SettingsPageState extends State<SettingsPage> {
         const LoginScreen(),
         (_) => false,
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       PravaToast.show(
         context,
-        message: 'Unable to delete account',
+        message: _errorMessage(error, 'Unable to log out everywhere'),
+        type: PravaToastType.error,
+      );
+    }
+  }
+
+  Future<void> _confirmDeactivateAccount() async {
+    final payload = await _showPasswordActionDialog(
+      title: 'Deactivate account?',
+      message:
+          'Your profile will be queued for deactivation. You can contact support if this was a mistake.',
+      actionLabel: 'Deactivate',
+      includeReason: true,
+    );
+    if (payload == null) return;
+    try {
+      await _settingsController?.deactivateAccount(
+        password: payload.password,
+        reason: payload.reason,
+      );
+      if (!mounted) return;
+      await _authService.logout();
+      if (!mounted) return;
+      PravaNavigator.pushAndRemoveUntil(
+        context,
+        const LoginScreen(),
+        (_) => false,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: _errorMessage(error, 'Unable to deactivate account'),
+        type: PravaToastType.error,
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteAccount() async {
+    final payload = await _showPasswordActionDialog(
+      title: 'Delete account?',
+      message:
+          'This requests permanent account deletion. Prava keeps a recovery window before final removal.',
+      actionLabel: 'Request deletion',
+      requireDeleteConfirmation: true,
+      includeReason: true,
+    );
+
+    if (payload == null) return;
+    try {
+      final result = await _settingsController?.requestAccountDeletion(
+        password: payload.password,
+        confirmation: payload.confirmation ?? '',
+        reason: payload.reason,
+      );
+      if (!mounted) return;
+      final recovery = result?.recoveryUntil;
+      PravaToast.show(
+        context,
+        message: recovery == null
+            ? 'Deletion request submitted'
+            : 'Deletion request submitted. Recovery ends ${recovery.year}-${recovery.month.toString().padLeft(2, '0')}-${recovery.day.toString().padLeft(2, '0')}',
+        type: PravaToastType.success,
+      );
+      await _authService.logout();
+      if (!mounted) return;
+      PravaNavigator.pushAndRemoveUntil(
+        context,
+        const LoginScreen(),
+        (_) => false,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: _errorMessage(error, 'Unable to request account deletion'),
         type: PravaToastType.error,
       );
     }
@@ -242,6 +450,8 @@ class _SettingsPageState extends State<SettingsPage> {
         category: category,
         versionLabel: _versionLabel,
         onLogout: _confirmLogout,
+        onLogoutAllSessions: _confirmLogoutAllSessions,
+        onDeactivateAccount: _confirmDeactivateAccount,
         onDeleteAccount: _confirmDeleteAccount,
       ),
     );
@@ -433,12 +643,16 @@ class _SettingsCategoryPage extends StatefulWidget {
     required this.category,
     required this.versionLabel,
     required this.onLogout,
+    required this.onLogoutAllSessions,
+    required this.onDeactivateAccount,
     required this.onDeleteAccount,
   });
 
   final _SettingsCategory category;
   final String versionLabel;
   final VoidCallback onLogout;
+  final VoidCallback onLogoutAllSessions;
+  final VoidCallback onDeactivateAccount;
   final VoidCallback onDeleteAccount;
 
   @override
@@ -474,9 +688,152 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
     setState(() => _settings = controller.state);
   }
 
-  void _update(SettingsState next) {
+  String _errorMessage(Object error, String fallback) {
+    if (error is ApiException && error.message.trim().isNotEmpty) {
+      return error.message;
+    }
+    return fallback;
+  }
+
+  Future<void> _update(SettingsState next) async {
     HapticFeedback.selectionClick();
-    _controller?.update(next);
+    final controller = _controller;
+    if (controller == null) return;
+    try {
+      await controller.updateNow(next);
+    } catch (error) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: _errorMessage(error, 'Could not save setting'),
+        type: PravaToastType.error,
+      );
+    }
+  }
+
+  Future<bool> _confirmAction({
+    required String title,
+    required String message,
+    required String actionLabel,
+    bool destructive = false,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(
+                actionLabel,
+                style: destructive
+                    ? PravaTypography.buttonMedium.copyWith(
+                        color: PravaColors.error,
+                      )
+                    : null,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    return result == true;
+  }
+
+  Future<void> _confirmThenUpdate({
+    required String title,
+    required String message,
+    required SettingsState next,
+    required String actionLabel,
+    bool destructive = false,
+  }) async {
+    final confirmed = await _confirmAction(
+      title: title,
+      message: message,
+      actionLabel: actionLabel,
+      destructive: destructive,
+    );
+    if (!confirmed) return;
+    await _update(next);
+  }
+
+  Future<void> _runAction({
+    required String title,
+    required String message,
+    required String actionLabel,
+    required Future<void> Function(SettingsController controller) action,
+    required String successMessage,
+    bool destructive = false,
+  }) async {
+    final controller = _controller;
+    if (controller == null) return;
+    final confirmed = await _confirmAction(
+      title: title,
+      message: message,
+      actionLabel: actionLabel,
+      destructive: destructive,
+    );
+    if (!confirmed) return;
+    HapticFeedback.selectionClick();
+    try {
+      await action(controller);
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: successMessage,
+        type: PravaToastType.success,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      PravaToast.show(
+        context,
+        message: _errorMessage(error, 'Action failed'),
+        type: PravaToastType.error,
+      );
+    }
+  }
+
+  Future<void> _clearCache() async {
+    await _runAction(
+      title: 'Clear cache?',
+      message: 'Temporary cache metadata will be cleared from this account.',
+      actionLabel: 'Clear',
+      destructive: true,
+      successMessage: 'Cache cleared',
+      action: (controller) async {
+        await controller.clearCacheMetadata();
+        if (mounted) setState(() => _cacheSizeLabel = '0 MB');
+      },
+    );
+  }
+
+  Future<void> _clearSearchHistory() async {
+    await _runAction(
+      title: 'Clear search history?',
+      message: 'Recent search history will be removed for your account.',
+      actionLabel: 'Clear',
+      destructive: true,
+      successMessage: 'Search history cleared',
+      action: (controller) => controller.clearSearchHistory(),
+    );
+  }
+
+  Future<void> _resetFeedPersonalization() async {
+    await _runAction(
+      title: 'Reset feed personalization?',
+      message:
+          'Prava will clear served-feed history and ranking feedback. Your For You feed will rebuild from fresh activity.',
+      actionLabel: 'Reset',
+      destructive: true,
+      successMessage: 'Feed personalization reset',
+      action: (controller) => controller.resetFeedPersonalization(),
+    );
   }
 
   void _showThemeSheet(bool isDark) {
@@ -659,16 +1016,6 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
     }
   }
 
-  void _clearCache() {
-    HapticFeedback.selectionClick();
-    setState(() => _cacheSizeLabel = '0 MB');
-    PravaToast.show(
-      context,
-      message: 'Cache cleared',
-      type: PravaToastType.success,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final meta = _SettingsCategoryMeta.from(widget.category);
@@ -753,8 +1100,17 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 title: 'Private account',
                 subtitle: 'Approve new followers before they see posts',
                 value: _settings.privateAccount,
-                onChanged: (value) =>
-                    _update(_settings.copyWith(privateAccount: value)),
+                onChanged: (value) => _confirmThenUpdate(
+                  title: value
+                      ? 'Make account private?'
+                      : 'Make account public?',
+                  message: value
+                      ? 'New followers will need approval before they can see protected profile content.'
+                      : 'Public profile content can be discovered and viewed more widely.',
+                  actionLabel: value ? 'Make private' : 'Make public',
+                  next: _settings.copyWith(privateAccount: value),
+                  destructive: !value,
+                ),
                 color: primary,
                 secondary: secondary,
               ),
@@ -814,8 +1170,17 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 title: 'Private account',
                 subtitle: 'Approve new followers',
                 value: _settings.privateAccount,
-                onChanged: (value) =>
-                    _update(_settings.copyWith(privateAccount: value)),
+                onChanged: (value) => _confirmThenUpdate(
+                  title: value
+                      ? 'Make account private?'
+                      : 'Make account public?',
+                  message: value
+                      ? 'New followers will need approval before they can see protected profile content.'
+                      : 'Public profile content can be discovered and viewed more widely.',
+                  actionLabel: value ? 'Make private' : 'Make public',
+                  next: _settings.copyWith(privateAccount: value),
+                  destructive: !value,
+                ),
                 color: primary,
                 secondary: secondary,
               ),
@@ -844,8 +1209,15 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 title: 'Location sharing',
                 subtitle: 'Share location in posts',
                 value: _settings.locationSharing,
-                onChanged: (value) =>
-                    _update(_settings.copyWith(locationSharing: value)),
+                onChanged: (value) => value
+                    ? _confirmThenUpdate(
+                        title: 'Enable location sharing?',
+                        message:
+                            'Posts can include location context when you choose to share it.',
+                        actionLabel: 'Enable',
+                        next: _settings.copyWith(locationSharing: value),
+                      )
+                    : _update(_settings.copyWith(locationSharing: value)),
                 color: primary,
                 secondary: secondary,
               ),
@@ -864,6 +1236,17 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 value: _settings.sensitiveContent,
                 onChanged: (value) =>
                     _update(_settings.copyWith(sensitiveContent: value)),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsTile(
+                icon: CupertinoIcons.lock_shield,
+                title: 'Privacy checkup',
+                subtitle: 'Review privacy recommendations',
+                onTap: () => PravaNavigator.push(
+                  context,
+                  const SettingsCheckupPage(kind: SettingsCheckupKind.privacy),
+                ),
                 color: primary,
                 secondary: secondary,
               ),
@@ -904,13 +1287,33 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 color: primary,
                 secondary: secondary,
               ),
+              _SettingsTile(
+                icon: CupertinoIcons.shield_lefthalf_fill,
+                title: 'Security checkup',
+                subtitle: 'Review login and device protection',
+                onTap: () => PravaNavigator.push(
+                  context,
+                  const SettingsCheckupPage(kind: SettingsCheckupKind.security),
+                ),
+                color: primary,
+                secondary: secondary,
+              ),
               _SettingsToggleTile(
                 icon: CupertinoIcons.shield_lefthalf_fill,
                 title: 'Two factor authentication',
                 subtitle: 'Require a code on login',
                 value: _settings.twoFactor,
-                onChanged: (value) =>
-                    _update(_settings.copyWith(twoFactor: value)),
+                onChanged: (value) => _confirmThenUpdate(
+                  title: value
+                      ? 'Enable two factor authentication?'
+                      : 'Disable two factor authentication?',
+                  message: value
+                      ? 'A verification code will be required on future logins.'
+                      : 'Your account will rely on password and device checks only.',
+                  actionLabel: value ? 'Enable' : 'Disable',
+                  next: _settings.copyWith(twoFactor: value),
+                  destructive: !value,
+                ),
                 color: primary,
                 secondary: secondary,
               ),
@@ -937,8 +1340,17 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 title: 'App passcode',
                 subtitle: 'Require a passcode to open',
                 value: _settings.appLock,
-                onChanged: (value) =>
-                    _update(_settings.copyWith(appLock: value)),
+                onChanged: (value) => _confirmThenUpdate(
+                  title: value
+                      ? 'Enable app passcode?'
+                      : 'Disable app passcode?',
+                  message: value
+                      ? 'Prava will require a local passcode before opening protected areas.'
+                      : 'Prava will stop asking for a local passcode on this device.',
+                  actionLabel: value ? 'Enable' : 'Disable',
+                  next: _settings.copyWith(appLock: value),
+                  destructive: !value,
+                ),
                 color: primary,
                 secondary: secondary,
               ),
@@ -947,8 +1359,17 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 title: 'Biometric unlock',
                 subtitle: 'Use face or fingerprint',
                 value: _settings.biometrics,
-                onChanged: (value) =>
-                    _update(_settings.copyWith(biometrics: value)),
+                onChanged: (value) => _confirmThenUpdate(
+                  title: value
+                      ? 'Enable biometric unlock?'
+                      : 'Disable biometric unlock?',
+                  message: value
+                      ? 'Face or fingerprint unlock can be used where the device supports it.'
+                      : 'Biometric unlock will be disabled for Prava on this device.',
+                  actionLabel: value ? 'Enable' : 'Disable',
+                  next: _settings.copyWith(biometrics: value),
+                  destructive: !value,
+                ),
                 color: primary,
                 secondary: secondary,
               ),
@@ -957,6 +1378,24 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 title: 'Devices',
                 subtitle: 'See active sessions',
                 onTap: () => PravaNavigator.push(context, const DevicesPage()),
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsTile(
+                icon: CupertinoIcons.square_arrow_right,
+                title: 'Log out everywhere',
+                subtitle: 'Revoke active sessions on all devices',
+                onTap: widget.onLogoutAllSessions,
+                destructive: true,
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsTile(
+                icon: CupertinoIcons.clock,
+                title: 'Setting activity',
+                subtitle: 'Recent sensitive setting changes',
+                onTap: () =>
+                    PravaNavigator.push(context, const SettingsActivityPage()),
                 color: primary,
                 secondary: secondary,
               ),
@@ -1212,6 +1651,15 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 color: primary,
                 secondary: secondary,
               ),
+              _SettingsTile(
+                icon: CupertinoIcons.arrow_counterclockwise,
+                title: 'Reset personalization',
+                subtitle: 'Clear ranking feedback and served history',
+                onTap: _resetFeedPersonalization,
+                destructive: true,
+                color: primary,
+                secondary: secondary,
+              ),
             ],
           ),
         ];
@@ -1443,7 +1891,11 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 icon: CupertinoIcons.folder,
                 title: 'Cache size',
                 subtitle: _cacheSizeLabel,
-                onTap: () {},
+                onTap: () => PravaToast.show(
+                  context,
+                  message: 'Cache metadata is synced with your account',
+                  type: PravaToastType.info,
+                ),
                 color: primary,
                 secondary: secondary,
               ),
@@ -1452,6 +1904,15 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 title: 'Clear cache',
                 subtitle: 'Remove temporary files',
                 onTap: _clearCache,
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsTile(
+                icon: CupertinoIcons.search,
+                title: 'Clear search history',
+                subtitle: 'Remove recent searches',
+                onTap: _clearSearchHistory,
+                destructive: true,
                 color: primary,
                 secondary: secondary,
               ),
@@ -1678,18 +2139,36 @@ class _SettingsCategoryPageState extends State<_SettingsCategoryPage> {
                 color: primary,
                 secondary: secondary,
               ),
+              _SettingsTile(
+                icon: CupertinoIcons.square_arrow_right_fill,
+                title: 'Log out everywhere',
+                subtitle: 'Revoke every active session',
+                onTap: widget.onLogoutAllSessions,
+                destructive: true,
+                color: primary,
+                secondary: secondary,
+              ),
             ],
           ),
           const SizedBox(height: 14),
           _SettingsSection(
             title: 'Danger zone',
-            subtitle: 'Permanent account action.',
+            subtitle: 'Account deactivation and deletion.',
             border: border,
             children: [
               _SettingsTile(
+                icon: CupertinoIcons.pause_circle,
+                title: 'Deactivate account',
+                subtitle: 'Queue account deactivation',
+                onTap: widget.onDeactivateAccount,
+                destructive: true,
+                color: primary,
+                secondary: secondary,
+              ),
+              _SettingsTile(
                 icon: CupertinoIcons.delete,
                 title: 'Delete account',
-                subtitle: 'Permanent and irreversible',
+                subtitle: 'Request permanent deletion',
                 onTap: widget.onDeleteAccount,
                 destructive: true,
                 color: primary,
@@ -2417,7 +2896,10 @@ class _SettingsQuickControls extends StatelessWidget {
               primary: primary,
               secondary: secondary,
               border: border,
-              onTap: () => onOpenCategory(_SettingsCategory.privacy),
+              onTap: () => PravaNavigator.push(
+                context,
+                const SettingsCheckupPage(kind: SettingsCheckupKind.privacy),
+              ),
             ),
             _QuickControlCard(
               title: 'Security Checkup',
@@ -2425,7 +2907,10 @@ class _SettingsQuickControls extends StatelessWidget {
               primary: primary,
               secondary: secondary,
               border: border,
-              onTap: () => onOpenCategory(_SettingsCategory.security),
+              onTap: () => PravaNavigator.push(
+                context,
+                const SettingsCheckupPage(kind: SettingsCheckupKind.security),
+              ),
             ),
             _QuickControlCard(
               title: 'Notifications',

@@ -66,7 +66,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   ProfileSummary? _profile;
   bool _loading = true;
-  _ProfileContentTab _contentTab = _ProfileContentTab.all;
+  _ProfileContentTab _contentTab = _ProfileContentTab.dashboard;
   final Set<String> _collapsedSections = {};
 
   @override
@@ -150,6 +150,16 @@ class _ProfilePageState extends State<ProfilePage> {
     return value.toString();
   }
 
+  bool _showVerifiedBadge(ProfileUser user) {
+    if (!user.isVerified) return false;
+    final type = user.verificationType.toLowerCase();
+    return type.isEmpty ||
+        type == 'verified' ||
+        type.contains('mobile') ||
+        type.contains('phone') ||
+        type.contains('otp');
+  }
+
   ProfilePostContentItem _contentItem(ProfileFeedPost post) {
     return ProfilePostContentItem(
       body: post.body,
@@ -214,30 +224,6 @@ class _ProfilePageState extends State<ProfilePage> {
     PravaNavigator.push(context, PostDetailPage(postId: post.id));
   }
 
-  Future<void> _openProfilePreview(String mode) async {
-    HapticFeedback.selectionClick();
-    try {
-      final preview = await _profileService.fetchProfilePreview(
-        mode,
-        limit: 24,
-      );
-      if (!mounted) return;
-      await Navigator.of(context, rootNavigator: true).push(
-        PravaNavigator.route(
-          _ProfilePreviewPage(profile: preview, mode: mode),
-          fullscreenDialog: true,
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      PravaToast.show(
-        context,
-        message: 'Unable to open profile preview',
-        type: PravaToastType.error,
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) return const ProfileSkeleton();
@@ -273,8 +259,9 @@ class _ProfilePageState extends State<ProfilePage> {
               username: user.username,
               initials: _initials(displayName),
               avatarUrl: user.avatarUrl,
-              coverUrl: user.coverUrl,
-              verified: user.isVerified,
+              verified: _showVerifiedBadge(user),
+              bio: user.bio,
+              location: user.location,
               posts: _formatCount(profile.stats.posts),
               followers: _formatCount(profile.stats.followers),
               following: _formatCount(profile.stats.following),
@@ -295,16 +282,6 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
           SliverToBoxAdapter(
-            child: _OwnerProfileCommandCenter(
-              tools: profile.ownerTools,
-              stats: profile.stats,
-              primary: primary,
-              secondary: secondary,
-              border: border,
-              onPreviewAs: _openProfilePreview,
-            ),
-          ),
-          SliverToBoxAdapter(
             child: _ProfileTabBar(
               value: _contentTab,
               primary: primary,
@@ -317,7 +294,18 @@ class _ProfilePageState extends State<ProfilePage> {
               },
             ),
           ),
-          if (_contentTab == _ProfileContentTab.all) ...[
+          if (_contentTab == _ProfileContentTab.dashboard)
+            SliverToBoxAdapter(
+              child: _ProfileAnalyticsPanel(
+                stats: profile.stats,
+                tools: profile.ownerTools,
+                primary: primary,
+                secondary: secondary,
+                border: border,
+                formatCount: _formatCount,
+              ),
+            )
+          else if (_contentTab == _ProfileContentTab.all) ...[
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
@@ -374,6 +362,15 @@ class _ProfilePageState extends State<ProfilePage> {
                       primary: primary,
                       secondary: secondary,
                     ),
+                    if (user.phoneNumber.trim().isNotEmpty)
+                      _ProfileInfoRow(
+                        icon: CupertinoIcons.phone,
+                        title: '${user.phoneCountryCode} ${user.phoneNumber}'
+                            .trim(),
+                        value: 'Mobile',
+                        primary: primary,
+                        secondary: secondary,
+                      ),
                   ],
                 ),
               ),
@@ -442,293 +439,121 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-enum _ProfileContentTab { all, mentions, posts }
+enum _ProfileContentTab { dashboard, all, mentions, posts }
 
-class _ProfilePreviewPage extends StatelessWidget {
-  const _ProfilePreviewPage({required this.profile, required this.mode});
+class _ProfileAnalyticsPanel extends StatelessWidget {
+  const _ProfileAnalyticsPanel({
+    required this.stats,
+    required this.tools,
+    required this.primary,
+    required this.secondary,
+    required this.border,
+    required this.formatCount,
+  });
 
-  final ProfileSummary profile;
-  final String mode;
-
-  String _displayName(ProfileUser user) {
-    return user.displayName.isNotEmpty ? user.displayName : user.username;
-  }
-
-  String _initials(String name) {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty || parts.first.isEmpty) return '?';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
-  }
-
-  String _formatCount(int value) {
-    if (value >= 1000000) {
-      final short = (value / 1000000).toStringAsFixed(
-        value % 1000000 == 0 ? 0 : 1,
-      );
-      return '${short}M';
-    }
-    if (value >= 1000) {
-      final short = (value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1);
-      return '${short}K';
-    }
-    return value.toString();
-  }
-
-  String _modeLabel() {
-    switch (mode) {
-      case 'closeFriend':
-        return 'Close friend preview';
-      case 'friend':
-        return 'Friend preview';
-      case 'follower':
-        return 'Follower preview';
-      default:
-        return 'Public preview';
-    }
-  }
+  final ProfileStats stats;
+  final ProfileOwnerTools tools;
+  final Color primary;
+  final Color secondary;
+  final Color border;
+  final String Function(int value) formatCount;
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    final primary = tokens.textPrimary;
-    final secondary = tokens.textSecondary;
-    final border = tokens.borderSubtle;
-    final user = profile.user;
-    final displayName = _displayName(user);
-    final privatePreview = profile.profileState == 'private';
+    final totalPosts = tools.totalPosts > 0 ? tools.totalPosts : stats.posts;
+    final totalLikes = tools.totalLikes > 0 ? tools.totalLikes : stats.likes;
+    final totalReads = tools.totalReads > 0
+        ? tools.totalReads
+        : tools.postReach;
+    final engagement = tools.engagement > 0
+        ? tools.engagement
+        : totalLikes + tools.totalComments + tools.totalShares;
 
-    return Scaffold(
-      backgroundColor: tokens.backgroundCanvas,
-      body: SafeArea(
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _modeLabel(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: PravaTypography.titleSmall.copyWith(
-                          color: primary,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => Navigator.of(context).pop(),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        child: Text(
-                          'Done',
-                          style: PravaTypography.buttonMedium.copyWith(
-                            color: tokens.brandPrimary,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'All posts analytics',
+            style: PravaTypography.titleSmall.copyWith(
+              color: primary,
+              letterSpacing: 0,
+              fontWeight: FontWeight.w900,
             ),
-            SliverToBoxAdapter(
-              child: _ProfilePreviewHero(
-                displayName: displayName,
-                username: user.username,
-                initials: _initials(displayName),
-                avatarUrl: user.avatarUrl,
-                coverUrl: user.coverUrl,
-                bio: user.bio,
-                verified: user.isVerified,
-                modeLabel: _modeLabel(),
-                posts: _formatCount(profile.stats.posts),
-                followers: _formatCount(profile.stats.followers),
-                following: _formatCount(profile.stats.following),
+          ),
+          const SizedBox(height: 12),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 1.72,
+            children: [
+              _ProfileAnalyticsTile(
+                icon: CupertinoIcons.doc_text_fill,
+                label: 'Posts',
+                value: formatCount(totalPosts),
                 primary: primary,
                 secondary: secondary,
                 border: border,
               ),
-            ),
-            if (privatePreview)
-              SliverToBoxAdapter(
-                child: _ProfilePreviewLockCard(
-                  primary: primary,
-                  secondary: secondary,
-                  border: border,
-                ),
-              )
-            else
-              SliverToBoxAdapter(
-                child: _ProfilePostsList(
-                  posts: profile.posts,
-                  primary: primary,
-                  secondary: secondary,
-                  border: border,
-                  emptyTitle: 'No visible posts',
-                  emptySubtitle:
-                      'Posts visible to this audience will appear here.',
-                  onPostTap: (post) {
-                    if (post.id.trim().isEmpty) return;
-                    PravaNavigator.push(
-                      context,
-                      PostDetailPage(postId: post.id),
-                    );
-                  },
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfilePreviewHero extends StatelessWidget {
-  const _ProfilePreviewHero({
-    required this.displayName,
-    required this.username,
-    required this.initials,
-    required this.avatarUrl,
-    required this.coverUrl,
-    required this.bio,
-    required this.verified,
-    required this.modeLabel,
-    required this.posts,
-    required this.followers,
-    required this.following,
-    required this.primary,
-    required this.secondary,
-    required this.border,
-  });
-
-  final String displayName;
-  final String username;
-  final String initials;
-  final String avatarUrl;
-  final String coverUrl;
-  final String bio;
-  final bool verified;
-  final String modeLabel;
-  final String posts;
-  final String followers;
-  final String following;
-  final Color primary;
-  final Color secondary;
-  final Color border;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _OwnerCoverBanner(
-            coverUrl: coverUrl,
-            initials: initials,
-            border: border,
-          ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _ProfileAvatar(
-                initials: initials,
-                url: avatarUrl,
-                size: 88,
-                borderColor: tokens.backgroundCanvas,
-              ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            displayName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: PravaTypography.titleLarge.copyWith(
-                              color: primary,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        if (verified) ...[
-                          const SizedBox(width: 6),
-                          Icon(
-                            CupertinoIcons.check_mark_circled_solid,
-                            color: tokens.brandPrimary,
-                            size: 17,
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      username.isEmpty ? '' : '@$username',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: PravaTypography.bodyMedium.copyWith(
-                        color: secondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      modeLabel,
-                      style: PravaTypography.caption.copyWith(
-                        color: tokens.brandPrimary,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (bio.trim().isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              bio.trim(),
-              style: PravaTypography.bodyMedium.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _ProfileCount(
-                label: 'posts',
-                value: posts,
+              _ProfileAnalyticsTile(
+                icon: CupertinoIcons.eye_fill,
+                label: 'Reads',
+                value: formatCount(totalReads),
                 primary: primary,
-                onTap: () {},
+                secondary: secondary,
+                border: border,
               ),
-              _ProfileCount(
-                label: 'followers',
-                value: followers,
+              _ProfileAnalyticsTile(
+                icon: CupertinoIcons.heart_fill,
+                label: 'Likes',
+                value: formatCount(totalLikes),
                 primary: primary,
-                onTap: () {},
+                secondary: secondary,
+                border: border,
               ),
-              _ProfileCount(
-                label: 'following',
-                value: following,
+              _ProfileAnalyticsTile(
+                icon: CupertinoIcons.chat_bubble_2_fill,
+                label: 'Comments',
+                value: formatCount(tools.totalComments),
                 primary: primary,
-                onTap: () {},
+                secondary: secondary,
+                border: border,
+              ),
+              _ProfileAnalyticsTile(
+                icon: CupertinoIcons.arrowshape_turn_up_right_fill,
+                label: 'Shares',
+                value: formatCount(tools.totalShares),
+                primary: primary,
+                secondary: secondary,
+                border: border,
+              ),
+              _ProfileAnalyticsTile(
+                icon: CupertinoIcons.chart_bar_fill,
+                label: 'Engagement',
+                value: formatCount(engagement),
+                primary: primary,
+                secondary: secondary,
+                border: border,
+              ),
+              _ProfileAnalyticsTile(
+                icon: CupertinoIcons.person_2_fill,
+                label: 'Profile views',
+                value: formatCount(tools.profileViews),
+                primary: primary,
+                secondary: secondary,
+                border: border,
+              ),
+              _ProfileAnalyticsTile(
+                icon: CupertinoIcons.person_add_solid,
+                label: 'New followers',
+                value: formatCount(tools.newFollowers),
+                primary: primary,
+                secondary: secondary,
+                border: border,
               ),
             ],
           ),
@@ -738,13 +563,19 @@ class _ProfilePreviewHero extends StatelessWidget {
   }
 }
 
-class _ProfilePreviewLockCard extends StatelessWidget {
-  const _ProfilePreviewLockCard({
+class _ProfileAnalyticsTile extends StatelessWidget {
+  const _ProfileAnalyticsTile({
+    required this.icon,
+    required this.label,
+    required this.value,
     required this.primary,
     required this.secondary,
     required this.border,
   });
 
+  final IconData icon;
+  final String label;
+  final String value;
   final Color primary;
   final Color secondary;
   final Color border;
@@ -753,40 +584,45 @@ class _ProfilePreviewLockCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 24, 20, 28),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: tokens.backgroundSurfaceSubtle,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: border),
       ),
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
               color: tokens.brandContainer,
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(13),
             ),
-            child: Icon(CupertinoIcons.lock_fill, color: tokens.brandContent),
+            child: Icon(icon, color: tokens.brandContent, size: 19),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'This account is private',
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: PravaTypography.titleSmall.copyWith(
                     color: primary,
+                    letterSpacing: 0,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
-                  'This is what people outside the allowed audience will see.',
-                  style: PravaTypography.bodyMedium.copyWith(color: secondary),
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PravaTypography.caption.copyWith(color: secondary),
                 ),
               ],
             ),
@@ -803,8 +639,9 @@ class _ProfileHero extends StatelessWidget {
     required this.username,
     required this.initials,
     required this.avatarUrl,
-    required this.coverUrl,
     required this.verified,
+    required this.bio,
+    required this.location,
     required this.posts,
     required this.followers,
     required this.following,
@@ -820,8 +657,9 @@ class _ProfileHero extends StatelessWidget {
   final String username;
   final String initials;
   final String avatarUrl;
-  final String coverUrl;
   final bool verified;
+  final String bio;
+  final String location;
   final String posts;
   final String followers;
   final String following;
@@ -835,27 +673,34 @@ class _ProfileHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
-    final surface = tokens.backgroundCanvas;
-
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _OwnerCoverBanner(
-            coverUrl: coverUrl,
-            initials: initials,
-            border: border,
-          ),
-          const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _ProfileAvatar(
-                initials: initials,
-                url: avatarUrl,
-                size: 92,
-                borderColor: surface,
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      tokens.brandPrimary.withValues(alpha: 0.46),
+                      tokens.backgroundSurface,
+                      tokens.brandContainer.withValues(alpha: 0.72),
+                    ],
+                  ),
+                ),
+                child: _ProfileAvatar(
+                  initials: initials,
+                  url: avatarUrl,
+                  size: 96,
+                  borderColor: tokens.backgroundCanvas,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -872,459 +717,176 @@ class _ProfileHero extends StatelessWidget {
                             style: PravaTypography.titleLarge.copyWith(
                               color: primary,
                               letterSpacing: 0,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
                         ),
                         if (verified) ...[
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 7),
                           Icon(
                             CupertinoIcons.check_mark_circled_solid,
                             color: tokens.brandPrimary,
-                            size: 17,
+                            size: 21,
                           ),
                         ],
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '@$username',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: PravaTypography.bodyMedium.copyWith(
+                    if (username.trim().isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        '@$username',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PravaTypography.bodyMedium.copyWith(
+                          color: secondary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                    if (bio.trim().isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        bio.trim(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: PravaTypography.bodyMedium.copyWith(
+                          color: primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    if (location.trim().isNotEmpty) ...[
+                      const SizedBox(height: 7),
+                      _ProfileMetaPill(
+                        icon: CupertinoIcons.location_solid,
+                        label: location.trim(),
                         color: secondary,
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        _ProfileCount(
-                          label: 'posts',
-                          value: posts,
-                          primary: primary,
-                          onTap: onPostsTap,
-                        ),
-                        _ProfileCount(
-                          label: 'followers',
-                          value: followers,
-                          primary: primary,
-                          onTap: onFollowersTap,
-                        ),
-                        _ProfileCount(
-                          label: 'following',
-                          value: following,
-                          primary: primary,
-                          onTap: onFollowingTap,
-                        ),
-                      ],
-                    ),
+                    ],
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          _DashboardButton(primary: primary, border: border),
+          const SizedBox(height: 22),
+          _ProfileStatsRow(
+            posts: posts,
+            followers: followers,
+            following: following,
+            primary: primary,
+            secondary: secondary,
+            border: border,
+            onPostsTap: onPostsTap,
+            onFollowersTap: onFollowersTap,
+            onFollowingTap: onFollowingTap,
+          ),
         ],
       ),
     );
   }
 }
 
-class _OwnerCoverBanner extends StatelessWidget {
-  const _OwnerCoverBanner({
-    required this.coverUrl,
-    required this.initials,
-    required this.border,
+class _ProfileMetaPill extends StatelessWidget {
+  const _ProfileMetaPill({
+    required this.icon,
+    required this.label,
+    required this.color,
   });
 
-  final String coverUrl;
-  final String initials;
-  final Color border;
+  final IconData icon;
+  final String label;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    return Semantics(
-      label: 'Your profile cover photo',
-      image: true,
-      child: Container(
-        height: 132,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: border),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              tokens.brandPrimary.withValues(alpha: 0.34),
-              tokens.backgroundSurfaceSubtle,
-              tokens.brandContainer.withValues(alpha: 0.78),
-            ],
-          ),
-          image: coverUrl.trim().isEmpty
-              ? null
-              : DecorationImage(
-                  image: NetworkImage(coverUrl),
-                  fit: BoxFit.cover,
-                ),
-        ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.transparent,
-                tokens.backgroundCanvas.withValues(alpha: 0.58),
-              ],
-            ),
-          ),
-          child: Align(
-            alignment: Alignment.bottomRight,
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Text(
-                initials,
-                style: PravaTypography.displaySmall.copyWith(
-                  color: tokens.textInverse.withValues(alpha: 0.86),
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 17),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: PravaTypography.bodySmall.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
 
-class _OwnerProfileCommandCenter extends StatelessWidget {
-  const _OwnerProfileCommandCenter({
-    required this.tools,
-    required this.stats,
+class _ProfileStatsRow extends StatelessWidget {
+  const _ProfileStatsRow({
+    required this.posts,
+    required this.followers,
+    required this.following,
     required this.primary,
     required this.secondary,
     required this.border,
-    required this.onPreviewAs,
+    required this.onPostsTap,
+    required this.onFollowersTap,
+    required this.onFollowingTap,
   });
 
-  final ProfileOwnerTools tools;
-  final ProfileStats stats;
+  final String posts;
+  final String followers;
+  final String following;
   final Color primary;
   final Color secondary;
   final Color border;
-  final ValueChanged<String> onPreviewAs;
+  final VoidCallback onPostsTap;
+  final VoidCallback onFollowersTap;
+  final VoidCallback onFollowingTap;
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 2, 18, 10),
-      child: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: tokens.backgroundSurfaceSubtle,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Profile command center',
-                        style: PravaTypography.titleSmall.copyWith(
-                          color: primary,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    _OwnerMetricPill(
-                      label: '${tools.completionScore}%',
-                      icon: CupertinoIcons.check_mark_circled_solid,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    minHeight: 8,
-                    value: (tools.completionScore.clamp(0, 100)) / 100,
-                    backgroundColor: tokens.borderSubtle,
-                    color: tokens.brandPrimary,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _OwnerToolChip(
-                      icon: CupertinoIcons.heart_fill,
-                      label: tools.accountHealthLabel,
-                      primary: primary,
-                      border: border,
-                    ),
-                    _OwnerToolChip(
-                      icon: tools.privateAccount
-                          ? CupertinoIcons.lock_fill
-                          : CupertinoIcons.globe,
-                      label: tools.privateAccount ? 'Private' : 'Public',
-                      primary: primary,
-                      border: border,
-                    ),
-                    _OwnerToolChip(
-                      icon: CupertinoIcons.checkmark_shield_fill,
-                      label: tools.verified ? 'Verified' : 'Verification ready',
-                      primary: primary,
-                      border: border,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _OwnerMetricCard(
-                  label: 'Views',
-                  value: tools.profileViews,
-                  icon: CupertinoIcons.eye_fill,
-                  primary: primary,
-                  secondary: secondary,
-                  border: border,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _OwnerMetricCard(
-                  label: 'Reach',
-                  value: tools.postReach,
-                  icon: CupertinoIcons.chart_bar_fill,
-                  primary: primary,
-                  secondary: secondary,
-                  border: border,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _OwnerMetricCard(
-                  label: 'New',
-                  value: tools.newFollowers,
-                  icon: CupertinoIcons.person_add_solid,
-                  primary: primary,
-                  secondary: secondary,
-                  border: border,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _OwnerToolChip(
-                  icon: CupertinoIcons.bookmark_fill,
-                  label: 'Saved ${stats.saved}',
-                  primary: primary,
-                  border: border,
-                ),
-                _OwnerToolChip(
-                  icon: CupertinoIcons.doc_text_fill,
-                  label: 'Drafts ${stats.drafts}',
-                  primary: primary,
-                  border: border,
-                ),
-                _OwnerToolChip(
-                  icon: CupertinoIcons.archivebox_fill,
-                  label: 'Archive ${stats.archive}',
-                  primary: primary,
-                  border: border,
-                ),
-                _OwnerToolChip(
-                  icon: CupertinoIcons.person_2_fill,
-                  label: 'Close friends ${stats.closeFriends}',
-                  primary: primary,
-                  border: border,
-                ),
-                for (final mode
-                    in tools.previewModes.isEmpty
-                        ? const ['public', 'follower', 'friend', 'closeFriend']
-                        : tools.previewModes)
-                  _OwnerToolChip(
-                    icon: CupertinoIcons.eye,
-                    label: 'Preview ${_previewModeLabel(mode)}',
-                    primary: primary,
-                    border: border,
-                    onTap: () => onPreviewAs(mode),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        _ProfileCount(
+          label: 'Posts',
+          value: posts,
+          primary: primary,
+          secondary: secondary,
+          onTap: onPostsTap,
+        ),
+        _ProfileStatDivider(border: border),
+        _ProfileCount(
+          label: 'Followers',
+          value: followers,
+          primary: primary,
+          secondary: secondary,
+          onTap: onFollowersTap,
+        ),
+        _ProfileStatDivider(border: border),
+        _ProfileCount(
+          label: 'Following',
+          value: following,
+          primary: primary,
+          secondary: secondary,
+          onTap: onFollowingTap,
+        ),
+      ],
     );
-  }
-
-  String _previewModeLabel(String mode) {
-    switch (mode) {
-      case 'closeFriend':
-        return 'close friend';
-      case 'friend':
-        return 'friend';
-      case 'follower':
-        return 'follower';
-      default:
-        return 'public';
-    }
   }
 }
 
-class _OwnerMetricCard extends StatelessWidget {
-  const _OwnerMetricCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.primary,
-    required this.secondary,
-    required this.border,
-  });
+class _ProfileStatDivider extends StatelessWidget {
+  const _ProfileStatDivider({required this.border});
 
-  final String label;
-  final int value;
-  final IconData icon;
-  final Color primary;
-  final Color secondary;
   final Color border;
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: tokens.backgroundSurfaceSubtle,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: tokens.brandPrimary, size: 20),
-          const SizedBox(height: 8),
-          Text(
-            value.toString(),
-            style: PravaTypography.titleSmall.copyWith(
-              color: primary,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          Text(
-            label,
-            style: PravaTypography.caption.copyWith(color: secondary),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OwnerMetricPill extends StatelessWidget {
-  const _OwnerMetricPill({required this.label, required this.icon});
-
-  final String label;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: tokens.brandContainer,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: tokens.brandContent),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: PravaTypography.caption.copyWith(
-              color: tokens.brandContent,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OwnerToolChip extends StatelessWidget {
-  const _OwnerToolChip({
-    required this.icon,
-    required this.label,
-    required this.primary,
-    required this.border,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color primary;
-  final Color border;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    final chip = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-      decoration: BoxDecoration(
-        color: tokens.backgroundSurface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: tokens.brandPrimary),
-          const SizedBox(width: 7),
-          Text(
-            label,
-            style: PravaTypography.caption.copyWith(
-              color: primary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-    if (onTap == null) return chip;
-    return Semantics(
-      button: true,
-      label: label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: chip,
-      ),
+      width: 1,
+      height: 34,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      color: border.withValues(alpha: 0.72),
     );
   }
 }
@@ -1351,6 +913,15 @@ class _ProfileTabBar extends StatelessWidget {
       child: Row(
         children: [
           _ProfileTabButton(
+            label: 'Dashboard',
+            selected: value == _ProfileContentTab.dashboard,
+            primary: primary,
+            secondary: secondary,
+            border: border,
+            onTap: () => onChanged(_ProfileContentTab.dashboard),
+          ),
+          const SizedBox(width: 8),
+          _ProfileTabButton(
             label: 'All',
             selected: value == _ProfileContentTab.all,
             primary: primary,
@@ -1358,7 +929,7 @@ class _ProfileTabBar extends StatelessWidget {
             border: border,
             onTap: () => onChanged(_ProfileContentTab.all),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           _ProfileTabButton(
             label: 'Mentions',
             selected: value == _ProfileContentTab.mentions,
@@ -1367,7 +938,7 @@ class _ProfileTabBar extends StatelessWidget {
             border: border,
             onTap: () => onChanged(_ProfileContentTab.mentions),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           _ProfileTabButton(
             label: 'Posts',
             selected: value == _ProfileContentTab.posts,
@@ -1414,12 +985,18 @@ class _ProfileTabButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           child: Center(
-            child: Text(
-              label,
-              style: PravaTypography.buttonMedium.copyWith(
-                color: selected ? tokens.brandContent : secondary,
-                letterSpacing: 0,
-                fontWeight: FontWeight.w800,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  style: PravaTypography.buttonMedium.copyWith(
+                    color: selected ? tokens.brandContent : secondary,
+                    letterSpacing: 0,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
             ),
           ),
@@ -1623,44 +1200,19 @@ class _ProfileAvatar extends StatelessWidget {
   }
 }
 
-class _DashboardButton extends StatelessWidget {
-  const _DashboardButton({required this.primary, required this.border});
-
-  final Color primary;
-  final Color border;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border),
-      ),
-      child: Center(
-        child: Text(
-          'Dashboard',
-          style: PravaTypography.buttonMedium.copyWith(
-            color: primary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _ProfileCount extends StatelessWidget {
   const _ProfileCount({
     required this.label,
     required this.value,
     required this.primary,
+    required this.secondary,
     required this.onTap,
   });
 
   final String label;
   final String value;
   final Color primary;
+  final Color secondary;
   final VoidCallback onTap;
 
   @override
@@ -1669,24 +1221,29 @@ class _ProfileCount extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Text.rich(
-          TextSpan(
-            children: [
-              TextSpan(
-                text: value,
-                style: PravaTypography.bodyMedium.copyWith(
-                  color: primary,
-                  fontWeight: FontWeight.w800,
-                ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.titleSmall.copyWith(
+                color: primary,
+                letterSpacing: 0,
+                fontWeight: FontWeight.w900,
               ),
-              TextSpan(
-                text: ' $label',
-                style: PravaTypography.bodyMedium.copyWith(color: primary),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.bodySmall.copyWith(
+                color: secondary,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );

@@ -1047,6 +1047,7 @@ export default async function settingsService(app: any) {
   });
 
   app.post("/api/settings/clear-cache-metadata", { preHandler: requireAuth }, async (request: any) => {
+    await ensureSettingsRows(request.user.userId, await legacySettings(request.user.userId));
     await query(`UPDATE data_storage_settings SET clear_cache_metadata_at = $2, updated_at = $2 WHERE user_id = $1`, [request.user.userId, now()]);
     await auditSetting(request.user.userId, "data_storage", "clear_cache_metadata", null, { cleared: true }, request);
     return { cleared: true };

@@ -1029,10 +1029,24 @@ async function buildProfileSummary(
     isSelf
       ? queryOne(
           `SELECT
-             (SELECT COALESCE(SUM(impression_count), 0)::int FROM posts WHERE author_id = $1) AS post_reach,
+             COUNT(*)::int AS total_posts,
+             COALESCE(SUM(like_count), 0)::int AS total_likes,
+             COALESCE(SUM(comment_count), 0)::int AS total_comments,
+             COALESCE(SUM(share_count), 0)::int AS total_shares,
+             COALESCE(SUM(impression_count), 0)::int AS post_reach,
              (SELECT COUNT(*)::int FROM follows WHERE following_id = $1 AND created_at > NOW() - INTERVAL '30 days') AS new_followers,
-             (SELECT COALESCE(SUM(like_count + comment_count + share_count), 0)::int FROM posts WHERE author_id = $1) AS engagement,
-             (SELECT post_id FROM posts WHERE author_id = $1 AND deleted_at IS NULL ORDER BY impression_count DESC, created_at DESC LIMIT 1) AS most_viewed_post_id`,
+             COALESCE(SUM(like_count + comment_count + share_count), 0)::int AS engagement,
+             (SELECT post_id
+              FROM posts
+              WHERE author_id = $1
+                AND deleted_at IS NULL
+                AND COALESCE(visibility, 'public') NOT IN ('draft', 'archived')
+              ORDER BY impression_count DESC, created_at DESC
+              LIMIT 1) AS most_viewed_post_id
+           FROM posts
+           WHERE author_id = $1
+             AND deleted_at IS NULL
+             AND COALESCE(visibility, 'public') NOT IN ('draft', 'archived')`,
           [targetUserId]
         )
       : Promise.resolve(null),
@@ -1214,6 +1228,11 @@ async function buildProfileSummary(
         analytics: {
           profileViews: ownerCounts.profileViews,
           profileViewers: ownerCounts.profileViewers,
+          totalPosts: Number(analyticsRow?.total_posts || 0),
+          totalLikes: Number(analyticsRow?.total_likes || 0),
+          totalComments: Number(analyticsRow?.total_comments || 0),
+          totalShares: Number(analyticsRow?.total_shares || 0),
+          totalReads: Number(analyticsRow?.post_reach || 0),
           postReach: Number(analyticsRow?.post_reach || 0),
           newFollowers: Number(analyticsRow?.new_followers || 0),
           engagement: Number(analyticsRow?.engagement || 0),
