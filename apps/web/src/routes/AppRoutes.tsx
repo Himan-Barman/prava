@@ -32,9 +32,9 @@ const NotificationsPage = lazy(() => import('../experiences/notifications/Notifi
 const ProfilePage = lazy(() => import('../experiences/profile/ProfilePage'));
 const BroadcastPage = lazy(() => import('../experiences/broadcast/BroadcastPage'));
 const SettingsPage = lazy(() => import('../experiences/settings/SettingsPage'));
+const SettingsCategoryPage = lazy(() => import('../experiences/settings/SettingsCategoryPage'));
 const AccountInfoPage = lazy(() => import('../experiences/settings/AccountInfoPage'));
 const HandleLinksPage = lazy(() => import('../experiences/settings/HandleLinksPage'));
-const SecurityCenterPage = lazy(() => import('../experiences/settings/SecurityCenterPage'));
 const DevicesPage = lazy(() => import('../experiences/settings/DevicesPage'));
 const BlockedAccountsPage = lazy(() => import('../experiences/settings/BlockedAccountsPage'));
 const MutedWordsPage = lazy(() => import('../experiences/settings/MutedWordsPage'));
@@ -111,7 +111,19 @@ const AppRoutes = () => {
       <Route path="/settings" element={<ProtectedRoute><LazyRoute><SettingsPage /></LazyRoute></ProtectedRoute>} />
       <Route path="/settings/account" element={<ProtectedRoute><LazyRoute><AccountInfoPage /></LazyRoute></ProtectedRoute>} />
       <Route path="/settings/handle" element={<ProtectedRoute><LazyRoute><HandleLinksPage /></LazyRoute></ProtectedRoute>} />
-      <Route path="/settings/security" element={<ProtectedRoute><LazyRoute><SecurityCenterPage /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/profile-visibility" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="profile_visibility" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/privacy" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="privacy" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/security" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="security" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/notifications" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="notifications" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/chats" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="chats" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/feed" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="feed" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/friends" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="friends" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/appearance" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="appearance" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/accessibility" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="accessibility" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/data-storage" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="data_storage" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/ai" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="ai_personalization" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/creator" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="creator" /></LazyRoute></ProtectedRoute>} />
+      <Route path="/settings/danger" element={<ProtectedRoute><LazyRoute><SettingsCategoryPage category="danger" /></LazyRoute></ProtectedRoute>} />
       <Route path="/settings/devices" element={<ProtectedRoute><LazyRoute><DevicesPage /></LazyRoute></ProtectedRoute>} />
       <Route path="/settings/blocked" element={<ProtectedRoute><LazyRoute><BlockedAccountsPage /></LazyRoute></ProtectedRoute>} />
       <Route path="/settings/muted" element={<ProtectedRoute><LazyRoute><MutedWordsPage /></LazyRoute></ProtectedRoute>} />
