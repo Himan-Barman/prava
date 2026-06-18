@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
@@ -11,7 +11,6 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../ui-system/colors.dart';
 import '../../../../ui-system/components/prava_input.dart';
 import '../../../../ui-system/typography.dart';
-import '../../../../ui-system/background.dart';
 import '../../../../navigation/prava_navigator.dart';
 import '../../../../services/chat_realtime.dart';
 import '../../../../services/chat_service.dart';
@@ -2489,12 +2488,15 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                                       isDark: isDark,
                                       primary: primary,
                                       secondary: secondary,
+                                      senderName: widget.chat.name,
                                       timeLabel: _formatTime(message.createdAt),
                                       replyPreview: replyPreview,
                                       showAvatar: showAvatar,
                                       initial: initial,
+                                      avatarUrl: widget.chat.avatarUrl,
                                       isFirst: isFirst,
                                       isLast: isLast,
+                                      onSwipeReply: () => _startReply(message),
                                       onLongPress: () =>
                                           _showMessageActions(message),
                                       onMediaTap: () =>
@@ -2616,7 +2618,8 @@ class _ChatBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PravaBackground(isDark: isDark);
+    final tokens = context.pravaColors;
+    return ColoredBox(color: tokens.backgroundCanvas);
   }
 }
 
@@ -2641,92 +2644,102 @@ class _ChatHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final border = isDark
-        ? PravaColors.darkBorderSubtle
-        : PravaColors.lightBorderSubtle;
-    final primary = isDark
-        ? PravaColors.darkTextPrimary
-        : PravaColors.lightTextPrimary;
-    final secondary = isDark
-        ? PravaColors.darkTextSecondary
-        : PravaColors.lightTextSecondary;
+    final tokens = context.pravaColors;
+    final primary = tokens.textPrimary;
+    final secondary = tokens.textSecondary;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: Column(
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onTap,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 48,
-                  height: 48,
-                  child: ClipOval(
-                    child: avatarUrl.trim().isNotEmpty
-                        ? Image.network(avatarUrl, fit: BoxFit.cover)
-                        : Container(
-                            color: PravaColors.accentPrimary.withValues(
-                              alpha: 0.18,
-                            ),
-                            child: Center(
-                              child: Text(
-                                initial,
-                                style: PravaTypography.titleSmall.copyWith(
-                                  color: PravaColors.accentPrimary,
-                                  fontWeight: FontWeight.w800,
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+      child: Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: tokens.backgroundCanvas,
+          border: Border(bottom: BorderSide(color: tokens.borderSubtle)),
+        ),
+        child: Row(
+          children: [
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size.square(38),
+              onPressed: () => Navigator.of(context).maybePop(),
+              child: Icon(
+                CupertinoIcons.chevron_left,
+                color: primary,
+                size: 24,
+              ),
+            ),
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onTap,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 42,
+                      height: 42,
+                      child: ClipOval(
+                        child: avatarUrl.trim().isNotEmpty
+                            ? Image.network(avatarUrl, fit: BoxFit.cover)
+                            : Container(
+                                color: tokens.brandContainer,
+                                child: Center(
+                                  child: Text(
+                                    initial,
+                                    style: PravaTypography.titleSmall.copyWith(
+                                      color: tokens.brandContent,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
                                 ),
                               ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: PravaTypography.bodyMedium.copyWith(
+                              color: primary,
+                              fontWeight: FontWeight.w800,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: PravaTypography.bodyMedium.copyWith(
-                          color: primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            style: PravaTypography.caption.copyWith(
+                              color: secondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: PravaTypography.caption.copyWith(
-                          color: secondary,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  onPressed: onSearch,
-                  icon: Icon(CupertinoIcons.search, color: secondary, size: 21),
-                ),
-                IconButton(
-                  onPressed: onMore,
-                  icon: Icon(
-                    CupertinoIcons.ellipsis_vertical,
-                    color: secondary,
-                    size: 20,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Container(height: 1, color: border),
-        ],
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size.square(38),
+              onPressed: onSearch,
+              child: Icon(Icons.headphones_rounded, color: secondary, size: 21),
+            ),
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size.square(38),
+              onPressed: onMore,
+              child: Icon(Icons.call_rounded, color: secondary, size: 20),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3444,12 +3457,15 @@ class _MessageBubble extends StatelessWidget {
     required this.isDark,
     required this.primary,
     required this.secondary,
+    required this.senderName,
     required this.timeLabel,
     required this.replyPreview,
     required this.showAvatar,
     required this.initial,
+    required this.avatarUrl,
     required this.isFirst,
     required this.isLast,
+    required this.onSwipeReply,
     required this.onLongPress,
     required this.onMediaTap,
   });
@@ -3458,29 +3474,34 @@ class _MessageBubble extends StatelessWidget {
   final bool isDark;
   final Color primary;
   final Color secondary;
+  final String senderName;
   final String timeLabel;
   final String? replyPreview;
   final bool showAvatar;
   final String initial;
+  final String avatarUrl;
   final bool isFirst;
   final bool isLast;
+  final VoidCallback onSwipeReply;
   final VoidCallback onLongPress;
   final VoidCallback onMediaTap;
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
     final isOutgoing = message.isOutgoing;
     final alignment = isOutgoing ? Alignment.centerRight : Alignment.centerLeft;
     final bubbleColor = isOutgoing
-        ? null
-        : (isDark ? Colors.white10 : Colors.white);
-    final gradient = isOutgoing
-        ? const LinearGradient(
-            colors: [PravaColors.accentPrimary, PravaColors.accentMuted],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          )
-        : null;
+        ? tokens.brandPrimary
+        : (isDark ? tokens.backgroundSurfaceRaised : tokens.brandContainer);
+    final bubbleTextColor = isOutgoing ? tokens.textInverse : primary;
+    final metaColor = isOutgoing
+        ? tokens.textInverse.withValues(alpha: 0.72)
+        : secondary;
+    final replyFill = isOutgoing
+        ? tokens.textInverse.withValues(alpha: 0.14)
+        : tokens.backgroundSurface.withValues(alpha: isDark ? 0.72 : 0.86);
+    final replyAccent = isOutgoing ? tokens.textInverse : tokens.brandPrimary;
     final isMedia = message.type == ChatMessageType.media;
     final displayBody = message.isDeleted
         ? 'Message deleted'
@@ -3506,13 +3527,12 @@ class _MessageBubble extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: bubbleColor,
-        gradient: gradient,
         borderRadius: radius,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isOutgoing ? 0.12 : 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 8),
+            color: tokens.shadowSoft,
+            blurRadius: 8,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -3524,25 +3544,16 @@ class _MessageBubble extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
-                color: isOutgoing
-                    ? Colors.white.withValues(alpha: 0.16)
-                    : PravaColors.accentPrimary.withValues(alpha: 0.08),
+                color: replyFill,
                 borderRadius: BorderRadius.circular(12),
-                border: Border(
-                  left: BorderSide(
-                    color: isOutgoing
-                        ? Colors.white
-                        : PravaColors.accentPrimary,
-                    width: 3,
-                  ),
-                ),
+                border: Border(left: BorderSide(color: replyAccent, width: 3)),
               ),
               child: Text(
                 replyPreview!,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: PravaTypography.caption.copyWith(
-                  color: isOutgoing ? Colors.white : secondary,
+                  color: isOutgoing ? tokens.textInverse : secondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -3551,7 +3562,7 @@ class _MessageBubble extends StatelessWidget {
           if (isMedia && !message.isDeleted)
             _MediaMessageContent(
               label: displayBody,
-              color: isOutgoing ? Colors.white : primary,
+              color: bubbleTextColor,
               imageUrl: message.mediaUrl,
               heroTag: 'chat-media-${message.id}',
               onTap: onMediaTap,
@@ -3560,7 +3571,7 @@ class _MessageBubble extends StatelessWidget {
             Text(
               displayBody,
               style: PravaTypography.bodyMedium.copyWith(
-                color: isOutgoing ? Colors.white : primary,
+                color: bubbleTextColor,
               ),
             ),
           const SizedBox(height: 6),
@@ -3569,17 +3580,13 @@ class _MessageBubble extends StatelessWidget {
             children: [
               Text(
                 timeLabel,
-                style: PravaTypography.caption.copyWith(
-                  color: isOutgoing ? Colors.white70 : secondary,
-                ),
+                style: PravaTypography.caption.copyWith(color: metaColor),
               ),
               if (isEdited) ...[
                 const SizedBox(width: 6),
                 Text(
                   'Edited',
-                  style: PravaTypography.caption.copyWith(
-                    color: isOutgoing ? Colors.white70 : secondary,
-                  ),
+                  style: PravaTypography.caption.copyWith(color: metaColor),
                 ),
               ],
               if (isOutgoing &&
@@ -3597,8 +3604,8 @@ class _MessageBubble extends StatelessWidget {
                 _StatusIcon(
                   status: message.deliveryState,
                   color: message.deliveryState == MessageDeliveryState.read
-                      ? Colors.white
-                      : Colors.white70,
+                      ? tokens.statusInfo
+                      : metaColor,
                 ),
               ],
             ],
@@ -3619,17 +3626,23 @@ class _MessageBubble extends StatelessWidget {
           children: [
             if (!isOutgoing) ...[
               if (showAvatar)
-                CircleAvatar(
-                  radius: 14,
-                  backgroundColor: PravaColors.accentPrimary.withValues(
-                    alpha: 0.18,
-                  ),
-                  child: Text(
-                    initial,
-                    style: PravaTypography.caption.copyWith(
-                      color: PravaColors.accentPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: ClipOval(
+                    child: avatarUrl.trim().isNotEmpty
+                        ? Image.network(avatarUrl.trim(), fit: BoxFit.cover)
+                        : Container(
+                            color: tokens.brandContainer,
+                            alignment: Alignment.center,
+                            child: Text(
+                              initial,
+                              style: PravaTypography.caption.copyWith(
+                                color: tokens.brandContent,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
                   ),
                 )
               else
@@ -3638,11 +3651,35 @@ class _MessageBubble extends StatelessWidget {
             ],
             GestureDetector(
               onLongPress: onLongPress,
+              onHorizontalDragEnd: (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (velocity < -180) {
+                  HapticFeedback.selectionClick();
+                  onSwipeReply();
+                }
+              },
               child: Column(
                 crossAxisAlignment: isOutgoing
                     ? CrossAxisAlignment.end
                     : CrossAxisAlignment.start,
                 children: [
+                  if (isFirst)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        left: isOutgoing ? 0 : 6,
+                        right: isOutgoing ? 6 : 0,
+                        bottom: 3,
+                      ),
+                      child: Text(
+                        isOutgoing ? 'You' : senderName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PravaTypography.caption.copyWith(
+                          color: secondary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
                   bubble,
                   if (reactionSummary.isNotEmpty)
                     Padding(

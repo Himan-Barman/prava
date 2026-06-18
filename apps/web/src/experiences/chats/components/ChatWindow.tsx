@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Send, Image, Phone, Video, MoreVertical, ArrowLeft } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Send, Image, Phone, Video, MoreVertical, ArrowLeft, Smile, X, CheckCheck } from 'lucide-react';
 import { useAuth } from '../../../context/auth-context';
 import { messagesService, normalizeMessage, Message, ConversationSummary } from '../../../services/messages-service';
 import { webSocketService } from '../../../services/websocket-service';
@@ -12,12 +13,24 @@ interface ChatWindowProps {
   onBack?: () => void;
 }
 
+const emojiCategories = [
+  { title: 'Recent', items: ['😀', '😂', '😍', '🙏', '👍', '🔥', '❤️', '🎉'] },
+  { title: 'Smileys', items: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '😉', '😍', '😘', '😎', '🥳'] },
+  { title: 'People', items: ['👋', '👌', '🤌', '👍', '👎', '👏', '🙌', '🙏', '💪', '🤝', '🫶', '✌️', '🤟', '👀', '🧠', '🗣️'] },
+  { title: 'Nature', items: ['🌱', '🌿', '🍀', '🌸', '🌼', '🌻', '🌙', '☀️', '⭐', '⚡', '🔥', '💧', '🌊', '🌈', '❄️', '☁️'] },
+  { title: 'Food', items: ['🍎', '🍌', '🍕', '🍔', '🍟', '🌮', '🍜', '🍩', '🍫', '☕', '🍵', '🥤', '🍽️', '🥭', '🍗', '🍰'] },
+  { title: 'Activities', items: ['⚽', '🏏', '🏀', '🎮', '🎧', '🎬', '🎤', '🎯', '🏆', '🚴', '🏃', '🧘', '✈️', '🚗', '📚', '💻'] },
+  { title: 'Symbols', items: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '✅', '❌', '⚠️', '💯', '✨', '🔒', '📌', '🔔'] },
+];
+
 export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastReadSeq = useRef<number | null>(null);
   const typingSent = useRef(false);
@@ -54,6 +67,8 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
   useEffect(() => {
     lastReadSeq.current = null;
     setPeerTyping(false);
+    setEmojiOpen(false);
+    setReplyTo(null);
     loadMessages();
 
     webSocketService.send('CONVERSATION_SUBSCRIBE', { conversationId: conversation.id });
@@ -246,8 +261,11 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
     if (!inputText.trim() || sending) return;
 
     const text = inputText.trim();
+    const replyToMessageId = replyTo?.id;
     const tempId = `web_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     setInputText('');
+    setEmojiOpen(false);
+    setReplyTo(null);
 
     if (typingTimeout.current) {
       clearTimeout(typingTimeout.current);
@@ -265,6 +283,7 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
       contentType: 'text',
       createdAt: new Date().toISOString(),
       sequence: undefined,
+      replyToMessageId,
       reactions: [],
       editVersion: 0,
       deletedForAllAt: null,
@@ -280,12 +299,13 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
           tempId,
           deviceId: getOrCreateDeviceId(),
           clientTimestamp: new Date().toISOString(),
+          ...(replyToMessageId && { replyToMessageId }),
         });
         return;
       }
 
       setSending(true);
-      const msg = await messagesService.sendMessage(conversation.id, text, 'text', { tempId });
+      const msg = await messagesService.sendMessage(conversation.id, text, 'text', { tempId, replyToMessageId });
       upsertMessage(msg);
     } catch (error) {
       smartToast.error('Failed to send message');
@@ -301,6 +321,16 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
     : conversation.type === 'group'
       ? 'Group chat'
       : 'Conversation';
+
+  const messageText = (msg: Message) => {
+    if (msg.deletedForAllAt) return 'Message deleted';
+    if (isEncryptedPayload(msg.body)) return 'Encrypted message';
+    return msg.body;
+  };
+
+  const appendEmoji = (emoji: string) => {
+    handleComposerChange(`${inputText}${emoji}`);
+  };
 
   return (
     <div className="chat-window">
@@ -333,18 +363,28 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
         {messages.map((msg, i) => {
           const isMe = msg.senderId === user?.id;
           const isSequential = i > 0 && messages[i - 1].senderId === msg.senderId;
+          const replied = msg.replyToMessageId
+            ? messages.find((item) => item.id === msg.replyToMessageId)
+            : null;
 
           return (
-            <div
+            <motion.div
               key={msg.id}
               className={`chat-msg ${isMe ? 'chat-msg--own' : 'chat-msg--peer'} ${isSequential ? 'chat-msg--sequential' : ''}`}
+              drag="x"
+              dragConstraints={{ left: -64, right: 0 }}
+              dragElastic={0.18}
+              onDragEnd={(_, info) => {
+                if (info.offset.x < -44) setReplyTo(msg);
+              }}
             >
               <div className={`chat-msg__bubble ${isMe ? 'chat-msg__bubble--own' : 'chat-msg__bubble--peer'}`}>
-                {msg.deletedForAllAt
-                  ? 'Message deleted'
-                  : isEncryptedPayload(msg.body)
-                    ? 'Encrypted message'
-                    : msg.body}
+                {replied && (
+                  <div className="chat-msg__reply">
+                    {messageText(replied).slice(0, 90)}
+                  </div>
+                )}
+                {messageText(msg)}
               </div>
               {Array.isArray(msg.reactions) && msg.reactions.length > 0 && (
                 <div className="chat-msg__reactions">
@@ -360,8 +400,11 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
                     .join('  ')}
                 </div>
               )}
-              <span className="chat-msg__time">{timeAgo(msg.createdAt)}</span>
-            </div>
+              <span className="chat-msg__meta">
+                {timeAgo(msg.createdAt)}
+                {isMe && <CheckCheck size={12} strokeWidth={2.8} />}
+              </span>
+            </motion.div>
           );
         })}
         <div ref={messagesEndRef} />
@@ -369,9 +412,43 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
 
       {/* Input */}
       <div className="chat-window__composer">
+        {replyTo && (
+          <div className="chat-window__replying">
+            <span>Replying to {messageText(replyTo).slice(0, 110)}</span>
+            <button type="button" className="chat-window__composer-action" onClick={() => setReplyTo(null)} aria-label="Cancel reply">
+              <X size={18} />
+            </button>
+          </div>
+        )}
+        {emojiOpen && (
+          <div className="chat-window__emoji-panel">
+            {emojiCategories.map((category) => (
+              <div key={category.title} className="chat-window__emoji-group">
+                <span className="chat-window__emoji-title">{category.title}</span>
+                <div className="chat-window__emoji-grid">
+                  {category.items.map((emoji) => (
+                    <button
+                      key={`${category.title}-${emoji}`}
+                      type="button"
+                      className="chat-window__emoji"
+                      onClick={() => appendEmoji(emoji)}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <form onSubmit={handleSend} className="chat-window__composer-form">
-          <button type="button" className="chat-window__composer-action" aria-label="Attach image">
-            <Image size={20} />
+          <button
+            type="button"
+            className="chat-window__composer-action"
+            aria-label="Emoji"
+            onClick={() => setEmojiOpen((current) => !current)}
+          >
+            <Smile size={20} />
           </button>
           <input
             className="chat-window__input"
@@ -379,6 +456,11 @@ export function ChatWindow({ conversation, onBack }: ChatWindowProps) {
             value={inputText}
             onChange={(e) => handleComposerChange(e.target.value)}
           />
+          {!inputText.trim() && (
+            <button type="button" className="chat-window__composer-action" aria-label="Attach image">
+              <Image size={20} />
+            </button>
+          )}
           <button
             type="submit"
             disabled={!inputText.trim() || sending}

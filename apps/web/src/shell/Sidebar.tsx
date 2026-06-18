@@ -25,10 +25,10 @@ interface NavItem {
 }
 
 const mainNavItems: NavItem[] = [
-  { path: '/feed', label: 'Feed', icon: <LayoutGrid className="w-6 h-6" strokeWidth={2.4} /> },
-  { path: '/chats', label: 'Chats', icon: <MessageCircle className="w-6 h-6" strokeWidth={2.4} /> },
-  { path: '/friends', label: 'Friends', icon: <Users className="w-6 h-6" strokeWidth={2.4} /> },
-  { path: '/profile', label: 'Profile', icon: <User className="w-6 h-6" strokeWidth={2.4} /> },
+  { path: '/feed', label: 'Feed', icon: <LayoutGrid className="w-6 h-6" strokeWidth={2.9} /> },
+  { path: '/chats', label: 'Chats', icon: <MessageCircle className="w-6 h-6" strokeWidth={2.9} /> },
+  { path: '/friends', label: 'Friends', icon: <Users className="w-6 h-6" strokeWidth={2.9} /> },
+  { path: '/profile', label: 'Profile', icon: <User className="w-6 h-6" strokeWidth={2.9} /> },
 ];
 
 const secondaryNavItems: NavItem[] = [
@@ -344,7 +344,7 @@ export function Sidebar({ mobileChromeVisible = true, showMobileBottomNav = true
         <div style={{
           margin: '0 14px 8px',
           display: 'flex',
-          height: 58,
+          height: 56,
           alignItems: 'center',
           justifyContent: 'space-around',
           borderRadius: 22,
@@ -379,7 +379,7 @@ export function Sidebar({ mobileChromeVisible = true, showMobileBottomNav = true
                 <span style={{
                   display: 'grid',
                   height: 30,
-                  width: 48,
+                  width: 46,
                   placeItems: 'center',
                   borderRadius: 'var(--p-radius-pill)',
                   transition: 'background var(--p-duration-fast)',

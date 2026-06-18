@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, MessageCircle, Share2, MoreHorizontal, Eye, EyeOff, Ban } from 'lucide-react';
-import { GlassCard } from '../../../ui-system';
 import { FeedPost } from '../../../services/feed-service';
 import { timeAgo } from '../../../utils/date-utils';
 
@@ -56,7 +55,12 @@ export function Post({ post, onLike, onComment, onShare, onHide, onNotInterested
   };
 
   return (
-    <GlassCard delay={delay} className="relative hover:bg-white/[0.95] dark:hover:bg-white/[0.06] transition-colors duration-300">
+    <motion.article
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, delay }}
+      className="p-card relative transition-colors hover:bg-prava-light-surface/70 dark:hover:bg-white/[0.04]"
+    >
       <div className="flex items-start gap-3">
         {/* Avatar */}
         <div className="flex-shrink-0">
@@ -198,6 +202,6 @@ export function Post({ post, onLike, onComment, onShare, onHide, onNotInterested
           </div>
         </div>
       </div>
-    </GlassCard>
+    </motion.article>
   );
 }

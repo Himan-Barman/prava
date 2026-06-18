@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AtSign, Hash, PencilLine, X } from 'lucide-react';
+import { AtSign, Hash, MoreVertical, PencilLine } from 'lucide-react';
 import { GlassCard } from '../../ui-system';
 import { feedService, FeedPost, FeedTag } from '../../services/feed-service';
 import { usersService, UserSearchResult } from '../../services/users-service';
 import { Post } from './components/Post';
-import { useAuth } from '../../context/auth-context';
 import { smartToast } from '../../ui-system/components/SmartToast';
 
 type FeedMode = 'for-you' | 'following';
@@ -33,21 +32,16 @@ function getActiveComposerToken(text: string): ComposerToken | null {
 }
 
 export default function FeedPage() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
   const tag = searchParams.get('tag')?.trim() || '';
-  const userInitial = (
-    user?.displayName?.trim().charAt(0) ||
-    user?.username?.trim().charAt(0) ||
-    user?.email?.trim().charAt(0) ||
-    'Y'
-  ).toUpperCase();
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [postBody, setPostBody] = useState('');
   const [isPosting, setIsPosting] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const [feedMode, setFeedMode] = useState<FeedMode>('for-you');
   const [mentionSuggestions, setMentionSuggestions] = useState<UserSearchResult[]>([]);
   const [tagSuggestions, setTagSuggestions] = useState<FeedTag[]>([]);
@@ -235,6 +229,7 @@ export default function FeedPage() {
       setPosts(prev => [newPost, ...prev]);
       setPostBody('');
       setComposerOpen(false);
+      setComposerMenuOpen(false);
       smartToast.success('Posted');
     } catch (error) {
       smartToast.error('Failed to create post');
@@ -313,8 +308,8 @@ export default function FeedPage() {
     }
   };
 
-  const handleComment = () => {
-    smartToast.info('Comments coming soon');
+  const handleComment = (postId: string) => {
+    navigate(`/post/${postId}`);
   };
 
   const appendToken = (symbol: '@' | '#') => {
@@ -363,21 +358,21 @@ export default function FeedPage() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
-          className="feed-mode-control sticky top-4 z-30 mb-5 flex justify-center"
+          className="feed-mode-control sticky top-4 z-30 mb-4 flex justify-center"
         >
-          <div className="inline-grid grid-cols-2 gap-1 p-1 rounded-[18px] bg-prava-light-surface/92 dark:bg-prava-dark-surface/92 backdrop-blur-2xl border border-prava-light-border/70 dark:border-prava-dark-border/70">
+          <div className="inline-grid grid-cols-2 gap-1 rounded-[18px] border border-prava-light-border/70 bg-prava-light-surface/95 p-1 backdrop-blur-xl dark:border-prava-dark-border/70 dark:bg-prava-dark-surface/95">
             {modes.map((mode) => (
               <button
                 key={mode.id}
                 type="button"
                 onClick={() => setFeedMode(mode.id)}
-                className="relative min-w-32 px-4 py-2.5 text-body-sm font-semibold rounded-[14px] transition-colors"
+                className="relative min-w-28 px-4 py-2 text-body-sm font-bold rounded-[14px] transition-colors"
                 aria-pressed={feedMode === mode.id}
               >
                 {feedMode === mode.id && (
                   <motion.span
                     layoutId="feedModePill"
-                    className="absolute inset-0 rounded-[14px] bg-prava-accent shadow-[0_8px_24px_rgba(91,140,255,0.25)]"
+                    className="absolute inset-0 rounded-[14px] bg-prava-accent"
                     transition={{ type: 'spring', bounce: 0.2, duration: 0.5 }}
                   />
                 )}
@@ -429,7 +424,7 @@ export default function FeedPage() {
       <button
         type="button"
         onClick={() => setComposerOpen(true)}
-        className="feed-compose-fab fixed bottom-[86px] right-5 tablet:bottom-8 tablet:right-8 z-40 grid h-14 w-14 place-items-center rounded-full bg-prava-accent text-white shadow-[0_14px_28px_rgba(0,0,0,0.20)] transition-transform hover:scale-105 active:scale-95"
+        className="feed-compose-fab fixed bottom-[86px] right-5 tablet:bottom-8 tablet:right-8 z-40 grid h-14 w-14 place-items-center rounded-full bg-prava-accent text-white transition-transform hover:scale-105 active:scale-95"
         aria-label="Write post"
       >
         <PencilLine className="w-7 h-7" strokeWidth={3} />
@@ -438,88 +433,74 @@ export default function FeedPage() {
       <AnimatePresence>
         {composerOpen && (
           <motion.div
-            className="fixed inset-0 z-[60] flex items-end justify-center bg-black/55 px-3 pb-3 pt-8 backdrop-blur-sm sm:items-center sm:p-6"
+            className="fixed inset-0 z-[60] flex flex-col bg-prava-light-bg text-prava-light-text-primary dark:bg-prava-dark-bg dark:text-prava-dark-text-primary"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setComposerOpen(false)}
           >
             <motion.div
-              initial={{ opacity: 0, y: 28, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 24, scale: 0.98 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 340 }}
-              className="w-full max-w-2xl rounded-[28px] bg-white dark:bg-[var(--p-bg-surface-elevated)] p-5 shadow-[0_28px_70px_rgba(0,0,0,0.34)]"
-              onClick={(event) => event.stopPropagation()}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              transition={{ duration: 0.2 }}
+              className="mx-auto flex h-full w-full max-w-2xl flex-col px-4 pb-4 pt-[env(safe-area-inset-top,0px)]"
             >
-              <div className="mb-5 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-prava-accent/15 text-lg font-bold text-prava-accent">
-                    {userInitial}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-prava-light-text-primary dark:text-prava-dark-text-primary">
-                      {user?.displayName || user?.username || 'Your post'}
-                    </p>
-                    <p className="text-body-sm text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary">
-                      @{user?.username || 'you'}
-                    </p>
-                  </div>
-                </div>
+              <div className="relative flex h-16 shrink-0 items-center gap-3 border-b border-prava-light-border/80 dark:border-prava-dark-border/80">
+                <h1 className="min-w-0 flex-1 text-[28px] font-extrabold leading-none tracking-normal">Post</h1>
                 <button
                   type="button"
-                  onClick={() => setComposerOpen(false)}
-                  className="grid h-10 w-10 place-items-center rounded-full text-prava-light-text-tertiary transition-colors hover:bg-black/5 dark:text-prava-dark-text-tertiary dark:hover:bg-white/10"
-                  aria-label="Close composer"
+                  onClick={() => setComposerMenuOpen((current) => !current)}
+                  className="grid h-11 w-11 place-items-center rounded-full text-prava-light-text-secondary transition-colors hover:bg-prava-light-surface dark:text-prava-dark-text-secondary dark:hover:bg-white/10"
+                  aria-label="Post options"
                 >
-                  <X className="w-6 h-6" strokeWidth={3} />
+                  <MoreVertical className="h-7 w-7" strokeWidth={3} />
                 </button>
+                <button
+                  type="button"
+                  onClick={handleCreatePost}
+                  disabled={!canPost}
+                  className="h-11 rounded-full bg-prava-accent px-6 text-body-sm font-bold text-white transition-all disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {isPosting ? 'Posting' : 'Post'}
+                </button>
+                {composerMenuOpen && (
+                  <div className="absolute right-0 top-14 z-10 w-48 overflow-hidden rounded-[16px] border border-prava-light-border bg-white p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)] dark:border-prava-dark-border dark:bg-prava-dark-elevated">
+                    <button
+                      type="button"
+                      className="w-full rounded-[12px] px-3 py-2 text-left text-body-sm font-bold text-prava-light-text-primary hover:bg-prava-light-surface dark:text-prava-dark-text-primary dark:hover:bg-white/10"
+                      onClick={() => {
+                        setPostBody('');
+                        setComposerMenuOpen(false);
+                        setComposerOpen(false);
+                      }}
+                    >
+                      Discard post
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full rounded-[12px] px-3 py-2 text-left text-body-sm font-bold text-prava-light-text-primary hover:bg-prava-light-surface dark:text-prava-dark-text-primary dark:hover:bg-white/10"
+                      onClick={() => {
+                        setComposerMenuOpen(false);
+                        smartToast.info('Post settings are synced with your feed preferences');
+                      }}
+                    >
+                      Post settings
+                    </button>
+                  </div>
+                )}
               </div>
 
               <textarea
                 ref={composerInputRef}
-                placeholder="Share something premium..."
-                className="h-44 w-full resize-none overflow-y-auto rounded-[18px] bg-prava-light-surface px-4 py-4 text-body text-prava-light-text-primary outline-none placeholder:text-prava-light-text-tertiary focus:ring-2 focus:ring-prava-accent/30 dark:bg-white/[0.06] dark:text-prava-dark-text-primary dark:placeholder:text-prava-dark-text-tertiary"
+                placeholder="What's happening?"
+                className="min-h-0 flex-1 resize-none overflow-y-auto bg-transparent py-5 text-[22px] leading-snug text-prava-light-text-primary outline-none placeholder:text-prava-light-text-tertiary dark:text-prava-dark-text-primary dark:placeholder:text-prava-dark-text-tertiary"
                 value={postBody}
                 maxLength={MAX_POST_CHARS}
                 onChange={(event) => setPostBody(event.target.value)}
               />
 
-              <div className="mt-5 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => appendToken('@')}
-                  className="inline-flex items-center gap-2 rounded-full bg-prava-light-surface px-4 py-2.5 text-body-sm font-bold text-prava-accent transition-colors hover:bg-prava-accent/10 dark:bg-white/[0.08]"
-                >
-                  <AtSign className="w-5 h-5" strokeWidth={3} />
-                  Mention
-                </button>
-                <button
-                  type="button"
-                  onClick={() => appendToken('#')}
-                  className="inline-flex items-center gap-2 rounded-full bg-prava-light-surface px-4 py-2.5 text-body-sm font-bold text-prava-accent transition-colors hover:bg-prava-accent/10 dark:bg-white/[0.08]"
-                >
-                  <Hash className="w-5 h-5" strokeWidth={3} />
-                  Hashtag
-                </button>
-                <span className={`ml-auto text-body-sm font-semibold ${postBody.length > MAX_POST_CHARS
-                  ? 'text-prava-error'
-                  : 'text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary'
-                  }`}>
-                  {postBody.length}/{MAX_POST_CHARS}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCreatePost}
-                  disabled={!canPost}
-                  className="rounded-full bg-prava-accent px-6 py-2.5 text-body-sm font-bold text-white transition-all disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  {isPosting ? 'Posting...' : 'Post'}
-                </button>
-              </div>
-
               {activeToken && (
-                <div className="mt-4 max-h-56 overflow-y-auto rounded-[18px] bg-prava-light-surface/80 p-2 dark:bg-white/[0.06]">
+                <div className="mb-3 max-h-56 overflow-y-auto rounded-[18px] bg-prava-light-surface/90 p-2 dark:bg-white/[0.06]">
                   {suggestionLoading ? (
                     <div className="flex items-center justify-center py-8">
                       <div className="h-6 w-6 animate-spin rounded-full border-2 border-prava-accent border-t-transparent" />
@@ -579,6 +560,31 @@ export default function FeedPage() {
                   )}
                 </div>
               )}
+
+              <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-prava-light-border/80 py-3 dark:border-prava-dark-border/80">
+                <button
+                  type="button"
+                  onClick={() => appendToken('@')}
+                  className="inline-flex items-center gap-2 rounded-full bg-prava-light-surface px-4 py-2.5 text-body-sm font-bold text-prava-accent transition-colors hover:bg-prava-accent/10 dark:bg-white/[0.08]"
+                >
+                  <AtSign className="w-5 h-5" strokeWidth={3} />
+                  Mention
+                </button>
+                <button
+                  type="button"
+                  onClick={() => appendToken('#')}
+                  className="inline-flex items-center gap-2 rounded-full bg-prava-light-surface px-4 py-2.5 text-body-sm font-bold text-prava-accent transition-colors hover:bg-prava-accent/10 dark:bg-white/[0.08]"
+                >
+                  <Hash className="w-5 h-5" strokeWidth={3} />
+                  Hashtag
+                </button>
+                <span className={`ml-auto text-body-sm font-semibold ${postBody.length > MAX_POST_CHARS
+                  ? 'text-prava-error'
+                  : 'text-prava-light-text-tertiary dark:text-prava-dark-text-tertiary'
+                  }`}>
+                  {postBody.length}/{MAX_POST_CHARS}
+                </span>
+              </div>
             </motion.div>
           </motion.div>
         )}

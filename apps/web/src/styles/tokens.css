@@ -190,8 +190,8 @@
   /* ─── Sizing ─── */
   --p-sidebar-width: 260px;
   --p-sidebar-collapsed: 72px;
-  --p-content-max: 680px;
-  --p-content-wide: 1080px;
+  --p-content-max: 640px;
+  --p-content-wide: 1040px;
   --p-right-panel: 320px;
   --p-input-height: 42px;
   --p-input-height-sm: 36px;
@@ -199,8 +199,8 @@
   --p-btn-height-sm: 34px;
   --p-btn-height-lg: 48px;
   --p-nav-item-height: 44px;
-  --p-topbar-height: 56px;
-  --p-bottomnav-height: 62px;
+  --p-topbar-height: 54px;
+  --p-bottomnav-height: 60px;
 
   /* ─── Motion ─── */
   --p-ease-default: cubic-bezier(0.22, 1, 0.36, 1);

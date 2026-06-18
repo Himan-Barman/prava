@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Bell, Heart, MessageCircle, UserPlus, Check } from 'lucide-react';
 import { notificationsService, NotificationItem } from '../../services/notifications-service';
@@ -16,6 +17,7 @@ const colorMap: Record<string, { text: string; bg: string }> = {
 };
 
 export default function NotificationsPage() {
+  const navigate = useNavigate();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -49,6 +51,19 @@ export default function NotificationsPage() {
       setItems((prev) => prev.map((item) => item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item));
       setUnreadCount((c) => Math.max(c - 1, 0));
     } catch { smartToast.error('Could not update notification'); }
+  };
+
+  const handleOpen = async (n: NotificationItem) => {
+    await handleMarkRead(n);
+    const postId = typeof n.data?.postId === 'string' ? n.data.postId : null;
+    const actorId = n.actor?.id;
+    if (postId) {
+      navigate(`/post/${postId}`);
+      return;
+    }
+    if (actorId) {
+      navigate(`/profile/${actorId}`);
+    }
   };
 
   return (
@@ -85,8 +100,12 @@ export default function NotificationsPage() {
             const unread = !n.readAt;
             return (
               <motion.div key={n.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, delay: 0.03 + i * 0.015 }}
-                onClick={() => handleMarkRead(n)} className={`p-notif ${unread ? 'p-notif--unread' : ''}`}>
-                <div className="p-notif__icon" style={{ background: c.bg, color: c.text }}><Icon size={16} /></div>
+                onClick={() => handleOpen(n)} className={`p-notif ${unread ? 'p-notif--unread' : ''}`}>
+                {n.actor?.avatarUrl ? (
+                  <img src={n.actor.avatarUrl} alt="" className="p-notif__icon" style={{ objectFit: 'cover', borderRadius: 'var(--p-radius-pill)' }} />
+                ) : (
+                  <div className="p-notif__icon" style={{ background: c.bg, color: c.text }}><Icon size={16} /></div>
+                )}
                 <div className="p-notif__body">
                   <p><span className="p-notif__title">{n.title} </span><span className="p-notif__text">{n.body}</span></p>
                   <span className="p-notif__time">{timeAgo(n.createdAt)}</span>

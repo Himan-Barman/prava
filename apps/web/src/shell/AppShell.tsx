@@ -154,24 +154,24 @@ function MobileTopBar({
           {pathname === '/feed' && (
             <>
               <Link to="/search" aria-label="Search">
-                <Search className="h-[26px] w-[26px]" strokeWidth={2.4} />
+                <Search className="h-[26px] w-[26px]" strokeWidth={3} />
               </Link>
               <Link to="/notifications" aria-label="Notifications">
-                <Bell className="h-[26px] w-[26px]" strokeWidth={2.4} />
+                <Bell className="h-[26px] w-[26px]" strokeWidth={3} />
               </Link>
               <Link to="/settings" aria-label="Settings">
-                <Menu className="h-[28px] w-[28px]" strokeWidth={2.4} />
+                <Menu className="h-[28px] w-[28px]" strokeWidth={3} />
               </Link>
             </>
           )}
           {pathname === '/chats' && (
             <Link to="/settings" aria-label="Chat options">
-              <MoreVertical className="h-[26px] w-[26px]" strokeWidth={2.4} />
+              <MoreVertical className="h-[26px] w-[26px]" strokeWidth={3} />
             </Link>
           )}
           {pathname === '/profile' && (
             <Link to="/settings/account" aria-label="Edit profile">
-              <Edit3 className="h-[24px] w-[24px]" strokeWidth={2.4} />
+              <Edit3 className="h-[24px] w-[24px]" strokeWidth={3} />
             </Link>
           )}
         </div>

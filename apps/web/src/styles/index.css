@@ -179,6 +179,12 @@ html, body, #root {
   display: none;
 }
 
+.prava-app .glass-card {
+  background: var(--p-bg-surface);
+  border-color: var(--p-border);
+  box-shadow: none;
+}
+
 .prava-app .max-w-2xl {
   max-width: 620px;
 }
@@ -256,7 +262,7 @@ html, body, #root {
 }
 
 .app-mobile-topbar__inner {
-  height: 54px;
+  height: var(--p-topbar-height);
   padding: 6px 10px 4px 16px;
   display: flex;
   align-items: center;
@@ -267,7 +273,7 @@ html, body, #root {
   flex: 1;
   min-width: 0;
   color: var(--p-text-primary);
-  font-size: 28px;
+  font-size: 27px;
   line-height: 1;
   font-weight: 800;
   letter-spacing: 0;
@@ -291,8 +297,8 @@ html, body, #root {
 
 .app-mobile-topbar__actions a,
 .app-mobile-topbar__actions button {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
   color: var(--p-text-primary);
@@ -396,6 +402,38 @@ html, body, #root {
   .prava-app .glass-card,
   .prava-app [class*="rounded-\\[24px\\]"] {
     border-radius: 18px;
+  }
+}
+
+/* Authenticated web app responsive polish. Scoped to avoid landing-page changes. */
+.prava-app .p-page,
+.prava-app .app-page {
+  width: min(100%, var(--p-content-max));
+}
+
+.prava-app .p-card,
+.prava-app .app-card,
+.prava-app .glass-card {
+  border-radius: var(--p-radius-lg);
+}
+
+.prava-app .p-search__input,
+.prava-app .app-search-input,
+.prava-app .prava-input {
+  min-height: 0;
+}
+
+@media (min-width: 501px) {
+  .prava-app .feed-compose-fab {
+    bottom: 24px;
+    right: 24px;
+  }
+}
+
+@media (max-width: 500px) {
+  .prava-app .feed-compose-fab {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    right: 18px;
   }
 }
 

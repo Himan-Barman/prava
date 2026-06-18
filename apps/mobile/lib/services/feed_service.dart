@@ -249,6 +249,10 @@ class FeedPost {
     required this.followed,
     required this.visibility,
     required this.sensitiveLabel,
+    required this.replyPolicy,
+    required this.repostPolicy,
+    required this.likeCountVisibility,
+    required this.customAudienceIds,
     required this.mentions,
     required this.hashtags,
     required this.author,
@@ -271,6 +275,10 @@ class FeedPost {
   bool followed;
   final String visibility;
   final String sensitiveLabel;
+  final String replyPolicy;
+  final String repostPolicy;
+  final String likeCountVisibility;
+  final List<String> customAudienceIds;
   final List<String> mentions;
   final List<String> hashtags;
   final FeedAuthor author;
@@ -327,6 +335,14 @@ class FeedPost {
       followed: json['followed'] == true,
       visibility: json['visibility']?.toString() ?? 'public',
       sensitiveLabel: json['sensitiveLabel']?.toString() ?? '',
+      replyPolicy: json['replyPolicy']?.toString() ?? 'everyone',
+      repostPolicy: json['repostPolicy']?.toString() ?? 'everyone',
+      likeCountVisibility:
+          json['likeCountVisibility']?.toString() ?? 'everyone',
+      customAudienceIds: (json['customAudienceIds'] as List<dynamic>? ?? [])
+          .map((item) => item.toString())
+          .where((item) => item.trim().isNotEmpty)
+          .toList(),
       mentions: (json['mentions'] as List<dynamic>? ?? [])
           .map((m) => m.toString())
           .toList(),
@@ -642,6 +658,10 @@ class FeedService {
     String body, {
     String visibility = 'public',
     String sensitiveLabel = '',
+    String replyPolicy = 'everyone',
+    String repostPolicy = 'everyone',
+    String likeCountVisibility = 'everyone',
+    List<String> customAudienceIds = const <String>[],
   }) async {
     final data = await _client.post(
       '/feed',
@@ -649,6 +669,11 @@ class FeedService {
       body: <String, dynamic>{
         'body': body,
         'visibility': visibility,
+        'replyPolicy': replyPolicy,
+        'repostPolicy': repostPolicy,
+        'likeCountVisibility': likeCountVisibility,
+        if (customAudienceIds.isNotEmpty)
+          'customAudienceIds': customAudienceIds,
         if (sensitiveLabel.trim().isNotEmpty)
           'sensitiveLabel': sensitiveLabel.trim(),
       },

@@ -16,7 +16,6 @@ import '../../../../ui-system/skeleton/feed_skeleton.dart';
 import '../../../../services/feed_service.dart';
 import '../../../../services/feed_realtime.dart';
 import '../../../../services/chat_service.dart';
-import '../../../../services/account_service.dart';
 import '../../../../services/user_search_service.dart';
 import '../../../../services/local_time_service.dart';
 import '../../../../services/platform_bridge_service.dart';
@@ -42,6 +41,10 @@ typedef _CreatePostCallback =
       required String body,
       required String visibility,
       required String sensitiveLabel,
+      required String replyPolicy,
+      required String repostPolicy,
+      required String likeCountVisibility,
+      required List<String> customAudienceIds,
     });
 
 class FeedPage extends StatefulWidget {
@@ -57,7 +60,6 @@ class _FeedPageState extends State<FeedPage> {
   final FeedService _feedService = FeedService();
   final FeedRealtime _realtime = FeedRealtime();
   final ChatService _chatService = ChatService();
-  final AccountService _accountService = AccountService();
   final UserSearchService _userSearchService = UserSearchService();
   final LocalTimeService _time = const LocalTimeService();
   final PlatformBridgeService _platform = PlatformBridgeService();
@@ -74,7 +76,6 @@ class _FeedPageState extends State<FeedPage> {
   List<FeedTopic> _topics = <FeedTopic>[];
   List<FeedInterest> _interests = <FeedInterest>[];
   List<CustomFeed> _customFeeds = <CustomFeed>[];
-  AccountInfo? _composerAccount;
   FeedPreferences? _preferences;
   bool _loading = true;
   bool _loadingMore = false;
@@ -137,13 +138,6 @@ class _FeedPageState extends State<FeedPage> {
   String _currentFeedMode() => _currentMode.mode;
   String? _currentLens() => _preferences?.lens ?? _currentMode.lens;
 
-  FeedAuthor? get _composerAuthor {
-    for (final post in _posts) {
-      if (post.author.id == _userId) return post.author;
-    }
-    return null;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -164,20 +158,9 @@ class _FeedPageState extends State<FeedPage> {
 
   Future<void> _bootstrap() async {
     _userId = await _store.getUserId();
-    unawaited(_loadComposerAccount());
     unawaited(_loadFeedStudio());
     await _loadFeed(showSkeleton: true);
     await _realtime.connect(_handleRealtimeEvent);
-  }
-
-  Future<void> _loadComposerAccount() async {
-    try {
-      final account = await _accountService.fetchAccountInfo();
-      if (!mounted) return;
-      setState(() => _composerAccount = account);
-    } catch (_) {
-      // The composer can still work with an initial avatar fallback.
-    }
   }
 
   Future<void> _switchMode(int value) async {
@@ -397,6 +380,10 @@ class _FeedPageState extends State<FeedPage> {
     required String body,
     required String visibility,
     required String sensitiveLabel,
+    required String replyPolicy,
+    required String repostPolicy,
+    required String likeCountVisibility,
+    required List<String> customAudienceIds,
   }) async {
     if (_posting) return null;
 
@@ -427,6 +414,10 @@ class _FeedPageState extends State<FeedPage> {
         trimmedBody,
         visibility: visibility,
         sensitiveLabel: sensitiveLabel,
+        replyPolicy: replyPolicy,
+        repostPolicy: repostPolicy,
+        likeCountVisibility: likeCountVisibility,
+        customAudienceIds: customAudienceIds,
       );
       if (!mounted) return null;
 
@@ -662,8 +653,6 @@ class _FeedPageState extends State<FeedPage> {
           PravaNavigator.route(
             _PostComposerPage(
               controller: _composerController,
-              account: _composerAccount,
-              author: _composerAuthor,
               feedService: _feedService,
               userSearchService: _userSearchService,
               wordCount: _wordCount,
@@ -1687,8 +1676,6 @@ class _HashtagFeedPageState extends State<HashtagFeedPage> {
 class _PostComposerPage extends StatefulWidget {
   const _PostComposerPage({
     required this.controller,
-    required this.account,
-    required this.author,
     required this.feedService,
     required this.userSearchService,
     required this.wordCount,
@@ -1696,8 +1683,6 @@ class _PostComposerPage extends StatefulWidget {
   });
 
   final TextEditingController controller;
-  final AccountInfo? account;
-  final FeedAuthor? author;
   final FeedService feedService;
   final UserSearchService userSearchService;
   final int Function(String value) wordCount;
@@ -1708,9 +1693,30 @@ class _PostComposerPage extends StatefulWidget {
 }
 
 class _PostComposerPageState extends State<_PostComposerPage> {
+  final FocusNode _composerFocus = FocusNode();
   String _visibility = 'public';
-  bool _sensitive = false;
+  String _replyPolicy = 'everyone';
+  String _repostPolicy = 'everyone';
+  String _likeCountVisibility = 'everyone';
+  final Map<String, UserSearchResult> _customAudienceUsers =
+      <String, UserSearchResult>{};
   bool _posting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _composerFocus.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _composerFocus.dispose();
+    super.dispose();
+  }
 
   String get _visibilityLabel {
     switch (_visibility) {
@@ -1720,21 +1726,51 @@ class _PostComposerPageState extends State<_PostComposerPage> {
         return 'Friends';
       case 'private':
         return 'Only me';
+      case 'custom':
+        return _customAudienceUsers.isEmpty
+            ? 'Custom audience'
+            : 'Custom audience (${_customAudienceUsers.length})';
       default:
         return 'Public';
     }
   }
 
-  IconData get _visibilityIcon {
-    switch (_visibility) {
+  String get _replyPolicyLabel {
+    switch (_replyPolicy) {
       case 'followers':
-        return CupertinoIcons.person_2_fill;
+        return 'Followers';
       case 'friends':
-        return CupertinoIcons.person_3_fill;
-      case 'private':
-        return CupertinoIcons.lock_fill;
+        return 'Friends';
+      case 'mentioned':
+        return 'Mentioned users only';
+      case 'none':
+        return 'No one';
       default:
-        return CupertinoIcons.globe;
+        return 'Everyone';
+    }
+  }
+
+  String get _repostPolicyLabel {
+    switch (_repostPolicy) {
+      case 'followers':
+        return 'Followers';
+      case 'friends':
+        return 'Friends';
+      case 'none':
+        return 'No one';
+      default:
+        return 'Everyone';
+    }
+  }
+
+  String get _likeCountVisibilityLabel {
+    switch (_likeCountVisibility) {
+      case 'owner':
+        return 'Show only to me';
+      case 'hidden':
+        return 'Hide completely';
+      default:
+        return 'Show to everyone';
     }
   }
 
@@ -1744,7 +1780,11 @@ class _PostComposerPageState extends State<_PostComposerPage> {
     final post = await widget.onCreate(
       body: widget.controller.text,
       visibility: _visibility,
-      sensitiveLabel: _sensitive ? 'sensitive' : '',
+      sensitiveLabel: '',
+      replyPolicy: _replyPolicy,
+      repostPolicy: _repostPolicy,
+      likeCountVisibility: _likeCountVisibility,
+      customAudienceIds: _customAudienceUsers.keys.toList(growable: false),
     );
     if (!mounted) return;
     setState(() => _posting = false);
@@ -1787,136 +1827,361 @@ class _PostComposerPageState extends State<_PostComposerPage> {
     }
   }
 
-  void _openSettings() {
-    final tokens = context.pravaColors;
-    showModalBottomSheet(
+  Future<void> _openSettings() async {
+    FocusScope.of(context).unfocus();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final action = await showModalBottomSheet<_ComposerSettingsAction>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            void selectVisibility(String value) {
-              setState(() => _visibility = value);
-              setSheetState(() {});
-              HapticFeedback.selectionClick();
-            }
-
-            void toggleSensitive(bool value) {
-              setState(() => _sensitive = value);
-              setSheetState(() {});
-              HapticFeedback.selectionClick();
-            }
-
-            return SafeArea(
-              top: false,
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
-                decoration: BoxDecoration(
-                  color: tokens.backgroundSurface,
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: tokens.borderSubtle),
-                  boxShadow: [
-                    BoxShadow(
-                      color: tokens.shadowMedium,
-                      blurRadius: 28,
-                      offset: const Offset(0, 18),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 18),
-                        decoration: BoxDecoration(
-                          color: tokens.borderStrong,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ),
-                    Text(
-                      'Post settings',
-                      style: PravaTypography.titleLarge.copyWith(
-                        color: tokens.textPrimary,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Choose who can see this post before publishing.',
-                      style: PravaTypography.bodySmall.copyWith(
-                        color: tokens.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    _ComposerSettingOption(
-                      icon: CupertinoIcons.globe,
-                      title: 'Public',
-                      subtitle: 'Anyone on Prava can view it',
-                      selected: _visibility == 'public',
-                      onTap: () => selectVisibility('public'),
-                    ),
-                    _ComposerSettingOption(
-                      icon: CupertinoIcons.person_2_fill,
-                      title: 'Followers',
-                      subtitle: 'Only your followers can view it',
-                      selected: _visibility == 'followers',
-                      onTap: () => selectVisibility('followers'),
-                    ),
-                    _ComposerSettingOption(
-                      icon: CupertinoIcons.person_3_fill,
-                      title: 'Friends',
-                      subtitle: 'Only mutual friends can view it',
-                      selected: _visibility == 'friends',
-                      onTap: () => selectVisibility('friends'),
-                    ),
-                    _ComposerSettingOption(
-                      icon: CupertinoIcons.lock_fill,
-                      title: 'Only me',
-                      subtitle: 'Keep it private on your profile',
-                      selected: _visibility == 'private',
-                      onTap: () => selectVisibility('private'),
-                    ),
-                    const SizedBox(height: 10),
-                    _ComposerSettingSwitch(
-                      icon: CupertinoIcons.exclamationmark_triangle_fill,
-                      title: 'Sensitive content',
-                      subtitle: 'Label this post for safer feeds',
-                      value: _sensitive,
-                      onChanged: toggleSensitive,
-                    ),
-                    const SizedBox(height: 8),
-                    _ComposerSettingAction(
-                      icon: CupertinoIcons.trash_fill,
-                      title: 'Clear draft',
-                      destructive: true,
-                      onTap: () async {
-                        Navigator.of(sheetContext).pop();
-                        await _clearDraft();
-                      },
-                    ),
-                  ],
-                ),
+        return _ComposerSettingsSheet(
+          title: 'Post settings',
+          isDark: isDark,
+          child: ListView(
+            shrinkWrap: true,
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.zero,
+            children: [
+              _ComposerSettingsRow(
+                label: 'Who can see this post?',
+                value: _visibilityLabel,
+                onTap: () => Navigator.of(
+                  sheetContext,
+                ).pop(_ComposerSettingsAction.visibility),
               ),
-            );
-          },
+              _ComposerSettingsRow(
+                label: 'Who can reply?',
+                value: _replyPolicyLabel,
+                onTap: () => Navigator.of(
+                  sheetContext,
+                ).pop(_ComposerSettingsAction.reply),
+              ),
+              _ComposerSettingsRow(
+                label: 'Who can repost?',
+                value: _repostPolicyLabel,
+                onTap: () => Navigator.of(
+                  sheetContext,
+                ).pop(_ComposerSettingsAction.repost),
+              ),
+              _ComposerSettingsRow(
+                label: 'Show like count?',
+                value: _likeCountVisibilityLabel,
+                onTap: () => Navigator.of(
+                  sheetContext,
+                ).pop(_ComposerSettingsAction.likeCount),
+              ),
+              _ComposerSettingsRow(
+                label: 'Mention someone',
+                value: 'Add @username',
+                onTap: () => Navigator.of(
+                  sheetContext,
+                ).pop(_ComposerSettingsAction.mention),
+              ),
+              _ComposerSettingsRow(
+                label: 'Add hashtag',
+                value: 'Add #topic',
+                onTap: () => Navigator.of(
+                  sheetContext,
+                ).pop(_ComposerSettingsAction.hashtag),
+              ),
+              _ComposerSettingsRow(
+                label: 'Clear draft',
+                value: '',
+                destructive: true,
+                onTap: () => Navigator.of(
+                  sheetContext,
+                ).pop(_ComposerSettingsAction.clear),
+              ),
+            ],
+          ),
         );
       },
     );
+
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _ComposerSettingsAction.visibility:
+        await _showVisibilityOptions(isDark);
+        break;
+      case _ComposerSettingsAction.reply:
+        await _showReplyOptions(isDark);
+        break;
+      case _ComposerSettingsAction.repost:
+        await _showRepostOptions(isDark);
+        break;
+      case _ComposerSettingsAction.likeCount:
+        await _showLikeCountOptions(isDark);
+        break;
+      case _ComposerSettingsAction.mention:
+        await _showMentionPicker(isDark);
+        break;
+      case _ComposerSettingsAction.hashtag:
+        await _showHashtagPicker(isDark);
+        break;
+      case _ComposerSettingsAction.clear:
+        await _clearDraft();
+        return;
+    }
+    if (mounted) {
+      await _openSettings();
+    }
+  }
+
+  Future<void> _showVisibilityOptions(bool isDark) async {
+    final selected = await _showOptionSheet(
+      isDark: isDark,
+      title: 'Who can see this post?',
+      currentValue: _visibility,
+      options: const [
+        _ComposerPolicyOption('public', 'Public', 'Everyone can see the post.'),
+        _ComposerPolicyOption(
+          'followers',
+          'Followers only',
+          'Only followers can see.',
+        ),
+        _ComposerPolicyOption(
+          'friends',
+          'Friends only',
+          'Only mutual-follow friends can see.',
+        ),
+        _ComposerPolicyOption(
+          'private',
+          'Private / Only me',
+          'Saved as private post.',
+        ),
+        _ComposerPolicyOption(
+          'custom',
+          'Custom audience',
+          'Select specific people or groups.',
+        ),
+      ],
+    );
+    if (selected == null || !mounted) return;
+    setState(() => _visibility = selected);
+    if (selected == 'custom') {
+      await _showCustomAudiencePicker(isDark);
+    }
+  }
+
+  Future<void> _showCustomAudiencePicker(bool isDark) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final height = MediaQuery.sizeOf(context).height * 0.64;
+        return _ComposerSettingsSheet(
+          title: 'Custom audience',
+          isDark: isDark,
+          child: SizedBox(
+            height: height < 560 ? height : 560,
+            child: _CustomAudiencePicker(
+              searchService: widget.userSearchService,
+              initialSelected: _customAudienceUsers,
+              onChanged: (users) {
+                setState(() {
+                  _customAudienceUsers
+                    ..clear()
+                    ..addAll(users);
+                });
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showReplyOptions(bool isDark) async {
+    final selected = await _showOptionSheet(
+      isDark: isDark,
+      title: 'Who can reply?',
+      currentValue: _replyPolicy,
+      options: const [
+        _ComposerPolicyOption('everyone', 'Everyone', 'Anyone can reply.'),
+        _ComposerPolicyOption('followers', 'Followers', 'Followers can reply.'),
+        _ComposerPolicyOption(
+          'friends',
+          'Friends',
+          'Mutual friends can reply.',
+        ),
+        _ComposerPolicyOption(
+          'mentioned',
+          'Mentioned users only',
+          'Only users mentioned in the post can reply.',
+        ),
+        _ComposerPolicyOption('none', 'No one', 'Replies are turned off.'),
+      ],
+    );
+    if (selected != null && mounted) {
+      setState(() => _replyPolicy = selected);
+    }
+  }
+
+  Future<void> _showRepostOptions(bool isDark) async {
+    final selected = await _showOptionSheet(
+      isDark: isDark,
+      title: 'Who can repost?',
+      currentValue: _repostPolicy,
+      options: const [
+        _ComposerPolicyOption('everyone', 'Everyone', 'Anyone can repost.'),
+        _ComposerPolicyOption(
+          'followers',
+          'Followers',
+          'Followers can repost.',
+        ),
+        _ComposerPolicyOption(
+          'friends',
+          'Friends',
+          'Mutual friends can repost.',
+        ),
+        _ComposerPolicyOption('none', 'No one', 'Reposts are turned off.'),
+      ],
+    );
+    if (selected != null && mounted) {
+      setState(() => _repostPolicy = selected);
+    }
+  }
+
+  Future<void> _showLikeCountOptions(bool isDark) async {
+    final selected = await _showOptionSheet(
+      isDark: isDark,
+      title: 'Show like count?',
+      currentValue: _likeCountVisibility,
+      options: const [
+        _ComposerPolicyOption(
+          'everyone',
+          'Show to everyone',
+          'Everyone can see the like count.',
+        ),
+        _ComposerPolicyOption(
+          'owner',
+          'Show only to me',
+          'Only you can see the like count.',
+        ),
+        _ComposerPolicyOption(
+          'hidden',
+          'Hide completely',
+          'The like count is hidden everywhere.',
+        ),
+      ],
+    );
+    if (selected != null && mounted) {
+      setState(() => _likeCountVisibility = selected);
+    }
+  }
+
+  Future<String?> _showOptionSheet({
+    required bool isDark,
+    required String title,
+    required String currentValue,
+    required List<_ComposerPolicyOption> options,
+  }) {
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _ComposerSettingsSheet(
+          title: title,
+          isDark: isDark,
+          child: ListView.builder(
+            shrinkWrap: true,
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.zero,
+            itemCount: options.length,
+            itemBuilder: (context, index) {
+              final option = options[index];
+              return _ComposerSheetOption(
+                label: option.label,
+                description: option.description,
+                selected: option.value == currentValue,
+                onTap: () => Navigator.of(context).pop(option.value),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showMentionPicker(bool isDark) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final height = MediaQuery.sizeOf(context).height * 0.66;
+        return _ComposerSettingsSheet(
+          title: 'Mention',
+          isDark: isDark,
+          child: SizedBox(
+            height: height < 560 ? height : 560,
+            child: _MentionPickerPage(
+              searchService: widget.userSearchService,
+              onSelected: (user) {
+                Navigator.of(context).pop();
+                _insertTokenText('@${user.username}');
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showHashtagPicker(bool isDark) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final height = MediaQuery.sizeOf(context).height * 0.66;
+        return _ComposerSettingsSheet(
+          title: 'Hashtag',
+          isDark: isDark,
+          child: SizedBox(
+            height: height < 560 ? height : 560,
+            child: _HashtagPickerPage(
+              feedService: widget.feedService,
+              searchService: widget.userSearchService,
+              onSelected: (tag) {
+                Navigator.of(context).pop();
+                _insertTokenText('#$tag');
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _insertTokenText(String token) {
+    final text = widget.controller.text;
+    final selection = widget.controller.selection;
+    final start = selection.start >= 0 ? selection.start : text.length;
+    final end = selection.end >= 0 ? selection.end : text.length;
+    final needsSpaceBefore =
+        start > 0 && !RegExp(r'\s').hasMatch(text[start - 1]);
+    final insertion = '${needsSpaceBefore ? ' ' : ''}$token ';
+    widget.controller.value = TextEditingValue(
+      text: text.replaceRange(start, end, insertion),
+      selection: TextSelection.collapsed(offset: start + insertion.length),
+    );
+    _composerFocus.requestFocus();
+    HapticFeedback.selectionClick();
   }
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -1927,80 +2192,18 @@ class _PostComposerPageState extends State<_PostComposerPage> {
           SafeArea(
             child: Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 10, 12, 8),
-                  child: Row(
-                    children: [
-                      CupertinoButton(
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size.square(42),
-                        onPressed: _posting
-                            ? null
-                            : () => Navigator.of(context).pop(),
-                        child: Icon(
-                          CupertinoIcons.xmark,
-                          color: tokens.iconPrimary,
-                          size: 25,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Create post',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: PravaTypography.displaySmall.copyWith(
-                            color: tokens.textPrimary,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                      CupertinoButton(
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size.square(44),
-                        onPressed: _openSettings,
-                        child: Icon(
-                          CupertinoIcons.ellipsis,
-                          color: tokens.iconPrimary,
-                          size: 30,
-                        ),
-                      ),
-                    ],
-                  ),
+                _ComposerTopBar(
+                  controller: widget.controller,
+                  isPosting: _posting,
+                  wordCount: widget.wordCount,
+                  onSettings: _openSettings,
+                  onPost: _submit,
                 ),
+                Divider(height: 1, color: tokens.divider),
                 Expanded(
-                  child: SingleChildScrollView(
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    physics: const BouncingScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      18,
-                      6,
-                      18,
-                      24 + (bottomInset > 0 ? 8 : 0),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _ComposerAuthorHeader(
-                          account: widget.account,
-                          author: widget.author,
-                          visibilityIcon: _visibilityIcon,
-                          visibilityLabel: _visibilityLabel,
-                          sensitive: _sensitive,
-                          onSettingsTap: _openSettings,
-                        ),
-                        const SizedBox(height: 18),
-                        _ComposerCard(
-                          controller: widget.controller,
-                          feedService: widget.feedService,
-                          userSearchService: widget.userSearchService,
-                          onPost: _submit,
-                          isPosting: _posting,
-                          wordCount: widget.wordCount,
-                        ),
-                      ],
-                    ),
+                  child: _ComposerCard(
+                    controller: widget.controller,
+                    focusNode: _composerFocus,
                   ),
                 ),
               ],
@@ -2012,240 +2215,80 @@ class _PostComposerPageState extends State<_PostComposerPage> {
   }
 }
 
-class _ComposerAuthorHeader extends StatelessWidget {
-  const _ComposerAuthorHeader({
-    required this.account,
-    required this.author,
-    required this.visibilityIcon,
-    required this.visibilityLabel,
-    required this.sensitive,
-    required this.onSettingsTap,
+class _ComposerTopBar extends StatelessWidget {
+  const _ComposerTopBar({
+    required this.controller,
+    required this.isPosting,
+    required this.wordCount,
+    required this.onSettings,
+    required this.onPost,
   });
 
-  final AccountInfo? account;
-  final FeedAuthor? author;
-  final IconData visibilityIcon;
-  final String visibilityLabel;
-  final bool sensitive;
-  final VoidCallback onSettingsTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    final name =
-        (account?.displayName.isNotEmpty == true
-                ? account!.displayName
-                : author?.displayName.isNotEmpty == true
-                ? author!.displayName
-                : account?.username.isNotEmpty == true
-                ? account!.username
-                : author?.username ?? 'You')
-            .trim();
-    final username =
-        (account?.username.isNotEmpty == true
-                ? account!.username
-                : author?.username ?? '')
-            .trim();
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _ComposerAvatar(account: account, author: author),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name.isEmpty ? 'You' : name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: PravaTypography.titleMedium.copyWith(
-                  color: tokens.textPrimary,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                username.isEmpty ? 'New post' : '@$username',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: PravaTypography.bodySmall.copyWith(
-                  color: tokens.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 10),
-        _ComposerSettingPill(
-          icon: visibilityIcon,
-          label: sensitive ? '$visibilityLabel - Sensitive' : visibilityLabel,
-          onTap: onSettingsTap,
-        ),
-      ],
-    );
-  }
-}
-
-class _ComposerSettingPill extends StatelessWidget {
-  const _ComposerSettingPill({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: tokens.backgroundSurfaceRaised,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: tokens.borderSubtle),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: tokens.brandContent),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: PravaTypography.caption.copyWith(
-                  color: tokens.textPrimary,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ComposerSettingOption extends StatelessWidget {
-  const _ComposerSettingOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.pravaColors;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(
-          children: [
-            _ComposerSettingIcon(icon: icon, selected: selected),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: PravaTypography.bodyMedium.copyWith(
-                      color: tokens.textPrimary,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: PravaTypography.caption.copyWith(
-                      color: tokens.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (selected)
-              Icon(
-                CupertinoIcons.check_mark_circled_solid,
-                color: tokens.brandPrimary,
-                size: 22,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ComposerSettingSwitch extends StatelessWidget {
-  const _ComposerSettingSwitch({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
+  final TextEditingController controller;
+  final bool isPosting;
+  final int Function(String value) wordCount;
+  final VoidCallback onSettings;
+  final VoidCallback onPost;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.fromLTRB(8, 6, 12, 6),
       child: Row(
         children: [
-          _ComposerSettingIcon(icon: icon, selected: value),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: PravaTypography.bodyMedium.copyWith(
-                    color: tokens.textPrimary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: PravaTypography.caption.copyWith(
-                    color: tokens.textSecondary,
-                  ),
-                ),
-              ],
+            child: Text(
+              'Post',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.titleLarge.copyWith(
+                color: tokens.textPrimary,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
-          CupertinoSwitch(
-            value: value,
-            activeTrackColor: tokens.brandPrimary,
-            onChanged: onChanged,
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            minimumSize: const Size.square(38),
+            onPressed: isPosting ? null : onSettings,
+            child: Icon(
+              CupertinoIcons.ellipsis_vertical,
+              color: tokens.iconPrimary,
+              size: 25,
+            ),
+          ),
+          const SizedBox(width: 8),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, child) {
+              final text = value.text.trim();
+              final count = wordCount(text);
+              final tooLong = count > 200 || text.length > 1600;
+              final canPost = text.isNotEmpty && !tooLong;
+              return CupertinoButton(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 9,
+                ),
+                borderRadius: BorderRadius.circular(999),
+                color: canPost ? tokens.brandPrimary : tokens.backgroundPressed,
+                disabledColor: tokens.backgroundPressed,
+                onPressed: isPosting || !canPost ? null : onPost,
+                child: isPosting
+                    ? CupertinoActivityIndicator(color: tokens.textInverse)
+                    : Text(
+                        'Post',
+                        style: PravaTypography.buttonMedium.copyWith(
+                          color: canPost
+                              ? tokens.textInverse
+                              : tokens.textDisabled,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+              );
+            },
           ),
         ],
       ),
@@ -2253,447 +2296,430 @@ class _ComposerSettingSwitch extends StatelessWidget {
   }
 }
 
-class _ComposerSettingAction extends StatelessWidget {
-  const _ComposerSettingAction({
-    required this.icon,
+class _ComposerPolicyOption {
+  const _ComposerPolicyOption(this.value, this.label, this.description);
+
+  final String value;
+  final String label;
+  final String description;
+}
+
+enum _ComposerSettingsAction {
+  visibility,
+  reply,
+  repost,
+  likeCount,
+  mention,
+  hashtag,
+  clear,
+}
+
+class _ComposerSettingsSheet extends StatelessWidget {
+  const _ComposerSettingsSheet({
     required this.title,
+    required this.child,
+    required this.isDark,
+  });
+
+  final String title;
+  final Widget child;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final background = isDark
+        ? PravaColors.darkBgElevated
+        : PravaColors.lightBgElevated;
+    final primary = isDark
+        ? PravaColors.darkTextPrimary
+        : PravaColors.lightTextPrimary;
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.82;
+
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: primary.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: PravaTypography.titleSmall.copyWith(color: primary),
+              ),
+              const SizedBox(height: 16),
+              Flexible(fit: FlexFit.loose, child: child),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerSettingsRow extends StatelessWidget {
+  const _ComposerSettingsRow({
+    required this.label,
+    required this.value,
     required this.onTap,
     this.destructive = false,
   });
 
-  final IconData icon;
-  final String title;
+  final String label;
+  final String value;
   final VoidCallback onTap;
   final bool destructive;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
-    final color = destructive ? tokens.statusError : tokens.textPrimary;
-    return InkWell(
+    final titleColor = destructive ? tokens.statusError : tokens.textPrimary;
+    return ListTile(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            _ComposerSettingIcon(icon: icon, selected: false, color: color),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title,
-                style: PravaTypography.bodyMedium.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
+      dense: true,
+      visualDensity: const VisualDensity(vertical: -2),
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: PravaTypography.bodyMedium.copyWith(
+          color: titleColor,
+          fontWeight: FontWeight.w800,
         ),
       ),
+      subtitle: value.isEmpty
+          ? null
+          : Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PravaTypography.caption.copyWith(
+                color: tokens.textSecondary,
+              ),
+            ),
     );
   }
 }
 
-class _ComposerSettingIcon extends StatelessWidget {
-  const _ComposerSettingIcon({
-    required this.icon,
+class _ComposerSheetOption extends StatelessWidget {
+  const _ComposerSheetOption({
+    required this.label,
+    required this.description,
     required this.selected,
-    this.color,
+    required this.onTap,
   });
 
-  final IconData icon;
+  final String label;
+  final String description;
   final bool selected;
-  final Color? color;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
-    final iconColor =
-        color ?? (selected ? tokens.brandContent : tokens.iconSecondary);
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        color: selected
-            ? tokens.brandContainer
-            : tokens.backgroundSurfaceSubtle,
-        borderRadius: BorderRadius.circular(14),
+    return ListTile(
+      onTap: onTap,
+      dense: true,
+      visualDensity: const VisualDensity(vertical: -1),
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: PravaTypography.bodyMedium.copyWith(
+          color: tokens.textPrimary,
+          fontWeight: FontWeight.w800,
+        ),
       ),
-      child: Icon(icon, size: 18, color: iconColor),
+      subtitle: Text(
+        description,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: PravaTypography.caption.copyWith(color: tokens.textSecondary),
+      ),
+      trailing: selected
+          ? Icon(
+              CupertinoIcons.check_mark_circled_solid,
+              color: tokens.brandPrimary,
+            )
+          : null,
     );
   }
 }
 
-class _ComposerCard extends StatefulWidget {
-  const _ComposerCard({
-    required this.controller,
-    required this.feedService,
-    required this.userSearchService,
-    required this.onPost,
-    required this.isPosting,
-    required this.wordCount,
+class _CustomAudiencePicker extends StatefulWidget {
+  const _CustomAudiencePicker({
+    required this.searchService,
+    required this.initialSelected,
+    required this.onChanged,
   });
 
-  final TextEditingController controller;
-  final FeedService feedService;
-  final UserSearchService userSearchService;
-  final VoidCallback onPost;
-  final bool isPosting;
-  final int Function(String value) wordCount;
+  final UserSearchService searchService;
+  final Map<String, UserSearchResult> initialSelected;
+  final ValueChanged<Map<String, UserSearchResult>> onChanged;
 
   @override
-  State<_ComposerCard> createState() => _ComposerCardState();
+  State<_CustomAudiencePicker> createState() => _CustomAudiencePickerState();
 }
 
-class _ComposerCardState extends State<_ComposerCard> {
-  Timer? _suggestionTimer;
-  _ComposerToken? _activeToken;
-  List<UserSearchResult> _mentionSuggestions = <UserSearchResult>[];
-  List<SmartHashtagResult> _hashtagSuggestions = <SmartHashtagResult>[];
-  bool _suggesting = false;
-  int _suggestionRequest = 0;
+class _CustomAudiencePickerState extends State<_CustomAudiencePicker> {
+  final TextEditingController _searchController = TextEditingController();
+  final Map<String, UserSearchResult> _selected = <String, UserSearchResult>{};
+  List<UserSearchResult> _results = <UserSearchResult>[];
+  Timer? _debounce;
+  int _request = 0;
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_handleTextChanged);
-    _handleTextChanged();
-  }
-
-  @override
-  void didUpdateWidget(covariant _ComposerCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_handleTextChanged);
-      widget.controller.addListener(_handleTextChanged);
-      _handleTextChanged();
-    }
+    _selected.addAll(widget.initialSelected);
   }
 
   @override
   void dispose() {
-    _suggestionTimer?.cancel();
-    widget.controller.removeListener(_handleTextChanged);
+    _debounce?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
-  void _handleTextChanged() {
-    final token = _activeComposerToken(widget.controller.value);
-    _suggestionTimer?.cancel();
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 220), () {
+      unawaited(_search(value));
+    });
+  }
 
-    if (token == null) {
-      _suggestionRequest++;
-      if (mounted) {
-        setState(() {
-          _activeToken = null;
-          _mentionSuggestions = <UserSearchResult>[];
-          _hashtagSuggestions = <SmartHashtagResult>[];
-          _suggesting = false;
-        });
-      }
+  Future<void> _search(String value) async {
+    final query = value.trim();
+    final request = ++_request;
+    if (query.length < 2) {
+      if (!mounted) return;
+      setState(() {
+        _results = <UserSearchResult>[];
+        _loading = false;
+      });
       return;
     }
-
-    setState(() {
-      _activeToken = token;
-      _mentionSuggestions = <UserSearchResult>[];
-      _hashtagSuggestions = <SmartHashtagResult>[];
-      _suggesting = true;
-    });
-
-    final request = ++_suggestionRequest;
-    _suggestionTimer = Timer(
-      const Duration(milliseconds: 80),
-      () => unawaited(_loadSuggestions(token, request)),
-    );
-  }
-
-  _ComposerToken? _activeComposerToken(TextEditingValue value) {
-    final text = value.text;
-    final cursor = value.selection.baseOffset;
-    if (cursor < 0 || cursor > text.length) return null;
-
-    final beforeCursor = text.substring(0, cursor);
-    final match = RegExp(
-      r'(^|\s)([@#])([a-zA-Z0-9_.]*)$',
-    ).firstMatch(beforeCursor);
-    if (match == null) return null;
-
-    final symbol = match.group(2) ?? '';
-    final query = match.group(3) ?? '';
-    if (symbol.isEmpty) return null;
-    if (symbol == '#' && query.contains('.')) return null;
-
-    final leading = match.group(1)?.length ?? 0;
-    return _ComposerToken(
-      symbol: symbol,
-      query: query,
-      start: match.start + leading,
-      end: cursor,
-    );
-  }
-
-  Future<void> _loadSuggestions(_ComposerToken token, int request) async {
+    setState(() => _loading = true);
     try {
-      if (token.symbol == '@') {
-        final users = await widget.userSearchService.searchUsers(
-          token.query,
-          limit: 6,
-          includeSelf: true,
-        );
-        if (!mounted || request != _suggestionRequest) return;
-        setState(() {
-          _mentionSuggestions = users;
-          _hashtagSuggestions = <SmartHashtagResult>[];
-          _suggesting = false;
-        });
-        return;
-      }
-
-      final tags = token.query.length < 2
-          ? (await widget.feedService.listTags(limit: 6))
-                .map(
-                  (tag) => SmartHashtagResult(
-                    tag: tag.tag,
-                    postCount: tag.postCount,
-                  ),
-                )
-                .toList()
-          : (await widget.userSearchService.smartSearch(
-              '#${token.query}',
-              limit: 6,
-            )).hashtags;
-      if (!mounted || request != _suggestionRequest) return;
+      final results = await widget.searchService.searchUsers(
+        query,
+        limit: 20,
+        includeSelf: false,
+      );
+      if (!mounted || request != _request) return;
       setState(() {
-        _hashtagSuggestions = tags;
-        _mentionSuggestions = <UserSearchResult>[];
-        _suggesting = false;
+        _results = results;
+        _loading = false;
       });
     } catch (_) {
-      if (!mounted || request != _suggestionRequest) return;
+      if (!mounted || request != _request) return;
       setState(() {
-        _mentionSuggestions = <UserSearchResult>[];
-        _hashtagSuggestions = <SmartHashtagResult>[];
-        _suggesting = false;
+        _results = <UserSearchResult>[];
+        _loading = false;
       });
     }
   }
 
-  void _insertToken(String token) {
+  void _toggle(UserSearchResult user) {
     HapticFeedback.selectionClick();
-    final text = widget.controller.text;
-    final selection = widget.controller.selection;
-    final start = selection.start >= 0 ? selection.start : text.length;
-    final end = selection.end >= 0 ? selection.end : text.length;
-    final needsSpaceBefore =
-        start > 0 && !RegExp(r'\s').hasMatch(text[start - 1]);
-    final insertion = '${needsSpaceBefore ? ' ' : ''}$token';
-
-    final updated = text.replaceRange(start, end, insertion);
-    widget.controller.value = TextEditingValue(
-      text: updated,
-      selection: TextSelection.collapsed(offset: start + insertion.length),
-    );
-  }
-
-  void _insertSuggestion(String token) {
-    final activeToken = _activeToken;
-    if (activeToken == null) return;
-
-    HapticFeedback.selectionClick();
-    final text = widget.controller.text;
-    final replacement = '$token ';
-    final updated = text.replaceRange(
-      activeToken.start,
-      activeToken.end,
-      replacement,
-    );
-    widget.controller.value = TextEditingValue(
-      text: updated,
-      selection: TextSelection.collapsed(
-        offset: activeToken.start + replacement.length,
-      ),
-    );
-    _suggestionRequest++;
     setState(() {
-      _activeToken = null;
-      _mentionSuggestions = <UserSearchResult>[];
-      _hashtagSuggestions = <SmartHashtagResult>[];
-      _suggesting = false;
+      if (_selected.containsKey(user.id)) {
+        _selected.remove(user.id);
+      } else {
+        _selected[user.id] = user;
+      }
     });
-  }
-
-  Widget _buildSuggestions(Color primary, Color secondary, Color border) {
-    final tokens = context.pravaColors;
-    final token = _activeToken;
-    if (token == null) return const SizedBox.shrink();
-    final showMentions = token.symbol == '@' && _mentionSuggestions.isNotEmpty;
-    final showHashtags = token.symbol == '#' && _hashtagSuggestions.isNotEmpty;
-    if (!_suggesting && !showMentions && !showHashtags) {
-      return const SizedBox.shrink();
-    }
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      curve: Curves.easeOutCubic,
-      margin: const EdgeInsets.only(top: 12),
-      constraints: const BoxConstraints(maxHeight: 156),
-      decoration: BoxDecoration(
-        color: tokens.brandContainer,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: border),
-      ),
-      child: _suggesting
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              child: Center(
-                child: CupertinoActivityIndicator(color: tokens.brandPrimary),
-              ),
-            )
-          : ListView.separated(
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              itemCount: showMentions
-                  ? _mentionSuggestions.length
-                  : _hashtagSuggestions.length,
-              separatorBuilder: (_, __) =>
-                  Divider(height: 1, color: border.withValues(alpha: 0.55)),
-              itemBuilder: (context, index) {
-                if (showMentions) {
-                  final user = _mentionSuggestions[index];
-                  return _MentionSuggestionTile(
-                    user: user,
-                    primary: primary,
-                    secondary: secondary,
-                    onTap: () => _insertSuggestion('@${user.username}'),
-                  );
-                }
-
-                final tag = _hashtagSuggestions[index];
-                return _HashtagSuggestionTile(
-                  tag: tag,
-                  primary: primary,
-                  secondary: secondary,
-                  onTap: () => _insertSuggestion('#${tag.tag}'),
-                );
-              },
-            ),
-    );
+    widget.onChanged(Map<String, UserSearchResult>.unmodifiable(_selected));
   }
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
-    final surface = tokens.backgroundSurface;
-    final border = tokens.borderSubtle;
-    final primary = tokens.textPrimary;
-    final secondary = tokens.textSecondary;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: border),
-        boxShadow: [
-          BoxShadow(
-            color: tokens.shadowMedium,
-            blurRadius: 18,
-            offset: const Offset(0, 10),
+    return Column(
+      children: [
+        Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: tokens.backgroundSurfaceSubtle,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: tokens.borderSubtle),
           ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: 260,
-            child: PravaInput(
-              controller: widget.controller,
-              hint: 'Share something with Prava...',
-              fieldType: PravaInputFieldType.post,
-              variant: PravaInputVariant.borderless,
-              size: PravaInputSize.medium,
-              expands: true,
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              textAlignVertical: TextAlignVertical.top,
-              scrollPhysics: const BouncingScrollPhysics(),
-            ),
-          ),
-          _buildSuggestions(primary, secondary, border),
-          const SizedBox(height: 20),
-          Row(
+          child: Row(
             children: [
+              Icon(CupertinoIcons.search, color: tokens.iconSecondary),
+              const SizedBox(width: 10),
               Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _ComposerIcon(
-                        icon: CupertinoIcons.person_crop_circle_badge_plus,
-                        label: 'Mention',
-                        onTap: () => _insertToken('@'),
-                      ),
-                      const SizedBox(width: 8),
-                      _ComposerIcon(
-                        icon: CupertinoIcons.number,
-                        label: 'Hashtag',
-                        onTap: () => _insertToken('#'),
-                      ),
-                    ],
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  onChanged: _onQueryChanged,
+                  cursorColor: tokens.brandPrimary,
+                  style: PravaTypography.bodyMedium.copyWith(
+                    color: tokens.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: InputDecoration.collapsed(
+                    hintText: 'Search people',
+                    hintStyle: PravaTypography.bodyMedium.copyWith(
+                      color: tokens.textTertiary,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: widget.controller,
-                builder: (context, value, child) {
-                  final text = value.text.trim();
-                  final count = widget.wordCount(text);
-                  final tooLong = count > 200 || text.length > 1600;
-                  final canPost = text.isNotEmpty && !tooLong;
-                  return Row(
-                    children: [
-                      Text(
-                        '$count/200',
-                        style: PravaTypography.caption.copyWith(
-                          color: tooLong ? tokens.statusError : secondary,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      CupertinoButton(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 11,
-                        ),
-                        color: canPost
-                            ? tokens.brandPrimary
-                            : tokens.backgroundPressed,
-                        borderRadius: BorderRadius.circular(20),
-                        onPressed: widget.isPosting || !canPost
-                            ? null
-                            : widget.onPost,
-                        child: widget.isPosting
-                            ? CupertinoActivityIndicator(
-                                color: tokens.textInverse,
-                              )
-                            : Text(
-                                'Post',
-                                style: PravaTypography.buttonMedium.copyWith(
-                                  color: canPost
-                                      ? tokens.textInverse
-                                      : tokens.textDisabled,
-                                ),
-                              ),
-                      ),
-                    ],
-                  );
-                },
-              ),
             ],
+          ),
+        ),
+        if (_selected.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 38,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: _selected.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final user = _selected.values.elementAt(index);
+                return _AudienceChip(user: user, onRemove: () => _toggle(user));
+              },
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Expanded(
+          child: _loading
+              ? Center(
+                  child: CupertinoActivityIndicator(color: tokens.brandPrimary),
+                )
+              : _results.isEmpty
+              ? Center(
+                  child: Text(
+                    _searchController.text.trim().length < 2
+                        ? 'Search people to add them'
+                        : 'No people found',
+                    style: PravaTypography.bodyMedium.copyWith(
+                      color: tokens.textSecondary,
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: _results.length,
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 1, color: tokens.divider),
+                  itemBuilder: (context, index) {
+                    final user = _results[index];
+                    final selected = _selected.containsKey(user.id);
+                    return ListTile(
+                      onTap: () => _toggle(user),
+                      contentPadding: EdgeInsets.zero,
+                      leading: _AudienceAvatar(user: user),
+                      title: Text(
+                        user.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PravaTypography.bodyMedium.copyWith(
+                          color: tokens.textPrimary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      subtitle: Text(
+                        user.handle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PravaTypography.caption.copyWith(
+                          color: tokens.textSecondary,
+                        ),
+                      ),
+                      trailing: Icon(
+                        selected
+                            ? CupertinoIcons.check_mark_circled_solid
+                            : CupertinoIcons.circle,
+                        color: selected
+                            ? tokens.brandPrimary
+                            : tokens.iconSecondary,
+                      ),
+                    );
+                  },
+                ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: CupertinoButton(
+            borderRadius: BorderRadius.circular(18),
+            color: tokens.brandPrimary,
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'Done',
+              style: PravaTypography.buttonMedium.copyWith(
+                color: tokens.textInverse,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AudienceChip extends StatelessWidget {
+  const _AudienceChip({required this.user, required this.onRemove});
+
+  final UserSearchResult user;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return Container(
+      padding: const EdgeInsets.only(left: 10, right: 6),
+      decoration: BoxDecoration(
+        color: tokens.brandContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            user.username,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: PravaTypography.caption.copyWith(
+              color: tokens.brandContent,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onRemove,
+            child: Icon(
+              CupertinoIcons.xmark_circle_fill,
+              size: 18,
+              color: tokens.brandContent,
+            ),
           ),
         ],
       ),
@@ -2701,59 +2727,34 @@ class _ComposerCardState extends State<_ComposerCard> {
   }
 }
 
-class _ComposerToken {
-  const _ComposerToken({
-    required this.symbol,
-    required this.query,
-    required this.start,
-    required this.end,
-  });
+class _AudienceAvatar extends StatelessWidget {
+  const _AudienceAvatar({required this.user});
 
-  final String symbol;
-  final String query;
-  final int start;
-  final int end;
-}
-
-class _ComposerAvatar extends StatelessWidget {
-  const _ComposerAvatar({required this.account, required this.author});
-
-  final AccountInfo? account;
-  final FeedAuthor? author;
+  final UserSearchResult user;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
-    final avatarUrl =
-        (account?.avatarUrl.trim().isNotEmpty == true
-                ? account!.avatarUrl
-                : author?.avatarUrl ?? '')
-            .trim();
-    final name =
-        (account?.displayName.isNotEmpty == true
-                ? account!.displayName
-                : author?.displayName.isNotEmpty == true
-                ? author!.displayName
-                : account?.username.isNotEmpty == true
-                ? account!.username
-                : author?.username ?? '')
-            .trim();
-
+    final avatarUrl = user.avatarUrl.trim();
+    final initial = user.displayName.trim().isNotEmpty
+        ? user.displayName.trim()[0].toUpperCase()
+        : user.username.trim().isNotEmpty
+        ? user.username.trim()[0].toUpperCase()
+        : 'P';
     return SizedBox(
-      width: 44,
-      height: 44,
+      width: 42,
+      height: 42,
       child: ClipOval(
         child: avatarUrl.isNotEmpty
             ? Image.network(avatarUrl, fit: BoxFit.cover)
             : Container(
-                color: tokens.brandContainer,
-                child: Center(
-                  child: Text(
-                    name.isEmpty ? 'P' : name[0].toUpperCase(),
-                    style: PravaTypography.titleSmall.copyWith(
-                      color: tokens.brandContent,
-                      fontWeight: FontWeight.w800,
-                    ),
+                color: tokens.backgroundSurfaceSubtle,
+                alignment: Alignment.center,
+                child: Text(
+                  initial,
+                  style: PravaTypography.titleSmall.copyWith(
+                    color: tokens.textPrimary,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
@@ -2762,186 +2763,442 @@ class _ComposerAvatar extends StatelessWidget {
   }
 }
 
-class _MentionSuggestionTile extends StatelessWidget {
-  const _MentionSuggestionTile({
-    required this.user,
-    required this.primary,
-    required this.secondary,
-    required this.onTap,
+class _MentionPickerPage extends StatefulWidget {
+  const _MentionPickerPage({
+    required this.searchService,
+    required this.onSelected,
   });
 
-  final UserSearchResult user;
-  final Color primary;
-  final Color secondary;
-  final VoidCallback onTap;
+  final UserSearchService searchService;
+  final ValueChanged<UserSearchResult> onSelected;
+
+  @override
+  State<_MentionPickerPage> createState() => _MentionPickerPageState();
+}
+
+class _MentionPickerPageState extends State<_MentionPickerPage> {
+  final TextEditingController _controller = TextEditingController();
+  Timer? _debounce;
+  int _request = 0;
+  bool _loading = false;
+  List<UserSearchResult> _results = <UserSearchResult>[];
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 180), () {
+      unawaited(_search(value));
+    });
+  }
+
+  Future<void> _search(String value) async {
+    final query = value.trim().replaceFirst('@', '');
+    final request = ++_request;
+    if (query.length < 2) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _results = <UserSearchResult>[];
+      });
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final results = await widget.searchService.searchUsers(
+        query,
+        limit: 24,
+        includeSelf: false,
+      );
+      if (!mounted || request != _request) return;
+      setState(() {
+        _loading = false;
+        _results = results;
+      });
+    } catch (_) {
+      if (!mounted || request != _request) return;
+      setState(() {
+        _loading = false;
+        _results = <UserSearchResult>[];
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
-    final name = user.displayName.isNotEmpty ? user.displayName : user.username;
-
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 34,
-              height: 34,
-              child: ClipOval(
-                child: user.avatarUrl.trim().isNotEmpty
-                    ? Image.network(user.avatarUrl.trim(), fit: BoxFit.cover)
-                    : Container(
-                        color: tokens.brandContainer,
-                        child: Center(
-                          child: Text(
-                            name.isEmpty ? 'P' : name[0].toUpperCase(),
-                            style: PravaTypography.caption.copyWith(
-                              color: tokens.brandContent,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
+    return Column(
+      children: [
+        _TokenPickerSearchField(
+          controller: _controller,
+          hint: 'Search accounts',
+          prefix: '@',
+          onChanged: _onQueryChanged,
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: _loading
+              ? Center(
+                  child: CupertinoActivityIndicator(color: tokens.brandPrimary),
+                )
+              : _results.isEmpty
+              ? Center(
+                  child: Text(
+                    _controller.text.trim().length < 2
+                        ? 'Type a username to mention'
+                        : 'No accounts found',
+                    style: PravaTypography.bodyMedium.copyWith(
+                      color: tokens.textSecondary,
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: _results.length,
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 1, color: tokens.divider),
+                  itemBuilder: (context, index) {
+                    final user = _results[index];
+                    return ListTile(
+                      onTap: () => widget.onSelected(user),
+                      contentPadding: EdgeInsets.zero,
+                      leading: _AudienceAvatar(user: user),
+                      title: Text(
+                        user.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PravaTypography.bodyMedium.copyWith(
+                          color: tokens.textPrimary,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PravaTypography.bodyMedium.copyWith(
-                      color: primary,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '@${user.username}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PravaTypography.caption.copyWith(color: secondary),
-                  ),
-                ],
-              ),
-            ),
-            if (user.isVerified)
-              Icon(
-                CupertinoIcons.check_mark_circled_solid,
-                color: tokens.brandPrimary,
-                size: 16,
-              ),
-          ],
+                      subtitle: Text(
+                        user.handle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PravaTypography.caption.copyWith(
+                          color: tokens.textSecondary,
+                        ),
+                      ),
+                    );
+                  },
+                ),
         ),
-      ),
+      ],
     );
   }
 }
 
-class _HashtagSuggestionTile extends StatelessWidget {
-  const _HashtagSuggestionTile({
-    required this.tag,
-    required this.primary,
-    required this.secondary,
-    required this.onTap,
+class _HashtagPickerPage extends StatefulWidget {
+  const _HashtagPickerPage({
+    required this.feedService,
+    required this.searchService,
+    required this.onSelected,
   });
 
-  final SmartHashtagResult tag;
-  final Color primary;
-  final Color secondary;
-  final VoidCallback onTap;
+  final FeedService feedService;
+  final UserSearchService searchService;
+  final ValueChanged<String> onSelected;
+
+  @override
+  State<_HashtagPickerPage> createState() => _HashtagPickerPageState();
+}
+
+class _HashtagPickerPageState extends State<_HashtagPickerPage> {
+  final TextEditingController _controller = TextEditingController();
+  Timer? _debounce;
+  int _request = 0;
+  bool _loading = true;
+  List<SmartHashtagResult> _results = <SmartHashtagResult>[];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadTrending());
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadTrending() async {
+    final request = ++_request;
+    setState(() => _loading = true);
+    try {
+      final tags = await widget.feedService.listTags(limit: 24);
+      if (!mounted || request != _request) return;
+      setState(() {
+        _loading = false;
+        _results = tags
+            .map(
+              (tag) =>
+                  SmartHashtagResult(tag: tag.tag, postCount: tag.postCount),
+            )
+            .toList();
+      });
+    } catch (_) {
+      if (!mounted || request != _request) return;
+      setState(() {
+        _loading = false;
+        _results = <SmartHashtagResult>[];
+      });
+    }
+  }
+
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 180), () {
+      unawaited(_search(value));
+    });
+  }
+
+  Future<void> _search(String value) async {
+    final query = value.trim().replaceFirst('#', '');
+    if (query.isEmpty) {
+      await _loadTrending();
+      return;
+    }
+    final request = ++_request;
+    setState(() => _loading = true);
+    try {
+      final result = await widget.searchService.smartSearch(
+        '#$query',
+        limit: 24,
+      );
+      if (!mounted || request != _request) return;
+      setState(() {
+        _loading = false;
+        _results = result.hashtags;
+      });
+    } catch (_) {
+      if (!mounted || request != _request) return;
+      setState(() {
+        _loading = false;
+        _results = <SmartHashtagResult>[];
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: tokens.brandContainer,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                CupertinoIcons.number,
-                color: tokens.brandContent,
-                size: 18,
-              ),
+    final typedTag = _controller.text.trim().replaceFirst('#', '');
+    final canUseTyped = RegExp(r'^[a-zA-Z0-9_]{2,32}$').hasMatch(typedTag);
+    return Column(
+      children: [
+        _TokenPickerSearchField(
+          controller: _controller,
+          hint: 'Search hashtags',
+          prefix: '#',
+          onChanged: _onQueryChanged,
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: _loading
+              ? Center(
+                  child: CupertinoActivityIndicator(color: tokens.brandPrimary),
+                )
+              : ListView.separated(
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: _results.length + (canUseTyped ? 1 : 0),
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 1, color: tokens.divider),
+                  itemBuilder: (context, index) {
+                    if (canUseTyped && index == 0) {
+                      return _HashtagPickerTile(
+                        title: '#$typedTag',
+                        subtitle: 'Use this hashtag',
+                        onTap: () => widget.onSelected(typedTag),
+                      );
+                    }
+                    final tag = _results[index - (canUseTyped ? 1 : 0)];
+                    return _HashtagPickerTile(
+                      title: '#${tag.tag}',
+                      subtitle: '${tag.postCount} posts',
+                      onTap: () => widget.onSelected(tag.tag),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TokenPickerSearchField extends StatelessWidget {
+  const _TokenPickerSearchField({
+    required this.controller,
+    required this.hint,
+    required this.prefix,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final String prefix;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: tokens.backgroundSurfaceSubtle,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Text(
+            prefix,
+            style: PravaTypography.titleMedium.copyWith(
+              color: tokens.brandPrimary,
+              fontWeight: FontWeight.w900,
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                '#${tag.tag}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: PravaTypography.bodyMedium.copyWith(
-                  color: primary,
-                  fontWeight: FontWeight.w800,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              autofocus: true,
+              onChanged: onChanged,
+              cursorColor: tokens.brandPrimary,
+              style: PravaTypography.bodyMedium.copyWith(
+                color: tokens.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: InputDecoration.collapsed(
+                hintText: hint,
+                hintStyle: PravaTypography.bodyMedium.copyWith(
+                  color: tokens.textTertiary,
                 ),
               ),
             ),
-            Text(
-              tag.postCount.toString(),
-              style: PravaTypography.caption.copyWith(
-                color: secondary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ComposerIcon extends StatelessWidget {
-  const _ComposerIcon({
-    required this.icon,
-    required this.label,
+class _HashtagPickerTile extends StatelessWidget {
+  const _HashtagPickerTile({
+    required this.title,
+    required this.subtitle,
     required this.onTap,
   });
 
-  final IconData icon;
-  final String label;
+  final String title;
+  final String subtitle;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.pravaColors;
-
-    return InkWell(
+    return ListTile(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        width: 42,
+        height: 42,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: tokens.backgroundSurfaceSubtle,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
         ),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: tokens.brandContent),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: PravaTypography.caption.copyWith(
-                color: tokens.brandContent,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+        child: Text(
+          '#',
+          style: PravaTypography.titleMedium.copyWith(
+            color: tokens.brandPrimary,
+            fontWeight: FontWeight.w900,
+          ),
         ),
+      ),
+      title: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: PravaTypography.bodyMedium.copyWith(
+          color: tokens.textPrimary,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: PravaTypography.caption.copyWith(color: tokens.textSecondary),
+      ),
+    );
+  }
+}
+
+class _ComposerCard extends StatelessWidget {
+  const _ComposerCard({required this.controller, required this.focusNode});
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.pravaColors;
+    final textStyle = PravaTypography.titleMedium.copyWith(
+      color: tokens.textPrimary,
+      fontWeight: FontWeight.w500,
+      height: 1.34,
+    );
+
+    return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, child) {
+              return Stack(
+                children: [
+                  if (value.text.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        "What's happening?",
+                        style: PravaTypography.titleMedium.copyWith(
+                          color: tokens.textTertiary,
+                          fontWeight: FontWeight.w500,
+                          height: 1.34,
+                        ),
+                      ),
+                    ),
+                  EditableText(
+                    controller: controller,
+                    focusNode: focusNode,
+                    autofocus: true,
+                    minLines: 14,
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    cursorColor: tokens.brandPrimary,
+                    backgroundCursorColor: tokens.textTertiary,
+                    style: textStyle,
+                    selectionControls: materialTextSelectionControls,
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }

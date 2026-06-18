@@ -75,12 +75,32 @@ function normalizeTag(value: unknown): string {
 
 function normalizePostVisibility(value: unknown): string {
   const visibility = String(value || "public").trim().toLowerCase();
-  return ["public", "followers", "friends", "private"].includes(visibility) ? visibility : "public";
+  return ["public", "followers", "friends", "private", "custom"].includes(visibility) ? visibility : "public";
 }
 
 function normalizeSensitiveLabel(value: unknown): string {
   const label = String(value || "").trim().toLowerCase();
   return label === "sensitive" ? label : "";
+}
+
+function normalizePostReplyPolicy(value: unknown): string {
+  const policy = String(value || "everyone").trim().toLowerCase();
+  return ["everyone", "followers", "friends", "mentioned", "none"].includes(policy) ? policy : "everyone";
+}
+
+function normalizePostRepostPolicy(value: unknown): string {
+  const policy = String(value || "everyone").trim().toLowerCase();
+  return ["everyone", "followers", "friends", "none"].includes(policy) ? policy : "everyone";
+}
+
+function normalizeLikeCountVisibility(value: unknown): string {
+  const visibility = String(value || "everyone").trim().toLowerCase();
+  return ["everyone", "owner", "hidden"].includes(visibility) ? visibility : "everyone";
+}
+
+function normalizeCustomAudienceIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => String(item || "").trim()).filter((item) => item.length > 0))].slice(0, 250);
 }
 
 function placeholders(count: number, offset = 1): string {
@@ -104,12 +124,92 @@ function extractHashtags(body: string): string[] {
     .slice(0, MAX_TAGS_PER_POST);
 }
 
-function mapFeedPost(post: any, author: any, liked: boolean, followed: boolean) {
+function jsonStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => String(item || "")).filter(Boolean) : [];
+}
+
+function canViewPost(post: any, viewerId: string): boolean {
+  const visibility = String(post.visibility || "public");
+  const ownPost = String(post.author_id || "") === viewerId;
+  const followsAuthor = Boolean(post.viewer_follows_author);
+  const mutualFriends = followsAuthor && Boolean(post.author_follows_viewer);
+  const customAudience = jsonStringArray(post.custom_audience_ids);
+  const inCustomAudience = customAudience.includes(viewerId);
+  return (
+    ownPost ||
+    visibility === "public" ||
+    (visibility === "followers" && followsAuthor) ||
+    (visibility === "friends" && mutualFriends) ||
+    (visibility === "custom" && inCustomAudience)
+  );
+}
+
+function visibleLikeCount(post: any, currentUserId: string, explicitCount?: number): number {
+  const policy = String(post.like_count_visibility || "everyone");
+  const count = Math.max(0, Number(explicitCount ?? post.like_count ?? 0));
+  const ownPost = String(post.author_id || "") === currentUserId;
+  if (policy === "hidden") return 0;
+  if (policy === "owner" && !ownPost) return 0;
+  return count;
+}
+
+async function fetchPostForViewer(postId: string, viewerId: string) {
+  const post = await queryOne(
+    `SELECT p.*,
+            f.following_id AS viewer_follows_author,
+            incoming.following_id AS author_follows_viewer
+     FROM posts p
+     LEFT JOIN follows f
+       ON f.follower_id = $1 AND f.following_id = p.author_id
+     LEFT JOIN follows incoming
+       ON incoming.follower_id = p.author_id AND incoming.following_id = $1
+     WHERE p.post_id = $2
+       AND p.deleted_at IS NULL`,
+    [viewerId, postId]
+  );
+  if (!post || !canViewPost(post, viewerId)) {
+    throw new HttpError(404, "Post not found");
+  }
+  return post;
+}
+
+async function ensureReplyPolicyAllows(post: any, viewerId: string) {
+  const ownPost = String(post.author_id || "") === viewerId;
+  if (ownPost) return;
+
+  const policy = String(post.reply_policy || "everyone");
+  const followsAuthor = Boolean(post.viewer_follows_author);
+  const mutualFriends = followsAuthor && Boolean(post.author_follows_viewer);
+  if (policy === "everyone") return;
+  if (policy === "followers" && followsAuthor) return;
+  if (policy === "friends" && mutualFriends) return;
+  if (policy === "mentioned") {
+    const viewer = await queryOne(`SELECT username_lower, username FROM users WHERE user_id = $1`, [viewerId]);
+    const username = String(viewer?.username_lower || viewer?.username || "").toLowerCase();
+    if (username && jsonStringArray(post.mentions).map((item) => item.toLowerCase()).includes(username)) return;
+  }
+  throw new HttpError(403, "You cannot reply to this post");
+}
+
+function ensureRepostPolicyAllows(post: any, viewerId: string) {
+  const ownPost = String(post.author_id || "") === viewerId;
+  if (ownPost) return;
+
+  const policy = String(post.repost_policy || "everyone");
+  const followsAuthor = Boolean(post.viewer_follows_author);
+  const mutualFriends = followsAuthor && Boolean(post.author_follows_viewer);
+  if (policy === "everyone") return;
+  if (policy === "followers" && followsAuthor) return;
+  if (policy === "friends" && mutualFriends) return;
+  throw new HttpError(403, "You cannot repost this post");
+}
+
+function mapFeedPost(post: any, author: any, liked: boolean, followed: boolean, currentUserId: string) {
   return {
     id: post.post_id,
     body: post.body,
     createdAt: toIso(post.created_at),
-    likeCount: Number(post.like_count || 0),
+    likeCount: visibleLikeCount(post, currentUserId),
     commentCount: Number(post.comment_count || 0),
     shareCount: Number(post.share_count || 0),
     readCount: Number(post.read_count || 0),
@@ -123,8 +223,12 @@ function mapFeedPost(post: any, author: any, liked: boolean, followed: boolean) 
     followed,
     visibility: post.visibility || "public",
     sensitiveLabel: post.sensitive_label || "",
-    mentions: Array.isArray(post.mentions) ? post.mentions : [],
-    hashtags: Array.isArray(post.hashtags) ? post.hashtags : [],
+    replyPolicy: post.reply_policy || "everyone",
+    repostPolicy: post.repost_policy || "everyone",
+    likeCountVisibility: post.like_count_visibility || "everyone",
+    customAudienceIds: jsonStringArray(post.custom_audience_ids),
+    mentions: jsonStringArray(post.mentions),
+    hashtags: jsonStringArray(post.hashtags),
     relationship: followed ? "following" : "other",
     author: {
       id: author?.user_id || post.author_id,
@@ -240,7 +344,8 @@ async function hydrateFeedPosts(posts: any[], currentUserId: string) {
       },
       authorMap.get(post.author_id),
       likedSet.has(post.post_id),
-      followedSet.has(post.author_id)
+      followedSet.has(post.author_id),
+      currentUserId
     )
   );
 }
@@ -378,6 +483,7 @@ async function findTaggedPosts(tag: string, currentUserId: string, before: Date 
          OR COALESCE(p.visibility, 'public') = 'public'
          OR (p.visibility = 'followers' AND f.following_id IS NOT NULL)
          OR (p.visibility = 'friends' AND f.following_id IS NOT NULL AND incoming.following_id IS NOT NULL)
+         OR (p.visibility = 'custom' AND p.custom_audience_ids ? $1)
        )
        ${beforeSql}
      ORDER BY p.created_at DESC, rank_score DESC
@@ -663,6 +769,10 @@ export default async function feedService(app: any) {
     const body = normalizeBody(request.body?.body, MAX_POST_WORDS, MAX_POST_CHARS, "Post");
     const visibility = normalizePostVisibility(request.body?.visibility);
     const sensitiveLabel = normalizeSensitiveLabel(request.body?.sensitiveLabel || request.body?.sensitive_label);
+    const replyPolicy = normalizePostReplyPolicy(request.body?.replyPolicy || request.body?.reply_policy);
+    const repostPolicy = normalizePostRepostPolicy(request.body?.repostPolicy || request.body?.repost_policy);
+    const likeCountVisibility = normalizeLikeCountVisibility(request.body?.likeCountVisibility || request.body?.like_count_visibility);
+    const customAudienceIds = normalizeCustomAudienceIds(request.body?.customAudienceIds || request.body?.custom_audience_ids);
 
     const createdAt = now();
     const postId = generateId();
@@ -670,9 +780,23 @@ export default async function feedService(app: any) {
     const hashtags = extractHashtags(body);
 
     await query(
-      `INSERT INTO posts (post_id, author_id, body, media_urls, mentions, hashtags, like_count, comment_count, share_count, visibility, sensitive_label, share_of_post_id, created_at, updated_at)
-       VALUES ($1, $2, $3, '[]', $4, $5, 0, 0, 0, $6, $7, NULL, $8, $9)`,
-      [postId, request.user.userId, body, JSON.stringify(mentions), JSON.stringify(hashtags), visibility, sensitiveLabel, createdAt, createdAt]
+      `INSERT INTO posts (post_id, author_id, body, media_urls, mentions, hashtags, like_count, comment_count, share_count, visibility, sensitive_label, reply_policy, repost_policy, like_count_visibility, custom_audience_ids, share_of_post_id, created_at, updated_at)
+       VALUES ($1, $2, $3, '[]', $4, $5, 0, 0, 0, $6, $7, $8, $9, $10, $11, NULL, $12, $13)`,
+      [
+        postId,
+        request.user.userId,
+        body,
+        JSON.stringify(mentions),
+        JSON.stringify(hashtags),
+        visibility,
+        sensitiveLabel,
+        replyPolicy,
+        repostPolicy,
+        likeCountVisibility,
+        JSON.stringify(customAudienceIds),
+        createdAt,
+        createdAt
+      ]
     );
     await writePostTags(postId, request.user.userId, hashtags, createdAt);
     await recordPostReads([postId], request.user.userId);
@@ -691,13 +815,18 @@ export default async function feedService(app: any) {
         rank_score: 0,
         visibility,
         sensitive_label: sensitiveLabel,
+        reply_policy: replyPolicy,
+        repost_policy: repostPolicy,
+        like_count_visibility: likeCountVisibility,
+        custom_audience_ids: customAudienceIds,
         mentions,
         hashtags,
         author_id: request.user.userId
       },
       author,
       false,
-      false
+      false,
+      request.user.userId
     );
 
     publishToFeedSubscribers("FEED_POST", post, request.user.userId);
@@ -752,28 +881,7 @@ export default async function feedService(app: any) {
     const postId = String(request.params.postId || "").trim();
     ensure(postId.length >= 8, 400, "Invalid post");
 
-    const post = await queryOne(
-      `SELECT p.*,
-              f.following_id AS viewer_follows_author,
-              incoming.following_id AS author_follows_viewer
-       FROM posts p
-       LEFT JOIN follows f
-         ON f.follower_id = $1 AND f.following_id = p.author_id
-       LEFT JOIN follows incoming
-         ON incoming.follower_id = p.author_id AND incoming.following_id = $1
-       WHERE p.post_id = $2`,
-      [request.user.userId, postId]
-    );
-    if (!post) {
-      throw new HttpError(404, "Post not found");
-    }
-    const visibility = String(post.visibility || "public");
-    const ownPost = String(post.author_id || "") === request.user.userId;
-    const followsAuthor = Boolean(post.viewer_follows_author);
-    const mutualFriends = followsAuthor && Boolean(post.author_follows_viewer);
-    if (!ownPost && (visibility === "private" || (visibility === "followers" && !followsAuthor) || (visibility === "friends" && !mutualFriends))) {
-      throw new HttpError(404, "Post not found");
-    }
+    const post = await fetchPostForViewer(postId, request.user.userId);
 
     const hydrated = await hydrateFeedPosts([post], request.user.userId);
     return hydrated[0] || null;
@@ -783,10 +891,7 @@ export default async function feedService(app: any) {
     const postId = String(request.params.postId || "").trim();
     ensure(postId.length >= 8, 400, "Invalid post");
 
-    const post = await queryOne(`SELECT post_id, author_id, like_count FROM posts WHERE post_id = $1`, [postId]);
-    if (!post) {
-      throw new HttpError(404, "Post not found");
-    }
+    const post = await fetchPostForViewer(postId, request.user.userId);
 
     const ts = now();
     let liked = false;
@@ -828,7 +933,7 @@ export default async function feedService(app: any) {
       postId,
       userId: request.user.userId,
       liked,
-      likeCount: Math.max(0, Number(updated?.like_count || 0))
+      likeCount: visibleLikeCount(post, request.user.userId, Number(updated?.like_count || 0))
     };
     if (liked) {
       await recordFeedEvent(request.user.userId, { type: "like", postId });
@@ -852,6 +957,8 @@ export default async function feedService(app: any) {
     const postId = String(request.params.postId || "").trim();
     ensure(postId.length >= 8, 400, "Invalid post");
 
+    await fetchPostForViewer(postId, request.user.userId);
+
     const limit = parseLimit(request.query?.limit, 30, 1, 100);
     const comments = await queryMany(
       `SELECT *
@@ -873,10 +980,8 @@ export default async function feedService(app: any) {
     const mentions = extractMatches(body, "@");
     const parentCommentId = String(request.body?.parentCommentId || "").trim() || null;
 
-    const post = await queryOne(`SELECT post_id, author_id FROM posts WHERE post_id = $1`, [postId]);
-    if (!post) {
-      throw new HttpError(404, "Post not found");
-    }
+    const post = await fetchPostForViewer(postId, request.user.userId);
+    await ensureReplyPolicyAllows(post, request.user.userId);
     if (parentCommentId) {
       ensure(parentCommentId.length >= 8, 400, "Invalid comment");
       const parent = await queryOne(`SELECT comment_id FROM comments WHERE comment_id = $1 AND post_id = $2`, [parentCommentId, postId]);
@@ -949,6 +1054,8 @@ export default async function feedService(app: any) {
     ensure(postId.length >= 8, 400, "Invalid post");
     ensure(commentId.length >= 8, 400, "Invalid comment");
 
+    await fetchPostForViewer(postId, request.user.userId);
+
     const comment = await queryOne(`SELECT comment_id, like_count FROM comments WHERE comment_id = $1 AND post_id = $2`, [commentId, postId]);
     if (!comment) {
       throw new HttpError(404, "Comment not found");
@@ -1004,10 +1111,8 @@ export default async function feedService(app: any) {
     const postId = String(request.params.postId || "").trim();
     ensure(postId.length >= 8, 400, "Invalid post");
 
-    const original = await queryOne(`SELECT * FROM posts WHERE post_id = $1`, [postId]);
-    if (!original) {
-      throw new HttpError(404, "Post not found");
-    }
+    const original = await fetchPostForViewer(postId, request.user.userId);
+    ensureRepostPolicyAllows(original, request.user.userId);
 
     const existing = await queryOne(`SELECT post_id FROM posts WHERE author_id = $1 AND share_of_post_id = $2`, [request.user.userId, postId]);
 

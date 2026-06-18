@@ -1166,7 +1166,7 @@ async function hardFilterCandidates(
   const idSql = placeholders(ids.length);
   const postRows = await queryMany(
     `SELECT p.post_id, p.author_id, p.body, p.hashtags, p.share_of_post_id,
-            p.deleted_at, p.moderation_state, p.visibility, p.sensitive_label,
+            p.deleted_at, p.moderation_state, p.visibility, p.sensitive_label, p.custom_audience_ids,
             p.spam_score, p.toxicity_score, p.clickbait_score, p.quality_score,
             author.deleted_at AS author_deleted_at,
             author_settings.settings AS author_settings
@@ -1289,6 +1289,10 @@ async function hardFilterCandidates(
       if (visibility === "private") return false;
       if (visibility === "friends" && !friends.has(authorId)) return false;
       if (visibility === "followers" && !following.has(authorId)) return false;
+      if (visibility === "custom") {
+        const customAudience = Array.isArray(post.custom_audience_ids) ? post.custom_audience_ids : [];
+        if (!customAudience.includes(viewerId)) return false;
+      }
     }
     if (preferences.reduceSensitiveContent && String(post.sensitive_label || "")) return false;
     if (Number(post.toxicity_score || 0) >= 0.82 || Number(post.spam_score || 0) >= 0.78) return false;
